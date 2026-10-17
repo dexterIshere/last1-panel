@@ -2,7 +2,7 @@
 <script lang="ts">
   import { api, errorMessage } from "$lib/api/ipc";
   import type { Channel, ColorAdjust, ColorState, Output } from "$lib/api/types";
-  import { neutralAdjust, sameChannels } from "$lib/color";
+  import { CHANNELS, clampChannel, meanChannel, neutralAdjust, sameChannels } from "$lib/color";
   import CurveGraph from "$lib/components/colors/CurveGraph.svelte";
   import Preview from "$lib/components/colors/Preview.svelte";
   import SectionHeader from "$lib/components/layout/SectionHeader.svelte";
@@ -31,7 +31,12 @@
   let applying = $state(false);
 
   const live = $derived(app.system?.features?.liveColor ?? false);
-  const editing = $derived<Channel>(channel === "all" ? adjust.red : adjust[channel]);
+  const channelsDiffer = $derived(!sameChannels(adjust));
+  /** « Tous » : la moyenne des trois canaux (leur valeur commune s'ils sont pareils). */
+  const editing = $derived<Channel>(channel === "all" ? meanChannel(adjust) : adjust[channel]);
+
+  /** Glissement d'un curseur de « Tous » : les canaux de départ, décalés d'autant. */
+  let drag: { key: keyof Channel; from: number; base: ColorAdjust } | null = null;
 
   const colorSender = latest<{ output: string; adjust: ColorAdjust }>(
     (value) => api.setColor(value.output, value.adjust),
@@ -63,7 +68,8 @@
       info = fresh;
       adjust = structuredClone(fresh.adjust);
       vibrance = fresh.vibrance;
-      channel = sameChannels(adjust) ? "all" : "red";
+      channel = "all";
+      drag = null;
       dirty = false;
     } catch (e) {
       error = errorMessage(e);
@@ -78,9 +84,17 @@
     loadOutput(selected);
   });
 
+  /** « Tous » décale les trois canaux d'autant : un réglage propre au bleu
+   * (ou au rouge, au vert) reste. Un canal seul se règle tel quel. */
   function update(key: keyof Channel, value: number) {
-    const targets: ("red" | "green" | "blue")[] = channel === "all" ? ["red", "green", "blue"] : [channel];
-    for (const target of targets) adjust[target][key] = value;
+    if (channel === "all") {
+      if (drag?.key !== key) drag = { key, from: editing[key], base: $state.snapshot(adjust) };
+      const delta = value - drag.from;
+      for (const target of CHANNELS) adjust[target][key] = clampChannel(key, drag.base[target][key] + delta);
+    } else {
+      drag = null;
+      adjust[channel][key] = value;
+    }
     changed();
   }
 
@@ -106,6 +120,7 @@
   async function reset() {
     adjust = neutralAdjust();
     channel = "all";
+    drag = null;
     if (live) {
       colorSender.push({ output: selected, adjust: $state.snapshot(adjust) });
       await colorSender.flush();
@@ -171,9 +186,24 @@
       {#if info?.colorUnavailable}
         <Callout kind="warning">{info.colorUnavailable}</Callout>
       {/if}
-      <Slider label={t("Luminosité", "Brightness")} value={editing.brightness} min={0} max={100} defaultValue={50} format={percent} disabled={!!info?.colorUnavailable} oninput={(v) => update("brightness", v)} />
-      <Slider label={t("Contraste", "Contrast")} value={editing.contrast} min={0} max={100} defaultValue={50} format={percent} disabled={!!info?.colorUnavailable} oninput={(v) => update("contrast", v)} />
-      <Slider label="Gamma" value={editing.gamma} min={0.3} max={2.8} step={0.01} defaultValue={1} format={(v) => num(v, 2)} disabled={!!info?.colorUnavailable} oninput={(v) => update("gamma", v)} />
+      {#if channel === "all" && channelsDiffer}
+        <p class="field__hint">
+          {t(
+            "Rouge, vert et bleu sont réglés différemment : « Tous » les déplace ensemble, leurs écarts restent.",
+            "Red, green and blue are set differently: “All” moves them together and keeps their differences.",
+          )}
+        </p>
+      {:else if channel !== "all"}
+        <p class="field__hint">
+          {t(
+            "Ce canal seul : sa couleur se renforce ou s'éteint dans toute l'image (un contraste fort sur le bleu seul jaunit les ombres). Les réglages des guides du panneau NVIDIA se mettent sur « Tous ».",
+            "This channel only: its color gets stronger or fades across the whole picture (high contrast on blue alone turns shadows yellow). Settings from NVIDIA Control Panel guides go on “All”.",
+          )}
+        </p>
+      {/if}
+      <Slider label={t("Luminosité", "Brightness")} value={editing.brightness} min={0} max={100} defaultValue={50} format={percent} disabled={!!info?.colorUnavailable} oninput={(v) => update("brightness", v)} onchange={() => (drag = null)} />
+      <Slider label={t("Contraste", "Contrast")} value={editing.contrast} min={0} max={100} defaultValue={50} format={percent} disabled={!!info?.colorUnavailable} oninput={(v) => update("contrast", v)} onchange={() => (drag = null)} />
+      <Slider label="Gamma" value={editing.gamma} min={0.3} max={2.8} step={0.01} defaultValue={1} format={(v) => num(v, 2)} disabled={!!info?.colorUnavailable} oninput={(v) => update("gamma", v)} onchange={() => (drag = null)} />
       {#if !live}
         <p class="field__hint">
           {t(
