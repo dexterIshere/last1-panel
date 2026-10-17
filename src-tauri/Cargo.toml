@@ -1,0 +1,25 @@
+[package]
+name = "last1-panel"
+description = "Réglages GPU et écran pour jouer sous Linux (Wayland)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+name = "last1_panel_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+last1-panel-core = { path = "../core" }
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true

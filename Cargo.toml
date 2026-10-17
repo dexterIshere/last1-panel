@@ -1,7 +1,7 @@
 [workspace]
 # core : toute la logique, sans GTK ni WebKit (testable partout, et l'outil
 # des jeux en dépend seul). src-tauri : la fenêtre.
-members = ["core"]
+members = ["core", "src-tauri"]
 resolver = "3"
 
 [workspace.package]

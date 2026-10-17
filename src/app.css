@@ -1,0 +1,451 @@
+/*
+ * Last1 Panel : direction artistique « Signal » de last1.fun (docs/DA.md du
+ * dépôt go-to-linux). Fond noir bleuté, Volt pour l'action et la réussite,
+ * Pulse pour l'information, turquoise comme couleur de repère du logiciel.
+ */
+
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/space-grotesk.woff2") format("woff2");
+  font-weight: 300 700;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+
+  --color-bg: #0a0c10;
+  --color-sidebar: #0d1015;
+  --color-surface: #12151b;
+  --color-surface-raised: #191d25;
+  --color-surface-hover: #1f242e;
+  --color-border: #262b35;
+  --color-border-strong: #343b48;
+  --color-border-input: #646d80;
+  --color-text: #eceff4;
+  --color-text-muted: #a3acba;
+  --color-text-faint: #6f788a;
+  --color-volt: #c5f82a;
+  --color-volt-hover: #d6ff5e;
+  --color-on-volt: #0a0c10;
+  --color-pulse: #9b8cff;
+  --color-warning: #ffb547;
+  --color-danger: #ff6b6b;
+  --color-volt-soft: rgb(197 248 42 / 0.1);
+  --color-pulse-soft: rgb(155 140 255 / 0.12);
+  --color-warning-soft: rgb(255 181 71 / 0.1);
+  --color-danger-soft: rgb(255 107 107 / 0.1);
+  --color-volt-line: rgb(197 248 42 / 0.35);
+  --color-pulse-line: rgb(155 140 255 / 0.4);
+  --color-warning-line: rgb(255 181 71 / 0.35);
+  --color-danger-line: rgb(255 107 107 / 0.4);
+  --color-glow: rgb(197 248 42 / 0.16);
+
+  /* Repère de Last1 Panel (pictogramme, onglets actifs), jamais pour une action. */
+  --color-panel: #3dd6c6;
+  --color-panel-soft: rgb(61 214 198 / 0.12);
+  --color-panel-line: rgb(61 214 198 / 0.4);
+  /* Courbes des canaux (graphe des couleurs). */
+  --color-red: #ff7a7a;
+  --color-green: #6fdc8c;
+  --color-blue: #6aa8ff;
+
+  --font-display: "Space Grotesk", system-ui, "Segoe UI", sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.625rem;
+  --text-3xl: 2rem;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-pulse);
+  --shadow-glow: 0 0 0 1px var(--color-volt-soft), 0 12px 48px var(--color-glow);
+  --shadow-panel: 0 1px 0 rgb(255 255 255 / 0.03) inset;
+
+  --duration-fast: 150ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: var(--text-base) / 1.55 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+/* Boutons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-input);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.btn--primary {
+  border-color: var(--color-volt);
+  background: var(--color-volt);
+  color: var(--color-on-volt);
+}
+
+.btn--primary:hover:not(:disabled) {
+  border-color: var(--color-volt-hover);
+  background: var(--color-volt-hover);
+}
+
+.btn--danger {
+  border-color: var(--color-danger-line);
+  background: transparent;
+  color: var(--color-danger);
+}
+
+.btn--danger:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.btn--lg {
+  min-height: 2.875rem;
+  padding: 0 var(--space-5);
+  font-size: var(--text-lg);
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.125rem var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font: 600 var(--text-2xs) / 1.5 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge--success {
+  border-color: var(--color-volt-line);
+  background: var(--color-volt-soft);
+  color: var(--color-volt);
+}
+
+.badge--info {
+  border-color: var(--color-pulse-line);
+  background: var(--color-pulse-soft);
+  color: var(--color-pulse);
+}
+
+.badge--warning {
+  border-color: var(--color-warning-line);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.badge--danger {
+  border-color: var(--color-danger-line);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+/* Panneaux */
+.panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
+}
+
+.label {
+  color: var(--color-text-faint);
+  font: 600 var(--text-2xs) / 1.4 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Barres de défilement discrètes */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--color-border-strong) padding-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Champs */
+.field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.field__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.field__label {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.field__value {
+  color: var(--color-text-muted);
+  font: 600 var(--text-sm) / 1.4 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.field__hint {
+  color: var(--color-text-faint);
+  font-size: var(--text-sm);
+}
+
+select,
+input[type="number"],
+input[type="search"],
+input[type="text"] {
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: inherit;
+  user-select: text;
+}
+
+select:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Curseurs : piste fine, partie remplie en Pulse, bouton clair. */
+input[type="range"] {
+  --fill: 50%;
+  width: 100%;
+  height: 1.25rem;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--color-pulse) var(--fill), var(--color-border-strong) var(--fill));
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  width: 1rem;
+  height: 1rem;
+  margin-top: calc(2px - 0.5rem);
+  border: 2px solid var(--color-bg);
+  border-radius: 50%;
+  background: var(--color-text);
+  appearance: none;
+  box-shadow: 0 0 0 1px var(--color-border-input);
+}
+
+input[type="range"]:focus-visible {
+  box-shadow: none;
+}
+
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--focus-ring);
+}
+
+input[type="range"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Choix en segments (Tous / Rouge / Vert / Bleu…). */
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.segmented button {
+  min-height: 2rem;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: calc(var(--radius-md) - 3px);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  box-shadow: 0 0 0 1px var(--color-border-strong);
+}
+
+.segmented button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Interrupteur */
+.switch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: 2.5rem;
+  height: 1.375rem;
+  border: 1px solid var(--color-border-input);
+  border-radius: 999px;
+  background: var(--color-surface-raised);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.switch[aria-checked="true"] {
+  border-color: var(--color-volt);
+  background: var(--color-volt-soft);
+}
+
+.switch[aria-checked="true"]::after {
+  background: var(--color-volt);
+  transform: translateX(1.125rem);
+}
+
+.switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}

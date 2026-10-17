@@ -1,0 +1,51 @@
+// Commandes du cœur Rust (src-tauri/src/commands.rs), typées. Les erreurs
+// arrivent en texte dans la langue de l'interface, à montrer tel quel.
+
+import { invoke } from "@tauri-apps/api/core";
+import { t, type Lang } from "$lib/i18n.svelte";
+import type {
+  ColorAdjust,
+  ColorState,
+  GamesInfo,
+  GamesSettings,
+  GpuDevice,
+  GpuStats,
+  GpuTuning,
+  Output,
+  OutputChange,
+  SystemInfo,
+  Tuning,
+} from "./types";
+
+export function errorMessage(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
+  return t("erreur inconnue", "unknown error");
+}
+
+export const api = {
+  systemInfo: () => invoke<SystemInfo>("system_info"),
+  setLanguage: (lang: Lang) => invoke<void>("set_language", { lang }),
+
+  outputs: () => invoke<Output[]>("outputs"),
+  /** Applique les changements et relit les écrans. */
+  applyOutputs: (changes: OutputChange[]) => invoke<Output[]>("apply_outputs", { changes }),
+
+  colorState: (output: string) => invoke<ColorState>("color_state", { output }),
+  setColor: (output: string, adjust: ColorAdjust) => invoke<void>("set_color", { output, adjust }),
+  setVibrance: (output: string, percent: number) => invoke<void>("set_vibrance", { output, percent }),
+
+  gpuDevices: () => invoke<GpuDevice[]>("gpu_devices"),
+  gpuStats: (id: string) => invoke<GpuStats>("gpu_stats", { id }),
+  gpuTuning: (id: string) => invoke<GpuTuning>("gpu_tuning", { id }),
+  /** Essaie les réglages : LACT les annule s'ils ne sont pas confirmés à temps (secondes renvoyées). */
+  gpuTry: (id: string, tuning: Tuning) => invoke<number>("gpu_try", { id, tuning }),
+  gpuConfirm: (keep: boolean) => invoke<void>("gpu_confirm", { keep }),
+  /** Active le service LACT (pkexec, mot de passe demandé). */
+  enableLact: () => invoke<void>("enable_lact"),
+
+  games: () => invoke<GamesInfo>("games"),
+  saveGameSettings: (settings: GamesSettings) => invoke<void>("save_game_settings", { settings }),
+  /** Met (ou retire) l'option de lancement dans Steam, Steam fermé. */
+  setWrapped: (appIds: number[], wrapped: boolean) => invoke<number>("set_wrapped", { appIds, wrapped }),
+};

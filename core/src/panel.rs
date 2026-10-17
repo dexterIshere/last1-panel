@@ -106,8 +106,21 @@ impl Panel {
         self.display()?.outputs()
     }
 
+    /// Applique ces changements ; les écrans voisins sont recalés côte à côte
+    /// si une taille change (définition, échelle, orientation).
     pub fn apply_outputs(&self, changes: &[OutputChange]) -> CoreResult<()> {
-        self.display()?.apply(changes)
+        let display = self.display()?;
+        let before = display.outputs()?;
+        let mut after: Vec<Output> = before
+            .iter()
+            .map(|output| match changes.iter().find(|c| c.name == output.name) {
+                Some(change) => change.applied_to(output),
+                None => output.clone(),
+            })
+            .collect();
+        crate::display::model::relayout(&before, &mut after);
+        let all = crate::display::model::diff(&before, &after);
+        if all.is_empty() { Ok(()) } else { display.apply(&all) }
     }
 
     fn is_ours(&self, path: &str) -> bool {
