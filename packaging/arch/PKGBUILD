@@ -38,7 +38,8 @@ prepare() {
 
 build() {
   cd "$pkgname-$pkgver"
-  export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+  # Chemin absolu : la CLI de Tauri lance cargo depuis src-tauri/.
+  export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR="$PWD/target"
   # Interface compilée et intégrée à l'exécutable (sans paquet Tauri), puis
   # l'outil des jeux, sans GTK ni WebKit.
   bun run tauri build --no-bundle -- --frozen
@@ -47,7 +48,7 @@ build() {
 
 check() {
   cd "$pkgname-$pkgver"
-  export RUSTUP_TOOLCHAIN=stable
+  export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR="$PWD/target"
   cargo test --frozen --release -p last1-panel-core
 }
 
