@@ -1,10 +1,9 @@
-# Tests à chaque push ; paquet Arch joint à la version GitHub pour chaque tag vX.Y.Z.
+# Tests à chaque push ; sur main, paquet Arch construit et publié sur last1.fun.
 name: CI
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -31,26 +30,53 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
 
-  package:
-    if: startsWith(github.ref, 'refs/tags/v')
+  # Paquet Arch construit dans un conteneur Arch et publié sur last1.fun (jeton
+  # OIDC de GitHub : le site vérifie qu'il vient de ce dépôt, sur main ; aucun
+  # secret). go-to-linux l'installe d'office sous CachyOS et le met à jour
+  # depuis last1.fun.
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: check
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
     container: archlinux:latest
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    env:
+      SITE_URL: https://last1.fun
     steps:
       - name: Outils de construction
         run: |
-          pacman -Syu --noconfirm --needed base-devel git rust bun webkit2gtk-4.1 gtk3 lcms2
+          pacman -Syu --noconfirm --needed base-devel git rust bun webkit2gtk-4.1 gtk3 lcms2 lact jq curl
           useradd -m builder
       - uses: actions/checkout@v4
-      - name: makepkg (sources du tag)
+      - id: version
+        name: Version (celle de Cargo.toml, et le numéro de la construction)
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          cp packaging/arch/PKGBUILD /home/builder/
-          sed -i "s/^pkgver=.*/pkgver=$version/" /home/builder/PKGBUILD
-          chown -R builder /home/builder
-          cd /home/builder && sudo -u builder makepkg --noconfirm
-      - uses: softprops/action-gh-release@v2
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          echo "value=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1).r${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+      - name: Paquet
+        run: |
+          chown -R builder "$GITHUB_WORKSPACE"
+          sudo -u builder git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sudo -u builder packaging/arch/build.sh '${{ steps.version.outputs.value }}' /home/builder/out
+      - uses: actions/upload-artifact@v4
         with:
-          files: /home/builder/*.pkg.tar.zst
+          name: last1-panel-${{ steps.version.outputs.value }}
+          path: /home/builder/out/*.pkg.tar.zst
+      - name: Publication sur last1.fun
+        run: |
+          if ! curl -fsS --max-time 10 "${SITE_URL%/}/healthz" >/dev/null; then
+            echo "::warning::$SITE_URL ne répond pas : paquet non publié (relancez le job une fois le site en ligne)."
+            exit 0
+          fi
+          # Site sans Last1 Panel dans son catalogue (pas encore déployé) : rien à publier.
+          if curl -sS --max-time 10 "${SITE_URL%/}/api/public/last1-panel/manifest" | grep -q 'Produit inconnu'; then
+            echo "::warning::last1-panel n'est pas encore dans le catalogue de $SITE_URL : paquet non publié."
+            exit 0
+          fi
+          packages=(/home/builder/out/last1-panel-*.pkg.tar.zst)
+          tools/publish-release.sh last1-panel '${{ steps.version.outputs.value }}' "download:${packages[0]}"

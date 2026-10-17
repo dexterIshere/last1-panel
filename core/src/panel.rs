@@ -213,12 +213,14 @@ impl Panel {
     fn vibrance_unavailable(&self, output: &str) -> Option<String> {
         let gpus = self.gpus();
         match gpu::gpu_for_connector(&gpus, output) {
-            Some(gpu) if gpu.vendor == Vendor::Nvidia => self.exec.which("nvibrant").is_none().then(|| {
-                t(
-                    "Installez nvibrant (paquet AUR nvibrant-bin, installé par go-to-linux) pour régler la vibrance.",
-                    "Install nvibrant (AUR package nvibrant-bin, installed by go-to-linux) to set vibrance.",
-                )
-            }),
+            Some(gpu) if gpu.vendor == Vendor::Nvidia => {
+                vibrance::program(self.exec.as_ref(), gpu.driver_version.as_deref()).is_none().then(|| {
+                    t(
+                        "Vibrance indisponible pour cette version du pilote NVIDIA : mettez à jour Last1 Panel.",
+                        "Vibrance unavailable for this NVIDIA driver version: update Last1 Panel.",
+                    )
+                })
+            }
             Some(_) if gpus.iter().any(|g| g.vendor == Vendor::Nvidia) => Some(t(
                 "Cet écran est branché sur la puce graphique intégrée : la vibrance NVIDIA ne s'y applique pas.",
                 "This screen is driven by the integrated graphics: NVIDIA vibrance does not apply to it.",

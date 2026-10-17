@@ -1,29 +1,39 @@
-# Paquet Arch (AUR) de Last1 Panel, construit depuis les sources d'une version.
-# Mise à jour : pkgver, puis `updpkgsums` et `makepkg --printsrcinfo > .SRCINFO`.
+# Paquet Arch de Last1 Panel. Construit par packaging/arch/build.sh (CI ou à la
+# main) depuis le commit en cours, puis publié sur last1.fun : go-to-linux
+# l'installe d'office sous CachyOS et le tient à jour. Aucun paquet de l'AUR :
+# nvibrant (MIT) est livré dans le paquet, ses binaires pris tels quels dans sa
+# version publiée sur PyPI (empreinte vérifiée).
 pkgname=last1-panel
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="GPU and display settings for Linux gaming on Wayland: screen colors, vibrance, display modes, GPU tuning, per-game 3D settings"
 arch=('x86_64')
-url="https://github.com/dexterIshere/last1-panel"
-license=('GPL-3.0-or-later')
-depends=('webkit2gtk-4.1' 'gtk3' 'lcms2' 'hicolor-icon-theme' 'systemd')
+url="https://last1.fun/last1-panel"
+license=('GPL-3.0-or-later' 'MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'lcms2' 'hicolor-icon-theme' 'systemd' 'lact')
 makedepends=('cargo' 'bun')
 optdepends=(
-  'lact: graphics card power limit, fans and clocks'
-  'nvibrant-bin: NVIDIA digital vibrance (AUR)'
   'mangohud: on-screen performance and frame limiter for native games'
   'kscreen: KDE Plasma screen settings (kscreen-doctor)'
 )
-options=('!lto')
-source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+options=('!lto' '!debug')
+_nvibrant=1.3.0
+# Archive du commit posée à côté du PKGBUILD par build.sh (git archive).
+source=("$pkgname-$pkgver.tar.gz"
+  "nvibrant-$_nvibrant.whl::https://files.pythonhosted.org/packages/5e/fc/453cf625d659ffaac14ef5a89edd5ac1d9e5ff3708c120efd4a3ac145b22/nvibrant-$_nvibrant-py3-none-manylinux_2_17_x86_64.whl"
+  "nvibrant-$_nvibrant-license.txt::https://raw.githubusercontent.com/Tremeschin/nvibrant/v$_nvibrant/license.txt")
+noextract=("nvibrant-$_nvibrant.whl")
+sha256sums=('SKIP'
+  'd60a080b52e4a16e16d16a7d4b6405a32a3fe1b8ee0df65dc3685213ef0393e8'
+  '015b42dfc301724c0f8ac8de7658e36801a7a86463d91024bf173ee9ceec495f')
 
 prepare() {
   cd "$pkgname-$pkgver"
   export RUSTUP_TOOLCHAIN=stable
   cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
   bun install --frozen-lockfile
+  mkdir -p "$srcdir/nvibrant"
+  bsdtar -xf "$srcdir/nvibrant-$_nvibrant.whl" -C "$srcdir/nvibrant" 'nvibrant/resources/*'
 }
 
 build() {
@@ -52,4 +62,10 @@ package() {
   install -dm755 "$pkgdir/usr/lib/systemd/user/default.target.wants"
   ln -s ../last1-panel-apply.service "$pkgdir/usr/lib/systemd/user/default.target.wants/last1-panel-apply.service"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+  # nvibrant : un binaire par version du pilote NVIDIA ; Last1 Panel choisit
+  # celui du pilote installé (core/src/color/vibrance.rs).
+  install -dm755 "$pkgdir/usr/lib/last1-panel/nvibrant"
+  install -m755 "$srcdir"/nvibrant/nvibrant/resources/nvibrant-* "$pkgdir/usr/lib/last1-panel/nvibrant/"
+  install -Dm644 "$srcdir/nvibrant-$_nvibrant-license.txt" "$pkgdir/usr/share/licenses/$pkgname/nvibrant-LICENSE"
 }

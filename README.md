@@ -14,7 +14,7 @@ tuning, per-game 3D settings. Free software (GPL-3.0), part of the Last1 suite.*
 | Panneau NVIDIA | Last1 Panel | Outil utilisé |
 |---|---|---|
 | Couleurs du bureau : luminosité, contraste, gamma (par canal) | **Couleurs** | profil ICC (courbe VCGT) appliqué par KWin ou Hyprland |
-| Vibrance numérique | **Couleurs** (cartes NVIDIA) | [nvibrant](https://github.com/Tremeschin/nvibrant) |
+| Vibrance numérique | **Couleurs** (cartes NVIDIA) | [nvibrant](https://github.com/Tremeschin/nvibrant) (MIT, inclus) |
 | Résolution, fréquence, G-SYNC, HDR, profondeur de couleur, orientation, échelle | **Affichage** | `kscreen-doctor` (Plasma), `hyprctl` (Hyprland) |
 | Limite de puissance, fréquences, ventilateurs (MSI Afterburner) | **Carte graphique** | [LACT](https://github.com/ilya-zlobintsev/LACT) |
 | Paramètres 3D par jeu : images/s max, V-Sync, faible latence, filtrage, DLSS | **Jeux** | Proton, DXVK, VKD3D-Proton, dxvk-nvapi, MangoHud |
@@ -33,9 +33,10 @@ l'outil : choisir RVB ou YCbCr, plage complète ou limitée, l'overscan.
 
 ## Installer
 
-Sur Arch ou CachyOS, depuis l'AUR : `paru -S last1-panel` (avec `lact` pour
-la carte graphique, et `nvibrant-bin` pour la vibrance NVIDIA). go-to-linux
-l'installe d'office.
+go-to-linux l'installe d'office sous CachyOS et le tient à jour. Sinon, sur
+Arch ou CachyOS : téléchargez le paquet sur [last1.fun](https://last1.fun/last1-panel)
+(gratuit, sans compte), puis `sudo pacman -U last1-panel-*.pkg.tar.zst` (LACT
+et les bibliothèques viennent des dépôts officiels ; nvibrant est inclus).
 
 ## Réglages 3D des jeux
 
@@ -60,8 +61,10 @@ bun run dev                       # interface dans un navigateur, PC simulé
 paramètres d'adresse : `?bureau=plasma`, `?carte=amd`, `?lact=arrete`,
 `?steam=ouvert`, `?page=display|gpu|games`.
 
-Paquet Arch : `packaging/arch/PKGBUILD`. Pour chaque tag `vX.Y.Z`, la CI
-joint le paquet compilé à la version GitHub.
+Paquet Arch : `packaging/arch/build.sh <version> <dossier>` (PKGBUILD dans
+`packaging/arch/`). À chaque commit sur `main`, la CI construit le paquet dans
+un conteneur Arch et le publie sur last1.fun (`tools/publish-release.sh`,
+jeton OIDC de GitHub, aucun secret).
 
 Le cœur (`core/`) ne dépend ni de GTK ni de WebKit : `cargo test -p last1-panel-core`
 suffit pour travailler sur les réglages.

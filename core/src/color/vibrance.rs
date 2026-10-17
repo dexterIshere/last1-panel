@@ -1,6 +1,12 @@
-//! Vibrance numérique des cartes NVIDIA, par nvibrant (paquet AUR
-//! `nvibrant-bin`), qui la règle dans le pilote (interface NVKMS) : elle
+//! Vibrance numérique des cartes NVIDIA, par nvibrant (MIT, Gabriel
+//! Tremeschin), qui la règle dans le pilote (interface NVKMS) : elle
 //! s'applique à tout l'affichage, jeux en plein écran compris, sans coût.
+//!
+//! Les binaires de nvibrant (un par version du pilote, compilés par son
+//! auteur et publiés sur PyPI) sont livrés dans le paquet de Last1 Panel,
+//! dans /usr/lib/last1-panel/nvibrant : on prend, comme son lanceur Python,
+//! la version la plus récente qui ne dépasse pas celle du pilote. À défaut,
+//! la commande `nvibrant` installée à part.
 //!
 //! nvibrant prend une valeur par prise physique de la carte, dans l'ordre du
 //! pilote, et ne donne pas le nom des sorties (DP-1…). La correspondance est
@@ -13,8 +19,46 @@ use crate::exec::Exec;
 use crate::i18n::t;
 use crate::system::gpu::{Gpu, Vendor};
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 const PROGRAM: &str = "nvibrant";
+/// Binaires de nvibrant livrés avec Last1 Panel (variable pour les essais).
+const BUNDLED_DIR: &str = "/usr/lib/last1-panel/nvibrant";
+
+fn bundled_dir() -> PathBuf {
+    std::env::var_os("LAST1_PANEL_NVIBRANT_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(BUNDLED_DIR))
+}
+
+/// « 595.58.03 » → (595, 58, 3) pour comparer les versions du pilote.
+fn version_key(text: &str) -> Option<Vec<u32>> {
+    let parts: Option<Vec<u32>> = text.trim().split('.').map(|part| part.parse().ok()).collect();
+    parts.filter(|parts| !parts.is_empty())
+}
+
+/// Le binaire nvibrant pour cette version du pilote : le plus récent qui ne
+/// la dépasse pas (les structures du pilote ne changent qu'à certaines
+/// versions).
+pub fn bundled_binary(dir: &Path, driver: &str) -> Option<PathBuf> {
+    let driver = version_key(driver)?;
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let version = version_key(name.strip_prefix("nvibrant-")?)?;
+            (version <= driver).then_some((version, entry.path()))
+        })
+        .max_by(|a, b| a.0.cmp(&b.0))
+        .map(|(_, path)| path)
+}
+
+/// Ce qui règle la vibrance pour ce pilote : binaire livré, sinon `nvibrant`.
+pub fn program(exec: &dyn Exec, driver: Option<&str>) -> Option<String> {
+    driver
+        .and_then(|version| bundled_binary(&bundled_dir(), version))
+        .map(|path| path.to_string_lossy().into_owned())
+        .or_else(|| exec.which(PROGRAM).map(|_| PROGRAM.to_string()))
+}
 
 /// Vibrance du panneau NVIDIA (0 à 100 %, 50 : inchangée) → valeur NVKMS
 /// (-1024 à 1023, 0 : inchangée ; -1024 : noir et blanc).
@@ -143,9 +187,10 @@ pub fn apply(
             "Digital vibrance can only be set on the outputs of an NVIDIA card.",
         )));
     }
+    let program = program(exec, gpu.driver_version.as_deref()).ok_or_else(|| CoreError::MissingTool(PROGRAM.into()))?;
     let run = |values: Vec<String>| -> CoreResult<Vec<Port>> {
         // nvibrant choisit la carte et le réglage par ses variables d'environnement.
-        let mut args = vec![format!("NVIDIA_GPU={gpu_index}"), "ATTRIBUTE=vibrance".into(), PROGRAM.into()];
+        let mut args = vec![format!("NVIDIA_GPU={gpu_index}"), "ATTRIBUTE=vibrance".into(), program.clone()];
         args.extend(values);
         let output = exec.run("env", &args)?;
         if !output.success() {
@@ -154,9 +199,6 @@ pub fn apply(
         }
         Ok(parse(&output.stdout))
     };
-    if exec.which(PROGRAM).is_none() {
-        return Err(CoreError::MissingTool(PROGRAM.into()));
-    }
     // Premier passage sans argument : toutes les prises à la valeur par
     // défaut (celle du démarrage), et la liste des prises.
     let ports = run(Vec::new())?;
@@ -229,6 +271,25 @@ mod tests {
             boot_vga: true,
             connectors: connectors.iter().map(|(n, c)| Connector { name: n.to_string(), connected: *c }).collect(),
         }
+    }
+
+    #[test]
+    fn picks_the_bundled_binary_for_the_driver() {
+        let dir = tempfile::tempdir().unwrap();
+        for version in ["575.51.02", "580.65.06", "595.44.02", "615.71.09"] {
+            std::fs::write(dir.path().join(format!("nvibrant-{version}")), "").unwrap();
+        }
+        let pick = |driver: &str| bundled_binary(dir.path(), driver).map(|p| p.file_name().unwrap().to_owned());
+        assert_eq!(pick("595.58.03").unwrap(), "nvibrant-595.44.02");
+        assert_eq!(pick("580.65.06").unwrap(), "nvibrant-580.65.06");
+        // 610 n'est pas livré : celui de 595 (le plus récent en dessous).
+        assert_eq!(pick("610.43.03").unwrap(), "nvibrant-595.44.02");
+        assert_eq!(pick("620.10").unwrap(), "nvibrant-615.71.09");
+        assert_eq!(pick("515.43.04"), None, "pilote plus ancien que tous les binaires");
+        assert_eq!(pick("pas une version"), None);
+        // 595.100 est plus récent que 595.99 (comparaison nombre par nombre).
+        std::fs::write(dir.path().join("nvibrant-595.100.01"), "").unwrap();
+        assert_eq!(pick("595.101").unwrap(), "nvibrant-595.100.01");
     }
 
     #[test]

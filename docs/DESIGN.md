@@ -32,12 +32,12 @@ tous deux en Wayland.
 | Courbes | **Calcul de nvidia-settings** (contraste autour du gris moyen, luminosité en décalage d'un tiers de la plage au maximum, puis gamma en puissance) | La courbe que les utilisateurs NVIDIA connaissent. Réécrite (nvidia-settings est en GPL-2.0 seule, incompatible avec la GPL-3.0). |
 | Profil ICC | **Primaires sRGB, blanc D65 ; TRC en puissance 2,2 sous Plasma, sRGB sous Hyprland** (lcms2, VCGT en table 3 × 256 × 16 bits) | Chaque compositeur suppose sa fonction de transfert pour un écran SDR (KWin : 2,2 ; Hyprland avec un profil ICC : sRGB) : le profil seul ne change rien, seule notre courbe agit. Hyprland n'accepte que la VCGT en table. |
 | Application des couleurs | **Plasma : en direct**, à chaque mouvement de curseur. **Hyprland : au clic sur « Appliquer »**, par `hyprctl keyword monitor` puis `hyprctl dispatch forcerendererreload` | KWin applique un nouveau profil aussitôt. Hyprland ne recharge la courbe dans la carte (table gamma) qu'en réappliquant tout l'écran (`applyMonitorRule`) : un bref clignotement possible, donc pas à chaque mouvement. |
-| Vibrance numérique | **nvibrant** (NVIDIA), dans le matériel d'affichage | Seul outil qui règle la vibrance sous Wayland (interface NVKMS du pilote) ; aucun coût en jeu. Non gardé au redémarrage : réappliqué à la connexion (`last1-panel-cli apply`). |
+| Vibrance numérique | **nvibrant** (NVIDIA, MIT), dans le matériel d'affichage ; **ses binaires livrés dans notre paquet** | Seul outil qui règle la vibrance sous Wayland (interface NVKMS du pilote) ; aucun coût en jeu. Un binaire par version du pilote (ceux publiés par son auteur sur PyPI, empreinte vérifiée) ; Last1 Panel prend le plus récent qui ne dépasse pas le pilote installé, comme le lanceur Python de nvibrant, sans Python ni AUR. Non gardé au redémarrage : réappliqué à la connexion. |
 | Écrans | **`kscreen-doctor`** (Plasma), **`hyprctl` + `monitors.conf`** (Hyprland) | Les outils des bureaux eux-mêmes ; KWin garde ses réglages, Hyprland relit `monitors.conf`. |
 | Carte graphique | **Service LACT** (`lactd`, socket JSON) | Maintenu, NVIDIA (NVML), AMD et Intel ; courbes de ventilateurs tenues par le service ; changement confirmé sous 5 s, sinon annulé. |
 | Réglages 3D par jeu | **Option de lancement Steam `last1-panel-cli run %command%`**, écrite par Last1 Panel (Steam fermé) | Le lanceur lit nos réglages au lancement et pose les variables de Proton, DXVK, VKD3D-Proton, dxvk-nvapi, du pilote et de MangoHud. `dlss-swapper` et `game-performance` de CachyOS sont repris tels quels. |
 | Réglages remis à la connexion | **Service utilisateur `last1-panel-apply.service`** (`last1-panel-cli watch`), actif pour tous les comptes | La vibrance est perdue au redémarrage et au rebranchement d'un écran : remise à la connexion, puis à chaque événement DRM (`udevadm monitor`), réessayée tant que le bureau n'a pas allumé l'écran. Les profils ICC, eux, sont gardés par KWin et par monitors.conf. Le service ne dépend pas du bureau (Hyprland n'active pas graphical-session.target). |
-| Paquet | **AUR `last1-panel`** (sources d'un tag, `packaging/arch/PKGBUILD`) ; paquet compilé joint à chaque version GitHub par la CI | go-to-linux installe déjà ses applications de l'AUR avec paru (`data/linux-apps.json`) : une entrée suffit. `lact` (extra) et `nvibrant-bin` (AUR) en dépendances optionnelles. |
+| Distribution | **Paquet Arch publié sur last1.fun** à chaque commit sur `main` (CI, jeton OIDC) ; **gratuit et sans compte** (page et téléchargement publics) ; **aucun paquet de l'AUR** | Disponible à toute heure depuis last1.fun, comme les autres logiciels Last1. go-to-linux l'installe d'office pendant l'installation de CachyOS (premier démarrage) et le tient à jour : liste des fichiers signée par last1.fun, empreinte vérifiée, puis `pacman -U` (dépendances des dépôts officiels : WebKitGTK, lcms2, LACT). |
 
 ## Réglages 3D : ce que pose le lanceur
 
@@ -63,12 +63,16 @@ Le dernier lancement est noté dans `~/.cache/last1-panel/last-launch.txt`
 
 ## Intégration à go-to-linux
 
-1. Ajouter Last1 Panel à `data/linux-apps.json` (paquets `last1-panel`,
-   `lact`, et `nvibrant-bin` pour les cartes NVIDIA) : paru l'installe au
-   premier démarrage, comme Vesktop et Spotify.
-2. Activer `lactd.service` à l'installation (sinon, la page « Carte graphique »
-   propose de l'activer, mot de passe demandé).
-3. Bureau Signal : un raccourci dans la barre (Waybar) vers `last1-panel`.
+1. **last1.fun** : Last1 Panel est un produit gratuit du catalogue
+   (`"free": true`) ; sa liste signée (`/api/public/last1-panel/manifest`) et
+   son paquet sont publics, et sa page propose le téléchargement.
+2. **Installation de CachyOS** : au premier démarrage, après les mises à jour
+   et les pilotes, go-to-linux télécharge le paquet depuis last1.fun, vérifie
+   la signature de la liste et l'empreinte du paquet, l'installe avec pacman et
+   active le service LACT (`lactd`).
+3. **Mises à jour** : la mise à jour quotidienne de go-to-linux fait de même
+   quand last1.fun publie une version plus récente ; les PC déjà installés le
+   reçoivent ainsi à leur prochaine mise à jour.
 4. `gtl-ecrans` ne touche plus aux écrans dès que monitors.conf ne commence
    plus par « # gtl:auto » : Last1 Panel remplace cet en-tête à son premier
    réglage, le choix de l'utilisateur gagne.

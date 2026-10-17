@@ -66,7 +66,10 @@ pub async fn system_info(panel: State<'_, Arc<Panel>>) -> Result<SystemInfo> {
             features: panel.features(),
             gpus: panel.gpus(),
             tools: Tools {
-                nvibrant: which("nvibrant").is_some(),
+                nvibrant: panel.gpus().iter().any(|g| {
+                    last1_panel_core::color::vibrance::program(panel.exec.as_ref(), g.driver_version.as_deref())
+                        .is_some()
+                }),
                 lact: which("lact").is_some(),
                 lact_running: lact::find_socket().is_some(),
                 mangohud: which("mangohud").is_some(),
