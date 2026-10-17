@@ -35,12 +35,22 @@ export function clampChannel(key: keyof Channel, value: number): number {
   return Math.round(Math.min(max, Math.max(min, value)) / step) * step;
 }
 
-/** Moyenne des trois canaux, au pas des curseurs : ce que montre « Tous ». */
-export const meanChannel = (a: ColorAdjust): Channel => ({
-  brightness: clampChannel("brightness", (a.red.brightness + a.green.brightness + a.blue.brightness) / 3),
-  contrast: clampChannel("contrast", (a.red.contrast + a.green.contrast + a.blue.contrast) / 3),
-  gamma: clampChannel("gamma", (a.red.gamma + a.green.gamma + a.blue.gamma) / 3),
-});
+/** Même réglage, aux arrondis des curseurs près. */
+export const sameChannel = (a: Channel, b: Channel): boolean =>
+  Math.abs(a.brightness - b.brightness) < 0.05 && Math.abs(a.contrast - b.contrast) < 0.05 && Math.abs(a.gamma - b.gamma) < 0.0005;
+
+/** Valeurs de « Tous » : celles gardées avec le réglage ; pour un réglage
+ * d'avant, celles qu'au moins deux canaux partagent, sinon celles du rouge. */
+export function allChannel(a: ColorAdjust): Channel {
+  if (a.all) return { ...a.all };
+  return sameChannel(a.green, a.blue) ? { ...a.green } : { ...a.red };
+}
+
+/** Canaux réglés à part : « Tous » ne les change pas. */
+export const ownChannels = (a: ColorAdjust): (typeof CHANNELS)[number][] => {
+  const all = allChannel(a);
+  return CHANNELS.filter((c) => !sameChannel(a[c], all));
+};
 
 export const isNeutral = (c: Channel): boolean => c.brightness === 50 && c.contrast === 50 && c.gamma === 1;
 

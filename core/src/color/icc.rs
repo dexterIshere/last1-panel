@@ -88,6 +88,7 @@ mod tests {
             red: Channel { brightness: 55.0, contrast: 60.0, gamma: 1.1 },
             green: Channel::default(),
             blue: Channel { brightness: 45.0, contrast: 50.0, gamma: 0.9 },
+            all_channels: None,
         };
         let bytes = build_profile("Last1 Panel DP-1", &adjust, Transfer::Gamma22).unwrap();
         assert_eq!(&bytes[36..40], b"acsp", "signature ICC");

@@ -2,8 +2,8 @@
      profils de couleurs (pour l'écran, ou pour un jeu dans sa seule fenêtre). -->
 <script lang="ts">
   import { api, errorMessage } from "$lib/api/ipc";
-  import type { Channel, ColorAdjust, ColorProfile, ColorState, Output } from "$lib/api/types";
-  import { CHANNELS, clampChannel, meanChannel, neutralAdjust, sameChannels } from "$lib/color";
+  import type { Channel, ColorAdjust, ColorProfile, ColorState, Game, GamesInfo, Output } from "$lib/api/types";
+  import { CHANNELS, allChannel, neutralAdjust, ownChannels, sameChannel, sameChannels } from "$lib/color";
   import CurveGraph from "$lib/components/colors/CurveGraph.svelte";
   import Preview from "$lib/components/colors/Preview.svelte";
   import SectionHeader from "$lib/components/layout/SectionHeader.svelte";
@@ -16,7 +16,7 @@
   import { num, t } from "$lib/i18n.svelte";
   import { app } from "$lib/state/app.svelte";
   import { latest } from "$lib/util/latest";
-  import { RotateCcw, Save, Trash2 } from "@lucide/svelte";
+  import { Link2, RotateCcw, Save, Trash2, X } from "@lucide/svelte";
 
   type ChannelKey = "all" | "red" | "green" | "blue";
 
@@ -38,14 +38,27 @@
   let notice = $state<string | null>(null);
   /** Profil à supprimer au second clic. */
   let confirmDelete = $state<string | null>(null);
+  /** Jeux Steam, pour lier un profil à un jeu. */
+  let games = $state<GamesInfo | null>(null);
+  /** Jeu choisi en enregistrant un nouveau profil. */
+  let profileGame = $state("");
+  let steamBusy = $state(false);
 
   const live = $derived(app.system?.features?.liveColor ?? false);
-  const channelsDiffer = $derived(!sameChannels(adjust));
-  /** « Tous » : la moyenne des trois canaux (leur valeur commune s'ils sont pareils). */
-  const editing = $derived<Channel>(channel === "all" ? meanChannel(adjust) : adjust[channel]);
-
-  /** Glissement d'un curseur de « Tous » : les canaux de départ, décalés d'autant. */
-  let drag: { key: keyof Channel; from: number; base: ColorAdjust } | null = null;
+  /** Valeurs de « Tous », et les canaux réglés à part, qu'il ne change pas. */
+  const all = $derived(allChannel(adjust));
+  const own = $derived(ownChannels(adjust));
+  const editing = $derived<Channel>(channel === "all" ? all : adjust[channel]);
+  const CHANNEL_NAMES = $derived({
+    red: t("le rouge", "red"),
+    green: t("le vert", "green"),
+    blue: t("le bleu", "blue"),
+  });
+  const names = (list: readonly (typeof CHANNELS)[number][]) => {
+    const words = list.map((c) => CHANNEL_NAMES[c]);
+    const text = words.length > 1 ? `${words.slice(0, -1).join(", ")} ${t("et", "and")} ${words[words.length - 1]}` : (words[0] ?? "");
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
 
   const colorSender = latest<{ output: string; adjust: ColorAdjust }>(
     (value) => api.setColor(value.output, value.adjust),
@@ -78,7 +91,6 @@
       adjust = structuredClone(fresh.adjust);
       vibrance = fresh.vibrance;
       channel = "all";
-      drag = null;
       dirty = false;
     } catch (e) {
       error = errorMessage(e);
@@ -95,26 +107,86 @@
     }
   }
 
+  async function loadGames() {
+    try {
+      games = await api.games();
+    } catch {
+      games = null;
+    }
+  }
+
   $effect(() => {
     load();
     loadProfiles();
+    loadGames();
   });
+
+  const profileOf = (game: Game) => games?.settings.perGame[String(game.appId)]?.colorProfile ?? null;
+  const gamesOf = (id: string) => games?.games.filter((g) => profileOf(g) === id) ?? [];
+  /** Jeux liés à un profil dont l'option de lancement manque encore. */
+  const unwrapped = $derived(games?.games.filter((g) => !!profileOf(g) && !g.wrapped) ?? []);
+  const canLink = $derived(!!games?.colorLayer && (games?.games.length ?? 0) > 0);
+
+  /** `profile` à chaque lancement de ce jeu, dans sa seule fenêtre (null : plus de profil). */
+  async function link(appId: number, profile: ColorProfile | null) {
+    profileBusy = true;
+    error = null;
+    notice = null;
+    try {
+      const result = await api.linkGameColor(appId, profile?.id ?? null);
+      await loadGames();
+      const name = games?.games.find((g) => g.appId === appId)?.name ?? "";
+      if (!result.needsSteamClosed) {
+        notice = profile
+          ? t(`${name} prendra « ${profile.name} » dès son lancement, dans sa seule fenêtre.`, `${name} will get “${profile.name}” as soon as it starts, in its window only.`)
+          : t(`${name} garde les couleurs de l'écran.`, `${name} keeps the screen's colors.`);
+      }
+    } catch (e) {
+      error = errorMessage(e);
+    }
+    profileBusy = false;
+  }
+
+  async function wrapPending() {
+    steamBusy = true;
+    error = null;
+    notice = null;
+    try {
+      const names = unwrapped.map((g) => g.name).join(", ");
+      await api.closeSteamAndWrap(unwrapped.map((g) => g.appId));
+      await loadGames();
+      notice = t(`Option de lancement mise (${names}) : le profil s'active dès le lancement.`, `Launch option set (${names}): the profile turns on as soon as the game starts.`);
+    } catch (e) {
+      error = errorMessage(e);
+    }
+    steamBusy = false;
+  }
 
   $effect(() => {
     loadOutput(selected);
   });
 
-  /** « Tous » décale les trois canaux d'autant : un réglage propre au bleu
-   * (ou au rouge, au vert) reste. Un canal seul se règle tel quel. */
+  /** Comme le panneau NVIDIA : « Tous » règle les canaux qui le suivent ;
+   * un canal réglé à part garde ses valeurs, et « Tous » les siennes. */
   function update(key: keyof Channel, value: number) {
+    const current = allChannel(adjust);
     if (channel === "all") {
-      if (drag?.key !== key) drag = { key, from: editing[key], base: $state.snapshot(adjust) };
-      const delta = value - drag.from;
-      for (const target of CHANNELS) adjust[target][key] = clampChannel(key, drag.base[target][key] + delta);
+      const followers = CHANNELS.filter((c) => sameChannel(adjust[c], current));
+      const next = { ...current, [key]: value };
+      adjust.all = next;
+      for (const target of followers) adjust[target] = { ...next };
     } else {
-      drag = null;
+      adjust.all = current;
       adjust[channel][key] = value;
     }
+    changed();
+  }
+
+  /** Ces canaux reprennent les valeurs de « Tous », et les suivent. */
+  function follow(targets: readonly (typeof CHANNELS)[number][]) {
+    const current = allChannel(adjust);
+    adjust.all = current;
+    for (const target of targets) adjust[target] = { ...current };
     changed();
   }
 
@@ -140,7 +212,6 @@
   async function reset() {
     adjust = neutralAdjust();
     channel = "all";
-    drag = null;
     if (live) {
       colorSender.push({ output: selected, adjust: $state.snapshot(adjust) });
       await colorSender.flush();
@@ -177,12 +248,19 @@
     error = null;
     notice = null;
     try {
-      const saved = await api.saveColorProfile(existing?.id ?? null, existing?.name ?? profileName, $state.snapshot(adjust), vibrance);
+      const game = existing ? undefined : games?.games.find((g) => String(g.appId) === profileGame);
+      const name = existing?.name ?? (profileName.trim() || game?.name || "");
+      const saved = await api.saveColorProfile(existing?.id ?? null, name, $state.snapshot(adjust), vibrance);
       await loadProfiles();
-      if (!existing) profileName = "";
       notice = existing
         ? t(`« ${saved.name} » a maintenant ces réglages.`, `“${saved.name}” now has these settings.`)
-        : t(`Profil « ${saved.name} » enregistré : liez-le à un jeu dans Jeux.`, `Profile “${saved.name}” saved: link it to a game in Games.`);
+        : t(`Profil « ${saved.name} » enregistré.`, `Profile “${saved.name}” saved.`);
+      if (!existing) {
+        profileName = "";
+        profileGame = "";
+      }
+      profileBusy = false;
+      if (game) await link(game.appId, saved);
     } catch (e) {
       error = errorMessage(e);
     }
@@ -218,6 +296,7 @@
     try {
       await api.deleteColorProfile(p.id);
       await loadProfiles();
+      await loadGames();
       notice = t(`« ${p.name} » supprimé : ses jeux reprennent les couleurs de l'écran.`, `“${p.name}” deleted: its games go back to the screen's colors.`);
     } catch (e) {
       error = errorMessage(e);
@@ -288,24 +367,45 @@
       {#if info?.colorUnavailable}
         <Callout kind="warning">{info.colorUnavailable}</Callout>
       {/if}
-      {#if channel === "all" && channelsDiffer}
-        <p class="field__hint">
-          {t(
-            "Rouge, vert et bleu sont réglés différemment : « Tous » les déplace ensemble, leurs écarts restent.",
-            "Red, green and blue are set differently: “All” moves them together and keeps their differences.",
-          )}
-        </p>
+      {#if channel === "all" && own.length > 0}
+        <div class="linked">
+          <p class="field__hint">
+            {#if own.length === 3}
+              {t("Rouge, vert et bleu ont chacun leur réglage : « Tous » ne les change pas.", "Red, green and blue each have their own setting: “All” does not change them.")}
+            {:else}
+              {t(
+                `${names(own)} ${own.length > 1 ? "ont leur" : "a son"} propre réglage, que « Tous » ne change pas.`,
+                `${names(own)} ${own.length > 1 ? "have their" : "has its"} own setting, which “All” does not change.`,
+              )}
+            {/if}
+          </p>
+          <button class="btn btn--ghost" onclick={() => follow(own)} disabled={!!info?.colorUnavailable}>
+            <Link2 size={16} />{t("Remettre sur « Tous »", "Back to “All”")}
+          </button>
+        </div>
+      {:else if channel !== "all" && own.includes(channel)}
+        <div class="linked">
+          <p class="field__hint">
+            {t(
+              `Réglage propre au ${CHANNEL_NAMES[channel].replace(/^le /, "")} : « Tous » ne le change plus.`,
+              `${names([channel])} has its own setting: “All” no longer changes it.`,
+            )}
+          </p>
+          <button class="btn btn--ghost" onclick={() => follow([channel as (typeof CHANNELS)[number]])} disabled={!!info?.colorUnavailable}>
+            <Link2 size={16} />{t("Suivre « Tous »", "Follow “All”")}
+          </button>
+        </div>
       {:else if channel !== "all"}
         <p class="field__hint">
           {t(
-            "Ce canal seul : sa couleur se renforce ou s'éteint dans toute l'image (un contraste fort sur le bleu seul jaunit les ombres). Les réglages des guides du panneau NVIDIA se mettent sur « Tous ».",
-            "This channel only: its color gets stronger or fades across the whole picture (high contrast on blue alone turns shadows yellow). Settings from NVIDIA Control Panel guides go on “All”.",
+            "Ce canal suit « Tous » tant que vous ne le réglez pas ici. Seul, il renforce ou éteint sa couleur dans toute l'image (un contraste fort sur le bleu seul jaunit les ombres).",
+            "This channel follows “All” until you set it here. On its own, it strengthens or fades its color across the whole picture (high contrast on blue alone turns shadows yellow).",
           )}
         </p>
       {/if}
-      <Slider label={t("Luminosité", "Brightness")} value={editing.brightness} min={0} max={100} defaultValue={50} format={percent} disabled={!!info?.colorUnavailable} oninput={(v) => update("brightness", v)} onchange={() => (drag = null)} />
-      <Slider label={t("Contraste", "Contrast")} value={editing.contrast} min={0} max={100} defaultValue={50} format={percent} disabled={!!info?.colorUnavailable} oninput={(v) => update("contrast", v)} onchange={() => (drag = null)} />
-      <Slider label="Gamma" value={editing.gamma} min={0.3} max={2.8} step={0.01} defaultValue={1} format={(v) => num(v, 2)} disabled={!!info?.colorUnavailable} oninput={(v) => update("gamma", v)} onchange={() => (drag = null)} />
+      <Slider label={t("Luminosité", "Brightness")} value={editing.brightness} min={0} max={100} defaultValue={50} format={percent} disabled={!!info?.colorUnavailable} oninput={(v) => update("brightness", v)} />
+      <Slider label={t("Contraste", "Contrast")} value={editing.contrast} min={0} max={100} defaultValue={50} format={percent} disabled={!!info?.colorUnavailable} oninput={(v) => update("contrast", v)} />
+      <Slider label="Gamma" value={editing.gamma} min={0.3} max={2.8} step={0.01} defaultValue={1} format={(v) => num(v, 2)} disabled={!!info?.colorUnavailable} oninput={(v) => update("gamma", v)} />
       {#if !live}
         <p class="field__hint">
           {t(
@@ -347,8 +447,8 @@
         <h2>{t("Profils de couleurs", "Color profiles")}</h2>
         <p class="field__hint">
           {t(
-            "Ces réglages gardés sous un nom : pour les remettre sur l'écran, ou pour un jeu (page Jeux), dans sa seule fenêtre.",
-            "These settings kept under a name: to put them back on the screen, or for a game (Games page), in its window only.",
+            "Ces réglages gardés sous un nom : pour les remettre sur l'écran, ou pour un jeu, dans sa seule fenêtre.",
+            "These settings kept under a name: to put them back on the screen, or for a game, in its window only.",
           )}
         </p>
       </div>
@@ -360,6 +460,12 @@
         }}
       >
         <input type="text" maxlength="60" placeholder={t("Nom (ex. Arc Raiders)", "Name (e.g. Arc Raiders)")} aria-label={t("Nom du profil", "Profile name")} bind:value={profileName} />
+        {#if canLink}
+          <select class="save__game" bind:value={profileGame} aria-label={t("Jeu du profil", "Profile's game")}>
+            <option value="">{t("Pour l'écran seulement", "For the screen only")}</option>
+            {#each games?.games ?? [] as game (game.appId)}<option value={String(game.appId)}>{t(`Pour ${game.name}`, `For ${game.name}`)}</option>{/each}
+          </select>
+        {/if}
         <button class="btn btn--primary" type="submit" disabled={profileBusy || !info}>
           <Save size={16} />{t("Enregistrer ces réglages", "Save these settings")}
         </button>
@@ -372,6 +478,32 @@
               <div class="profile__text">
                 <span class="profile__name">{profile.name}</span>
                 <span class="field__hint">{summary(profile)}</span>
+                {#if canLink}
+                  <div class="profile__games">
+                    {#each gamesOf(profile.id) as game (game.appId)}
+                      <span class="chip" class:chip--warning={!game.wrapped} title={game.wrapped ? t("S'active dès le lancement du jeu", "Turns on as soon as the game starts") : t("Option de lancement à mettre (Steam ouvert)", "Launch option still to set (Steam open)")}>
+                        {game.name}
+                        <button class="chip__remove" onclick={() => link(game.appId, null)} disabled={profileBusy} aria-label={t(`Délier ${game.name}`, `Unlink ${game.name}`)}><X size={12} /></button>
+                      </span>
+                    {/each}
+                    <select
+                      class="chip-select"
+                      value=""
+                      disabled={profileBusy}
+                      aria-label={t(`Lier ${profile.name} à un jeu`, `Link ${profile.name} to a game`)}
+                      onchange={(e) => {
+                        const appId = Number(e.currentTarget.value);
+                        e.currentTarget.value = "";
+                        if (appId) link(appId, profile);
+                      }}
+                    >
+                      <option value="">{t("+ Lier à un jeu", "+ Link to a game")}</option>
+                      {#each games?.games.filter((g) => profileOf(g) !== profile.id) ?? [] as game (game.appId)}
+                        <option value={String(game.appId)}>{game.name}{profileOf(game) ? ` (${profiles.find((p) => p.id === profileOf(game))?.name ?? ""})` : ""}</option>
+                      {/each}
+                    </select>
+                  </div>
+                {/if}
               </div>
               {#if current}<span class="badge badge--success">{t("Sur l'écran", "On screen")}</span>{/if}
               <div class="profile__actions">
@@ -401,6 +533,26 @@
             </li>
           {/each}
         </ul>
+      {/if}
+      {#if unwrapped.length > 0}
+        <Callout kind="warning" title={t("Encore une étape pour ces jeux", "One more step for these games")}>
+          <p>
+            {t(
+              `${unwrapped.map((g) => g.name).join(", ")} : l'option de lancement de Last1 Panel doit être mise dans Steam pour que le profil s'active au lancement, et Steam la remplacerait s'il restait ouvert.`,
+              `${unwrapped.map((g) => g.name).join(", ")}: Last1 Panel's launch option must be set in Steam for the profile to turn on at launch, and Steam would overwrite it if left open.`,
+            )}
+          </p>
+          <button class="btn" onclick={wrapPending} disabled={steamBusy}>
+            {#if steamBusy}<Spinner />{/if}{games?.steamRunning ? t("Fermer Steam, mettre l'option et le rouvrir", "Close Steam, set the option and reopen it") : t("Mettre l'option de lancement", "Set the launch option")}
+          </button>
+        </Callout>
+      {/if}
+      {#if games && !games.colorLayer}
+        <p class="field__hint">{t("Couche Vulkan vkBasalt de Last1 Panel absente : les profils ne peuvent pas aller dans les jeux (réinstallez Last1 Panel).", "Last1 Panel's vkBasalt Vulkan layer is missing: profiles cannot go into games (reinstall Last1 Panel).")}</p>
+      {:else if games && games.games.length === 0}
+        <p class="field__hint">{t("Aucun jeu Steam installé : les profils se lient aux jeux Steam.", "No Steam game installed: profiles link to Steam games.")}</p>
+      {:else}
+        <p class="field__hint">{t("Lié à un jeu, un profil s'active dès son lancement, dans sa seule fenêtre (jeux Proton et Vulkan). Touche Arrêt défil : profil coupé ou remis.", "Linked to a game, a profile turns on as soon as it starts, in its window only (Proton and Vulkan games). Scroll Lock key: profile off or back on.")}</p>
       {/if}
       <Switch
         label={t("Profils dans l'icône près de l'horloge", "Profiles in the icon near the clock")}
@@ -496,6 +648,67 @@
   .profile__name {
     font-weight: 600;
     overflow-wrap: anywhere;
+  }
+
+  .save__game {
+    flex: 0 1 16rem;
+    min-width: 10rem;
+  }
+
+  .linked {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .profile__games {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 4px 2px var(--space-2);
+    border: 1px solid var(--color-panel-line);
+    border-radius: 999px;
+    background: var(--color-panel-soft);
+    font-size: var(--text-sm);
+  }
+
+  .chip--warning {
+    border-color: var(--color-warning-line);
+    background: var(--color-warning-soft);
+  }
+
+  .chip__remove {
+    display: inline-grid;
+    place-items: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .chip__remove:hover:not(:disabled) {
+    background: var(--color-surface-raised);
+  }
+
+  .chip-select {
+    width: auto;
+    min-width: 0;
+    padding-block: 2px;
+    font-size: var(--text-sm);
   }
 
   .profile__actions {

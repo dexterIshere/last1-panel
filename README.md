@@ -58,10 +58,17 @@ Steam fermé). Le détail des variables posées est dans
 ## Profils de couleurs
 
 Dans **Couleurs**, « Enregistrer ces réglages » garde luminosité, contraste,
-gamma et vibrance sous un nom. Un profil se remet sur l'écran d'un clic, ou se
-lie à un jeu dans **Jeux** (« Couleurs dans le jeu ») : il ne colore alors que
-la fenêtre du jeu, le bureau garde les siennes. Jeux par Proton et jeux
+gamma et vibrance sous un nom, pour l'écran ou pour un jeu Steam choisi dans la
+liste. Un profil se remet sur l'écran d'un clic, ou se lie à un ou plusieurs
+jeux (« Lier à un jeu », ou « Couleurs dans le jeu » dans **Jeux**) : il
+s'active dès le lancement du jeu et ne colore que sa fenêtre, le bureau garde
+ses couleurs. L'option de lancement Steam de Last1 Panel est mise d'office ;
+Steam ouvert, un bouton le ferme, la met et le rouvre. Jeux par Proton et jeux
 Vulkan ; la touche Arrêt défil coupe ou remet le profil en jeu.
+
+Comme dans le panneau NVIDIA, « Tous » et chaque canal gardent leurs valeurs :
+un canal réglé à part (le bleu d'un guide, par exemple) n'est plus touché par
+« Tous », jusqu'à « Suivre « Tous » ».
 
 L'icône Last1 Panel près de l'horloge (Plasma, Waybar sous Hyprland) met un
 profil sur l'écran au clic droit et ouvre la fenêtre au clic gauche ; elle se

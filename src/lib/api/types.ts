@@ -53,6 +53,9 @@ export interface Channel {
 }
 
 export interface ColorAdjust {
+  /** Valeurs de « Tous » : un canal aux mêmes valeurs les suit, un canal
+   * réglé à part garde les siennes. */
+  all?: Channel;
   red: Channel;
   green: Channel;
   blue: Channel;
@@ -187,6 +190,12 @@ export interface ColorProfile {
   name: string;
   color: ColorAdjust;
   vibrance: number;
+}
+
+/** Lien d'un jeu à un profil de couleurs. */
+export interface GameLink {
+  /** L'option de lancement de Last1 Panel manque et Steam est ouvert. */
+  needsSteamClosed: boolean;
 }
 
 export interface ColorProfiles {

@@ -286,6 +286,28 @@ export function installMockBackend(): void {
       await wait(200);
       gameSettings = args.settings as GamesSettings;
     },
+    link_game_color: async (args) => {
+      await wait(200);
+      const id = String(args.appId);
+      const next = profile({ ...gameSettings.perGame[id], colorProfile: (args.profile as string | null) ?? null });
+      gameSettings.perGame[id] = next;
+      if (JSON.stringify(next) === JSON.stringify(profile({}))) delete gameSettings.perGame[id];
+      const game = games.find((g) => g.appId === args.appId);
+      if (!args.profile || !game || game.wrapped) return { needsSteamClosed: false };
+      if (steamRunning) return { needsSteamClosed: true };
+      game.wrapped = true;
+      game.launchOptions = `last1-panel-cli run ${game.launchOptions || "%command%"}`;
+      return { needsSteamClosed: false };
+    },
+    close_steam_and_wrap: async (args) => {
+      await wait(1500);
+      const ids = args.appIds as number[];
+      for (const game of games.filter((g) => ids.includes(g.appId) && !g.wrapped)) {
+        game.wrapped = true;
+        game.launchOptions = `last1-panel-cli run ${game.launchOptions || "%command%"}`;
+      }
+      return ids.length;
+    },
     set_wrapped: async (args) => {
       await wait(300);
       if (steamRunning) throw "Fermez Steam d'abord (menu Steam > Quitter) : il remplacerait ce réglage en se fermant.";

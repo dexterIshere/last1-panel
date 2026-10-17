@@ -98,12 +98,17 @@ pub struct ColorAdjust {
     pub red: Channel,
     pub green: Channel,
     pub blue: Channel,
+    /// Valeurs de « Tous » dans l'interface, gardées avec le réglage : un
+    /// canal aux mêmes valeurs suit « Tous », un canal réglé à part garde les
+    /// siennes. Sans effet sur les courbes.
+    #[serde(default, rename = "all", skip_serializing_if = "Option::is_none")]
+    pub all_channels: Option<Channel>,
 }
 
 impl ColorAdjust {
     /// Les trois canaux réglés pareil (curseur « Tous les canaux »).
     pub fn all(channel: Channel) -> Self {
-        Self { red: channel, green: channel, blue: channel }
+        Self { red: channel, green: channel, blue: channel, all_channels: None }
     }
 
     pub fn is_neutral(&self) -> bool {
@@ -226,5 +231,23 @@ mod tests {
         assert_eq!(red, green);
         assert!(blue[255] < red[255]);
         assert!(!adjust.is_neutral());
+    }
+
+    #[test]
+    fn all_values_are_kept_but_change_no_curve() {
+        let mut adjust = ColorAdjust { blue: channel(62.0, 72.0, 1.65), ..ColorAdjust::all(channel(52.0, 47.0, 1.47)) };
+        let curves = adjust.ramps();
+        adjust.all_channels = Some(channel(52.0, 47.0, 1.47));
+        assert_eq!(adjust.ramps(), curves);
+        let json = serde_json::to_value(adjust).unwrap();
+        assert_eq!(json["all"]["gamma"], 1.47);
+        assert_eq!(serde_json::from_value::<ColorAdjust>(json).unwrap(), adjust);
+        // Réglage d'avant : sans « all ».
+        let old: ColorAdjust = serde_json::from_str(
+            r#"{"red":{"brightness":50,"contrast":50,"gamma":1},"green":{"brightness":50,"contrast":50,"gamma":1},"blue":{"brightness":50,"contrast":50,"gamma":1}}"#,
+        )
+        .unwrap();
+        assert!(old.all_channels.is_none() && old.is_neutral());
+        assert!(!serde_json::to_string(&old).unwrap().contains("all"));
     }
 }

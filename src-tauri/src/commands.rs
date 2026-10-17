@@ -7,6 +7,7 @@ use last1_panel_core::display::Features;
 use last1_panel_core::display::model::{Output, OutputChange};
 use last1_panel_core::error::CoreError;
 use last1_panel_core::exec::{Exec, SystemExec, which};
+use last1_panel_core::games::profile::GameProfile;
 use last1_panel_core::games::steam::{self, Game};
 use last1_panel_core::i18n::{self, t};
 use last1_panel_core::panel::{ColorState, Panel};
@@ -314,6 +315,85 @@ pub async fn apply_color_profile(panel: State<'_, Arc<Panel>>, output: String, i
         panel.apply_colors(&output, &color, vibrance)
     })
     .await
+}
+
+/// Ce que devient le lien entre un jeu et un profil de couleurs.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameLink {
+    /// L'option de lancement de Last1 Panel manque et Steam est ouvert : elle
+    /// attend qu'il se ferme (`close_steam_and_wrap`).
+    needs_steam_closed: bool,
+}
+
+/// Profil de couleurs d'un jeu Steam (`profile` absent : plus de profil), et
+/// l'option de lancement de Last1 Panel mise si elle manque : le profil
+/// s'active dès le lancement du jeu.
+#[tauri::command]
+pub async fn link_game_color(app_id: u32, profile: Option<String>) -> Result<GameLink> {
+    blocking(move || {
+        let linked = profile.is_some();
+        Settings::update(&Settings::path(), |s| {
+            let game = s.games.per_game.entry(app_id).or_default();
+            game.color_profile = profile;
+            if *game == GameProfile::default() {
+                s.games.per_game.remove(&app_id);
+            }
+        })?;
+        let root = steam::find_root(&last1_panel_core::paths::home_dir());
+        let wrapped = root
+            .as_deref()
+            .is_some_and(|root| steam::installed_games(root).iter().any(|game| game.app_id == app_id && game.wrapped));
+        let Some(root) = root.filter(|_| linked && !wrapped) else { return Ok(GameLink { needs_steam_closed: false }) };
+        if steam::is_running(Path::new("/proc")) {
+            return Ok(GameLink { needs_steam_closed: true });
+        }
+        steam::set_wrapped(&root, Path::new("/proc"), &[app_id], true)?;
+        Ok(GameLink { needs_steam_closed: false })
+    })
+    .await
+}
+
+/// Steam fermé proprement, l'option de lancement mise pour ces jeux, puis
+/// Steam rouvert, comme avant.
+#[tauri::command]
+pub async fn close_steam_and_wrap(app_ids: Vec<u32>) -> Result<usize> {
+    blocking(move || {
+        let root = steam::find_root(&last1_panel_core::paths::home_dir())
+            .ok_or_else(|| CoreError::message(t("Steam n'est pas installé.", "Steam is not installed.")))?;
+        let proc_dir = Path::new("/proc");
+        let was_running = steam::is_running(proc_dir);
+        if was_running {
+            let _ = steam_command(&["-shutdown"]).spawn().map(|mut child| std::thread::spawn(move || child.wait()));
+            if !steam::wait_closed(proc_dir, Duration::from_secs(60)) {
+                return Err(CoreError::message(t(
+                    "Steam ne s'est pas fermé : quittez-le (menu Steam > Quitter), puis réessayez.",
+                    "Steam did not close: quit it (Steam menu > Exit), then try again.",
+                )));
+            }
+        }
+        let changed = steam::set_wrapped(&root, proc_dir, &app_ids, true)?;
+        if was_running && let Ok(mut child) = steam_command(&[]).spawn() {
+            std::thread::spawn(move || child.wait());
+        }
+        Ok(changed)
+    })
+    .await
+}
+
+/// Steam lancé hors de la fenêtre (son propre groupe de processus) et sans
+/// l'environnement de l'AppImage.
+fn steam_command(args: &[&str]) -> std::process::Command {
+    use std::os::unix::process::CommandExt;
+    let mut command = std::process::Command::new("steam");
+    command
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .process_group(0);
+    last1_panel_core::exec::without_appimage_env(&mut command);
+    command
 }
 
 /// Icône près de l'horloge affichée ou masquée (le service de la session

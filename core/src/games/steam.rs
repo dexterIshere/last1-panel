@@ -14,6 +14,7 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 const CLI: &str = "last1-panel-cli";
 const COMMAND: &str = "%command%";
@@ -254,6 +255,19 @@ pub fn is_running(proc_dir: &Path) -> bool {
     })
 }
 
+/// Attend que Steam soit fermé (`steam -shutdown` : il écrit ses réglages en
+/// partant), au plus `wait`. Vrai s'il l'est.
+pub fn wait_closed(proc_dir: &Path, wait: Duration) -> bool {
+    let deadline = Instant::now() + wait;
+    while is_running(proc_dir) {
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    true
+}
+
 /// Met (ou retire) notre option de lancement pour ces jeux, dans tous les
 /// comptes Steam. Refusé si Steam est lancé.
 pub fn set_wrapped(root: &Path, proc_dir: &Path, app_ids: &[u32], wrapped: bool) -> CoreResult<usize> {
@@ -465,6 +479,9 @@ mod tests {
         fs::write(proc_dir.path().join("4242/comm"), "steam\n").unwrap();
         assert!(is_running(proc_dir.path()));
         assert!(set_wrapped(&root, proc_dir.path(), &[570], true).is_err());
+        assert!(!wait_closed(proc_dir.path(), Duration::ZERO));
+        fs::remove_dir_all(proc_dir.path().join("4242")).unwrap();
+        assert!(wait_closed(proc_dir.path(), Duration::ZERO));
         assert!(!installed_games(&root).iter().any(|game| game.wrapped));
     }
 

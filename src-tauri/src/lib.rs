@@ -68,6 +68,8 @@ pub fn run() {
             commands::delete_color_profile,
             commands::apply_color_profile,
             commands::set_tray,
+            commands::link_game_color,
+            commands::close_steam_and_wrap,
             commands::update_available,
             commands::install_update,
         ])
