@@ -1,0 +1,21 @@
+{
+  "file_format_version": "1.0.0",
+  "layer": {
+    "name": "VK_LAYER_LAST1_color",
+    "type": "GLOBAL",
+    "library_path": "/usr/lib/last1-panel/vkbasalt/libvkbasalt.so",
+    "api_version": "1.3.223",
+    "implementation_version": "1",
+    "description": "Last1 Panel: game color profile (vkBasalt)",
+    "functions": {
+      "vkGetInstanceProcAddr": "vkBasalt_GetInstanceProcAddr",
+      "vkGetDeviceProcAddr": "vkBasalt_GetDeviceProcAddr"
+    },
+    "enable_environment": {
+      "LAST1_PANEL_COLOR": "1"
+    },
+    "disable_environment": {
+      "DISABLE_LAST1_PANEL_COLOR": "1"
+    }
+  }
+}

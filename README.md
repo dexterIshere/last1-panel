@@ -18,6 +18,7 @@ tuning, per-game 3D settings. Free software (GPL-3.0), part of the Last1 suite.*
 | Résolution, fréquence, G-SYNC, HDR, profondeur de couleur, orientation, échelle | **Affichage** | `kscreen-doctor` (Plasma), `hyprctl` (Hyprland) |
 | Limite de puissance, fréquences, ventilateurs (MSI Afterburner) | **Carte graphique** | [LACT](https://github.com/ilya-zlobintsev/LACT) |
 | Paramètres 3D par jeu : images/s max, V-Sync, faible latence, filtrage, DLSS | **Jeux** | Proton, DXVK, VKD3D-Proton, dxvk-nvapi, MangoHud |
+| Couleurs propres à un jeu (profils de NVIDIA Profile Inspector, ReShade) | **Couleurs** (profils) et **Jeux** | [vkBasalt](https://github.com/DadSchoorse/vkBasalt) (zlib, inclus), dans la seule fenêtre du jeu |
 
 Chaque réglage passe par un outil existant et maintenu : Last1 Panel les
 réunit dans une seule fenêtre, en français et en anglais, et ne réécrit pas ce
@@ -37,8 +38,9 @@ go-to-linux l'installe d'office sous CachyOS et le tient à jour. Sinon,
 téléchargez l'AppImage sur [last1.fun/last1-panel](https://last1.fun/last1-panel)
 (gratuit, sans compte) et ouvrez-la, comme SoundFence : elle s'installe
 d'elle-même dans votre dossier (`~/.local/bin/last1-panel`, menu des
-applications, outil des jeux et nvibrant dans `~/.local/lib/last1-panel`,
-service de session qui remet les réglages à chaque connexion). Elle se met
+applications, outil des jeux, nvibrant et vkBasalt dans
+`~/.local/lib/last1-panel`, service de session qui remet les réglages à
+chaque connexion et tient l'icône près de l'horloge). Elle se met
 ensuite à jour toute seule : chaque jour, le service vérifie la liste signée
 de last1.fun et installe la version plus récente. Pour ne pas attendre : le
 bouton « Mettre à jour » en bas de la barre latérale, ou
@@ -53,10 +55,23 @@ Chaque jeu Steam réglé dans Last1 Panel est lancé par
 Steam fermé). Le détail des variables posées est dans
 [docs/DESIGN.md](docs/DESIGN.md#réglages-3d--ce-que-pose-le-lanceur).
 
+## Profils de couleurs
+
+Dans **Couleurs**, « Enregistrer ces réglages » garde luminosité, contraste,
+gamma et vibrance sous un nom. Un profil se remet sur l'écran d'un clic, ou se
+lie à un jeu dans **Jeux** (« Couleurs dans le jeu ») : il ne colore alors que
+la fenêtre du jeu, le bureau garde les siennes. Jeux par Proton et jeux
+Vulkan ; la touche Arrêt défil coupe ou remet le profil en jeu.
+
+L'icône Last1 Panel près de l'horloge (Plasma, Waybar sous Hyprland) met un
+profil sur l'écran au clic droit et ouvre la fenêtre au clic gauche ; elle se
+masque depuis son menu et revient par **Couleurs**.
+
 ## Construire
 
 Il faut Rust (1.90 ou plus récent), [Bun](https://bun.sh) et les bibliothèques
-de Tauri (`webkit2gtk-4.1`, `gtk3`) et `lcms2`.
+de Tauri (`webkit2gtk-4.1`, `gtk3`) et `lcms2`. vkBasalt, livré dans les
+paquets, se compile à part (meson, glslang : voir `packaging/arch/PKGBUILD`).
 
 ```sh
 bun install

@@ -14,6 +14,7 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
   ColorAdjust,
+  ColorProfile,
   GameProfile,
   GamesSettings,
   Output,
@@ -105,8 +106,14 @@ export function installMockBackend(): void {
     hdr: null,
     overlay: null,
     performanceMode: null,
+    colorProfile: null,
     ...p,
   });
+  const guide = (b: number, c: number, g: number) => ({ brightness: b, contrast: c, gamma: g });
+  let tray = true;
+  let colorProfiles: ColorProfile[] = [
+    { id: "p1", name: "Arc Raiders", color: { red: guide(52, 47, 1.47), green: guide(52, 47, 1.47), blue: guide(62, 72, 1.65) }, vibrance: 50 },
+  ];
   let gameSettings: GamesSettings = {
     global: profile({ lowLatency: "on", performanceMode: true }),
     perGame: { "1091500": profile({ dlssLatest: true, fpsLimit: 117 }) },
@@ -249,7 +256,32 @@ export function installMockBackend(): void {
       games,
       settings: structuredClone(gameSettings),
       launchOption: "last1-panel-cli run %command%",
+      colorProfiles: structuredClone(colorProfiles),
+      colorLayer: params.get("vkbasalt") !== "absent",
     }),
+    color_profiles: () => ({ profiles: structuredClone(colorProfiles), tray }),
+    save_color_profile: async (args) => {
+      await wait(150);
+      const next = Math.max(0, ...colorProfiles.map((p) => Number(p.id.slice(1)) || 0)) + 1;
+      const id = (args.id as string | null) ?? `p${next}`;
+      const profile: ColorProfile = { id, name: (args.name as string).trim() || "Sans nom", color: args.color as ColorAdjust, vibrance: args.vibrance as number };
+      colorProfiles = colorProfiles.some((p) => p.id === id) ? colorProfiles.map((p) => (p.id === id ? profile : p)) : [...colorProfiles, profile];
+      return structuredClone(profile);
+    },
+    apply_color_profile: async (args) => {
+      await wait(plasma ? 100 : 700);
+      const profile = colorProfiles.find((p) => p.id === args.id);
+      const name = args.output as string;
+      colors[name].adjust = structuredClone(profile?.color ?? { red: { ...neutral }, green: { ...neutral }, blue: { ...neutral } });
+      if (!amd) colors[name].vibrance = profile?.vibrance ?? 50;
+    },
+    set_tray: (args) => {
+      tray = args.shown as boolean;
+    },
+    delete_color_profile: async (args) => {
+      await wait(150);
+      colorProfiles = colorProfiles.filter((p) => p.id !== args.id);
+    },
     save_game_settings: async (args) => {
       await wait(200);
       gameSettings = args.settings as GamesSettings;

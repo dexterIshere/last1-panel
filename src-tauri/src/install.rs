@@ -1,8 +1,9 @@
 //! L'AppImage s'installe elle-même, comme SoundFence : le joueur télécharge un
 //! fichier et l'ouvre une fois. Last1 Panel se copie dans
 //! `~/.local/bin/last1-panel`, pose son icône et son entrée du menu, l'outil
-//! des jeux et nvibrant dans `~/.local/lib/last1-panel`, et active le service
-//! de session qui remet les réglages à chaque connexion. Une AppImage plus
+//! des jeux, nvibrant et vkBasalt dans `~/.local/lib/last1-panel` (avec la
+//! couche Vulkan des couleurs des jeux), et active le service de session qui
+//! remet les réglages à chaque connexion. Une AppImage plus
 //! récente ouverte plus tard met tout à jour. Rien ne demande de mot de passe.
 //!
 //! Installé par le paquet Arch (go-to-linux le pose d'office), Last1 Panel est
@@ -20,6 +21,8 @@ const ICON: &[u8] = include_bytes!("../icons/icon.png");
 /// Mêmes textes que l'entrée du menu et le service du paquet.
 const DESKTOP_ENTRY: &str = include_str!("../../packaging/last1-panel.desktop");
 const SERVICE_UNIT: &str = include_str!("../../packaging/last1-panel-apply.service");
+/// Manifeste de la couche Vulkan des couleurs des jeux (vkBasalt).
+const COLOR_LAYER: &str = include_str!("../../packaging/last1-panel-color.json");
 
 /// Où vont les fichiers. Les noms sont ceux du paquet : l'entrée du menu et
 /// l'icône de l'utilisateur prennent le pas sur celles du système.
@@ -30,10 +33,12 @@ pub struct Layout {
     pub command: PathBuf,
     pub desktop_entry: PathBuf,
     pub icon: PathBuf,
-    /// Outil des jeux et nvibrant.
+    /// Outil des jeux, nvibrant et vkBasalt.
     pub lib: PathBuf,
     /// Services systemd de l'utilisateur.
     pub units: PathBuf,
+    /// Couche Vulkan des couleurs des jeux.
+    pub color_layer: PathBuf,
 }
 
 impl Layout {
@@ -53,6 +58,7 @@ impl Layout {
             icon: data.join("icons/hicolor/512x512/apps/last1-panel.png"),
             lib: home.join(".local/lib/last1-panel"),
             units: config.join("systemd/user"),
+            color_layer: data.join("vulkan/implicit_layer.d").join(last1_panel_core::paths::COLOR_LAYER),
         }
     }
 
@@ -105,6 +111,11 @@ pub fn integrate(appimage: &Path, appdir: &Path, layout: &Layout) -> io::Result<
 
     let mut restart_service = sync_file(&appdir.join("usr/bin/last1-panel-cli"), &layout.cli(), 0o755)?;
     sync_dir(&appdir.join("usr/lib/last1-panel/nvibrant"), &layout.lib.join("nvibrant"))?;
+    sync_dir(&appdir.join("usr/lib/last1-panel/vkbasalt"), &layout.lib.join("vkbasalt"))?;
+    let vkbasalt = layout.lib.join("vkbasalt/libvkbasalt.so");
+    if vkbasalt.is_file() {
+        write_if_changed(&layout.color_layer, color_layer(&vkbasalt).as_bytes())?;
+    }
     if fs::read_link(&layout.command).ok() != Some(layout.cli()) {
         let _ = fs::remove_file(&layout.command);
         std::os::unix::fs::symlink(layout.cli(), &layout.command)?;
@@ -127,9 +138,15 @@ pub fn integrate(appimage: &Path, appdir: &Path, layout: &Layout) -> io::Result<
 /// jeux reste : des options de lancement Steam peuvent encore l'appeler.
 pub fn yield_to_package(layout: &Layout) -> io::Result<bool> {
     let mut removed = false;
-    for path in
-        [&layout.desktop_entry, &layout.icon, &layout.unit_link(), &layout.unit(), &layout.command, &layout.binary]
-    {
+    for path in [
+        &layout.desktop_entry,
+        &layout.icon,
+        &layout.unit_link(),
+        &layout.unit(),
+        &layout.command,
+        &layout.binary,
+        &layout.color_layer,
+    ] {
         match fs::remove_file(path) {
             Ok(()) => removed = true,
             Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
@@ -159,6 +176,13 @@ fn service_unit(cli: &Path) -> String {
     SERVICE_UNIT
         .replace("Activé pour tous les comptes par le paquet", "Activé pour ce compte par l'AppImage")
         .replace("ExecStart=/usr/bin/last1-panel-cli watch", &format!("ExecStart=\"{path}\" watch"))
+}
+
+/// Le manifeste du paquet, avec la bibliothèque de l'utilisateur.
+fn color_layer(library: &Path) -> String {
+    let mut manifest: serde_json::Value = serde_json::from_str(COLOR_LAYER).expect("manifeste de couche valide");
+    manifest["layer"]["library_path"] = library.display().to_string().into();
+    serde_json::to_string_pretty(&manifest).expect("manifeste sérialisable") + "\n"
 }
 
 /// Copie `source` sur `target` s'ils diffèrent ; vrai si copié.
@@ -253,6 +277,8 @@ mod tests {
         let appdir = dir.path().join("mount");
         fs::create_dir_all(appdir.join("usr/bin")).unwrap();
         fs::create_dir_all(appdir.join("usr/lib/last1-panel/nvibrant")).unwrap();
+        fs::create_dir_all(appdir.join("usr/lib/last1-panel/vkbasalt")).unwrap();
+        fs::write(appdir.join("usr/lib/last1-panel/vkbasalt/libvkbasalt.so"), b"vkbasalt").unwrap();
         fs::write(appdir.join("usr/bin/last1-panel-cli"), b"cli v1").unwrap();
         fs::write(appdir.join("usr/lib/last1-panel/nvibrant/nvibrant-570.86.16"), b"nv570").unwrap();
         (dir, layout, appimage, appdir)
@@ -268,6 +294,11 @@ mod tests {
         assert_eq!(fs::read(layout.cli()).unwrap(), b"cli v1");
         assert_eq!(fs::metadata(layout.cli()).unwrap().permissions().mode() & 0o777, 0o755);
         assert_eq!(fs::read(layout.lib.join("nvibrant/nvibrant-570.86.16")).unwrap(), b"nv570");
+        let manifest: serde_json::Value = serde_json::from_slice(&fs::read(&layout.color_layer).unwrap()).unwrap();
+        let library = layout.lib.join("vkbasalt/libvkbasalt.so");
+        assert_eq!(manifest["layer"]["library_path"], library.display().to_string());
+        assert_eq!(manifest["layer"]["enable_environment"]["LAST1_PANEL_COLOR"], "1");
+        assert_eq!(fs::read(library).unwrap(), b"vkbasalt");
         assert_eq!(fs::read(&layout.icon).unwrap(), ICON);
 
         let entry = fs::read_to_string(&layout.desktop_entry).unwrap();
@@ -306,9 +337,15 @@ mod tests {
         let (_dir, layout, appimage, appdir) = setup();
         integrate(&appimage, &appdir, &layout).unwrap();
         assert!(yield_to_package(&layout).unwrap());
-        for path in
-            [&layout.binary, &layout.command, &layout.desktop_entry, &layout.icon, &layout.unit(), &layout.unit_link()]
-        {
+        for path in [
+            &layout.binary,
+            &layout.command,
+            &layout.desktop_entry,
+            &layout.icon,
+            &layout.unit(),
+            &layout.unit_link(),
+            &layout.color_layer,
+        ] {
             assert!(fs::symlink_metadata(path).is_err(), "{} reste", path.display());
         }
         // L'outil reste pour les options de lancement Steam déjà écrites.
@@ -323,5 +360,9 @@ mod tests {
         assert!(entry.contains(r#"Exec="/home/a b/\$x/last1\"panel""#));
         let unit = service_unit(Path::new("/home/a b/100%/last1-panel-cli"));
         assert!(unit.contains(r#"ExecStart="/home/a b/100%%/last1-panel-cli" watch"#));
+        assert!(
+            color_layer(Path::new("/home/a\"b/libvkbasalt.so"))
+                .contains(r#""library_path": "/home/a\"b/libvkbasalt.so""#)
+        );
     }
 }

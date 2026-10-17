@@ -1,6 +1,8 @@
 //! Bureau de la session : Hyprland (bureau Signal de go-to-linux) ou KDE Plasma.
 
 use serde::Serialize;
+use std::collections::BTreeMap;
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -32,6 +34,30 @@ impl Desktop {
             Self::Other
         }
     }
+}
+
+/// Variables que le bureau a données à systemd (Hyprland par
+/// dbus-update-activation-environment, Plasma de lui-même) : le service de
+/// la session, lancé avant le bureau, les relit à chaque usage.
+pub fn session_env() -> BTreeMap<String, String> {
+    let text = Command::new("systemctl")
+        .args(["--user", "show-environment"])
+        .stderr(Stdio::null())
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+        .unwrap_or_default();
+    text.lines().filter_map(|line| line.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect()
+}
+
+/// Notification du bureau, depuis le service de la session.
+pub fn notify(message: &str) {
+    let _ = Command::new("notify-send")
+        .args(["--app-name=Last1 Panel", "--icon=last1-panel", "Last1 Panel", message])
+        .envs(session_env())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 #[cfg(test)]

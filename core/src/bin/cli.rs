@@ -7,6 +7,7 @@
 //!   last1-panel-cli watch                    service de la session : réglages
 //!                                            remis à la connexion, puis à
 //!                                            chaque écran branché ou rallumé ;
+//!                                            icône près de l'horloge ;
 //!                                            AppImage tenue à jour
 //!   last1-panel-cli update                   AppImage mise à jour maintenant
 
@@ -16,6 +17,7 @@ use last1_panel_core::games::launch::{self, Context};
 use last1_panel_core::i18n::{self, t};
 use last1_panel_core::panel::Panel;
 use last1_panel_core::settings::Settings;
+use last1_panel_core::system::desktop;
 use last1_panel_core::system::gpu::{self, SysPaths, Vendor};
 use last1_panel_core::update;
 use std::io::{BufRead, BufReader};
@@ -69,7 +71,15 @@ fn run(command: &[String]) -> ExitCode {
             .map(|tool| tool.to_string())
             .collect(),
     };
-    let plan = launch::plan(&profile, &context);
+    let mut plan = launch::plan(&profile, &context);
+    // Profil de couleurs du jeu, dans sa seule fenêtre (vkBasalt) ; en cas
+    // d'échec, le jeu part avec les couleurs de l'écran.
+    if let Some(color) = profile.color_profile.as_deref().and_then(|id| settings.color_profile(id)) {
+        match last1_panel_core::color::lut::game_environment(&settings, color) {
+            Ok(vars) => plan.env.extend(vars),
+            Err(error) => eprintln!("last1-panel-cli : profil de couleurs : {error}"),
+        }
+    }
     let env = plan.environment(|name| std::env::var(name).ok());
     log_launch(command, &env, &plan.wrappers);
 
@@ -107,28 +117,11 @@ fn apply(args: &[String]) -> ExitCode {
     if apply_until_ready(10) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
 
-/// Variables que le bureau a données à systemd (Hyprland par
-/// dbus-update-activation-environment, Plasma de lui-même) : le service,
-/// lancé avant le bureau, les relit à chaque passage.
-fn session_env() -> Vec<(String, String)> {
-    let text = Command::new("systemctl")
-        .args(["--user", "show-environment"])
-        .stderr(Stdio::null())
-        .output()
-        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
-        .unwrap_or_default();
-    text.lines().filter_map(|line| line.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect()
-}
-
-fn session_panel() -> Panel {
-    Panel::for_session(session_env().into_iter().collect())
-}
-
 /// Réglages remis ; un écran pas encore allumé par le bureau (juste après la
 /// connexion, ou au réveil) est réessayé toutes les 3 s.
 fn apply_until_ready(tries: u32) -> bool {
     for attempt in 1..=tries {
-        let problems = session_panel().apply_saved();
+        let problems = Panel::session().apply_saved();
         if problems.is_empty() {
             return true;
         }
@@ -145,11 +138,13 @@ fn apply_until_ready(tries: u32) -> bool {
 /// Service de la session (last1-panel-apply.service) : la vibrance NVIDIA
 /// est perdue au redémarrage et quand un écran est rebranché ; elle est
 /// remise à la connexion puis à chaque événement des cartes graphiques
-/// (`udevadm monitor`, sous-système drm).
+/// (`udevadm monitor`, sous-système drm). Il tient aussi l'icône près de
+/// l'horloge (tray.rs).
 fn watch() -> ExitCode {
     if update::enabled() {
         std::thread::spawn(keep_up_to_date);
     }
+    let tray = last1_panel_core::tray::spawn();
     std::thread::sleep(Duration::from_secs(3));
     apply_until_ready(20);
     let child = Command::new("udevadm")
@@ -159,7 +154,10 @@ fn watch() -> ExitCode {
         .spawn();
     let Ok(mut child) = child else {
         eprintln!("last1-panel-cli watch : udevadm introuvable, réglages remis une seule fois");
-        return ExitCode::SUCCESS;
+        // L'icône reste.
+        loop {
+            std::thread::park();
+        }
     };
     let (events, received) = mpsc::channel();
     let stdout = child.stdout.take().expect("stdout demandé");
@@ -174,6 +172,7 @@ fn watch() -> ExitCode {
     while received.recv().is_ok() {
         while received.recv_timeout(Duration::from_secs(2)).is_ok() {}
         apply_until_ready(5);
+        tray.screens_changed();
     }
     let _ = child.kill();
     ExitCode::SUCCESS
@@ -188,7 +187,7 @@ fn keep_up_to_date() {
     loop {
         let wait = match update_appimage() {
             Ok(Some(version)) => {
-                notify(&t(
+                desktop::notify(&t(
                     &format!("Last1 Panel est à jour (version {version})."),
                     &format!("Last1 Panel is up to date (version {version})."),
                 ));
@@ -238,14 +237,4 @@ fn update_appimage() -> CoreResult<Option<String>> {
     let Some(release) = update::check(&exec, update::now())? else { return Ok(None) };
     update::install(&release)?;
     Ok(Some(release.version))
-}
-
-fn notify(message: &str) {
-    let _ = Command::new("notify-send")
-        .args(["--app-name=Last1 Panel", "--icon=last1-panel", "Last1 Panel", message])
-        .envs(session_env())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
 }

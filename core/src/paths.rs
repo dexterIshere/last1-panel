@@ -27,6 +27,20 @@ pub fn user_config_dir() -> PathBuf {
     xdg("XDG_CONFIG_HOME", ".config")
 }
 
+/// ~/.cache/last1-panel : fichiers refaits à volonté (tables de couleurs des jeux).
+pub fn cache_dir() -> PathBuf {
+    xdg("XDG_CACHE_HOME", ".cache").join("last1-panel")
+}
+
+/// Couche Vulkan des couleurs des jeux (vkBasalt livré avec Last1 Panel) :
+/// manifeste du paquet, ou celui posé par l'AppImage.
+pub const COLOR_LAYER: &str = "last1-panel-color.json";
+
+pub fn color_layer_installed() -> bool {
+    Path::new("/usr/share/vulkan/implicit_layer.d").join(COLOR_LAYER).is_file()
+        || xdg("XDG_DATA_HOME", ".local/share").join("vulkan/implicit_layer.d").join(COLOR_LAYER).is_file()
+}
+
 /// ~/.local/share/icc : emplacement habituel des profils ICC de l'utilisateur
 /// (celui que proposent les réglages de Plasma).
 pub fn icc_dir() -> PathBuf {

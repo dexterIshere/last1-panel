@@ -9,9 +9,9 @@
 #     --volume "$PWD/dist:/out" last1-panel-appimage
 #
 # L'AppImage contient, aux mêmes endroits que le paquet Arch, l'outil des jeux
-# (usr/bin/last1-panel-cli) et nvibrant (usr/lib/last1-panel/nvibrant), que
-# Last1 Panel installe pour l'utilisateur à sa première ouverture
-# (src-tauri/src/install.rs).
+# (usr/bin/last1-panel-cli), nvibrant (usr/lib/last1-panel/nvibrant) et
+# vkBasalt (usr/lib/last1-panel/vkbasalt), que Last1 Panel installe pour
+# l'utilisateur à sa première ouverture (src-tauri/src/install.rs).
 set -euo pipefail
 : "${VERSION:?version manquante}"
 [[ $VERSION =~ ^[0-9][0-9A-Za-z.]*$ ]] || { echo "version invalide : $VERSION" >&2; exit 2; }
@@ -33,22 +33,36 @@ export LCMS2_STATIC=1 RUSTFLAGS="--remap-path-prefix=/work=."
 export LAST1_PANEL_RELEASE=$VERSION
 cargo build --locked --release -p last1-panel-core --bin last1-panel-cli
 
-# nvibrant (MIT) : mêmes binaires et empreintes que packaging/arch/PKGBUILD.
+# nvibrant (MIT) et vkBasalt (zlib) : mêmes fichiers et empreintes que
+# packaging/arch/PKGBUILD.
 nvibrant=1.3.0
+vkbasalt=0.3.2.10
 mkdir -p /tmp/nvibrant
 curl -fsSL -o /tmp/nvibrant.whl \
     "https://files.pythonhosted.org/packages/5e/fc/453cf625d659ffaac14ef5a89edd5ac1d9e5ff3708c120efd4a3ac145b22/nvibrant-$nvibrant-py3-none-manylinux_2_17_x86_64.whl"
 curl -fsSL -o /tmp/nvibrant-LICENSE "https://raw.githubusercontent.com/Tremeschin/nvibrant/v$nvibrant/license.txt"
+curl -fsSL -o /tmp/vkBasalt.tar.gz \
+    "https://github.com/DadSchoorse/vkBasalt/releases/download/v$vkbasalt/vkBasalt-$vkbasalt.tar.gz"
 sha256sum --check --quiet - <<SUMS
 d60a080b52e4a16e16d16a7d4b6405a32a3fe1b8ee0df65dc3685213ef0393e8  /tmp/nvibrant.whl
 015b42dfc301724c0f8ac8de7658e36801a7a86463d91024bf173ee9ceec495f  /tmp/nvibrant-LICENSE
+eb196ff446fa36ec0ca99c4406d753c1fa210afddeec5e7a76e1c2e74ed605e3  /tmp/vkBasalt.tar.gz
 SUMS
 unzip -q -o /tmp/nvibrant.whl 'nvibrant/resources/nvibrant-*' -d /tmp/nvibrant
+
+# vkBasalt : la bibliothèque seule ; son manifeste de couche Vulkan est écrit
+# à l'installation, avec le chemin de l'utilisateur.
+tar -xzf /tmp/vkBasalt.tar.gz -C /tmp
+meson setup /tmp/vkbasalt-build "/tmp/vkBasalt-$vkbasalt" --buildtype=release --prefix=/usr -Dwith_json=false
+meson compile -C /tmp/vkbasalt-build
 
 # Fichiers ajoutés à l'AppImage (bundle > linux > appimage > files).
 files="\"/usr/bin/last1-panel-cli\": \"/work/target/release/last1-panel-cli\""
 files+=", \"/usr/share/licenses/last1-panel/LICENSE\": \"/work/LICENSE\""
 files+=", \"/usr/share/licenses/last1-panel/nvibrant-LICENSE\": \"/tmp/nvibrant-LICENSE\""
+files+=", \"/usr/lib/last1-panel/vkbasalt/libvkbasalt.so\": \"/tmp/vkbasalt-build/src/libvkbasalt.so\""
+files+=", \"/usr/share/licenses/last1-panel/vkBasalt-LICENSE\": \"/tmp/vkBasalt-$vkbasalt/LICENSE\""
+files+=", \"/usr/share/licenses/last1-panel/vkBasalt-reshade-LICENSE\": \"/tmp/vkBasalt-$vkbasalt/src/reshade/LICENSE.md\""
 for binary in /tmp/nvibrant/nvibrant/resources/nvibrant-*; do
     files+=", \"/usr/lib/last1-panel/nvibrant/${binary##*/}\": \"$binary\""
 done

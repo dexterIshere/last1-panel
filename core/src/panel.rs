@@ -65,6 +65,11 @@ impl Panel {
         Self::for_session(BTreeMap::new())
     }
 
+    /// Le vrai système, vu du service de la session.
+    pub fn session() -> Self {
+        Self::for_session(crate::system::desktop::session_env())
+    }
+
     /// Le vrai système, vu d'un service lancé avant le bureau : les variables
     /// de la session graphique sont celles que le bureau a données à systemd
     /// (`systemctl --user show-environment`), sinon celles du processus.
@@ -300,6 +305,23 @@ impl Panel {
         self.update(|settings| settings.outputs.entry(output.to_string()).or_default().vibrance = Some(percent))
     }
 
+    /// Couleurs d'un profil (ou valeurs par défaut) sur un écran : courbes,
+    /// puis vibrance sur un écran d'une carte NVIDIA (ailleurs, sans elle).
+    /// Ce qui est déjà en place n'est pas refait : l'écran ne clignote pas.
+    pub fn apply_colors(&self, output: &str, color: &ColorAdjust, vibrance: f64) -> CoreResult<()> {
+        let state = self.color_state(output)?;
+        if !state.adjust.approx_eq(color) {
+            if let Some(reason) = state.color_unavailable {
+                return Err(CoreError::message(format!("{output} : {reason}")));
+            }
+            self.set_color(output, color)?;
+        }
+        if state.vibrance_unavailable.is_none() && (state.vibrance - vibrance).abs() >= 0.5 {
+            self.set_vibrance(output, vibrance)?;
+        }
+        Ok(())
+    }
+
     /// À la connexion : vibrance réappliquée (perdue au redémarrage), profils
     /// ICC remis s'ils ont disparu (monitors.conf réécrit par nwg-displays…).
     pub fn apply_saved(&self) -> Vec<String> {
@@ -459,6 +481,23 @@ mod tests {
         assert_eq!(panel.display().unwrap().profile("DP-1").unwrap(), original);
         assert!(icc_files(dir.path()).is_empty());
         assert!(panel.settings().outputs["DP-1"].previous_profile.is_none());
+    }
+
+    #[test]
+    fn profile_colors_go_on_the_screen_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let panel = panel(dir.path(), ProfileState::default(), false);
+        let guide = ColorAdjust::all(Channel { brightness: 52.0, contrast: 47.0, gamma: 1.47 });
+        panel.apply_colors("DP-1", &guide, 62.0).unwrap();
+        let first = panel.display().unwrap().profile("DP-1").unwrap();
+        assert_eq!(panel.settings().outputs["DP-1"].color, guide);
+        // Vibrance indisponible (pas de carte NVIDIA) : le reste s'applique.
+        assert_eq!(panel.settings().outputs["DP-1"].vibrance, None);
+        // Déjà en place : rien n'est refait.
+        panel.apply_colors("DP-1", &guide, 62.0).unwrap();
+        assert_eq!(panel.display().unwrap().profile("DP-1").unwrap(), first);
+        panel.apply_colors("DP-1", &ColorAdjust::default(), 50.0).unwrap();
+        assert!(panel.settings().outputs["DP-1"].color.is_neutral());
     }
 
     #[test]

@@ -13,6 +13,7 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         build-essential ca-certificates curl file librsvg2-dev libssl-dev \
         libwebkit2gtk-4.1-dev pkg-config rsync unzip \
+        glslang-tools libvulkan-dev libx11-dev meson ninja-build spirv-headers \
     && rm -rf /var/lib/apt/lists/*
 
 ENV RUSTUP_HOME=/opt/rustup \

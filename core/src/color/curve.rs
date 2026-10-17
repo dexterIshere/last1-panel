@@ -58,6 +58,14 @@ impl Channel {
         }
     }
 
+    /// Même réglage, aux arrondis des curseurs près.
+    pub fn approx_eq(&self, other: &Channel) -> bool {
+        let (a, b) = (self.clamped(), other.clamped());
+        (a.brightness - b.brightness).abs() < 0.05
+            && (a.contrast - b.contrast).abs() < 0.05
+            && (a.gamma - b.gamma).abs() < 0.0005
+    }
+
     pub fn is_neutral(&self) -> bool {
         let c = self.clamped();
         (c.brightness - PERCENT_DEFAULT).abs() < 1e-6
@@ -100,6 +108,10 @@ impl ColorAdjust {
 
     pub fn is_neutral(&self) -> bool {
         self.red.is_neutral() && self.green.is_neutral() && self.blue.is_neutral()
+    }
+
+    pub fn approx_eq(&self, other: &ColorAdjust) -> bool {
+        self.red.approx_eq(&other.red) && self.green.approx_eq(&other.green) && self.blue.approx_eq(&other.blue)
     }
 
     /// Courbes rouge, verte et bleue sur [`RAMP_SIZE`] points de 16 bits.

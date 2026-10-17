@@ -63,6 +63,11 @@ pub fn run() {
             commands::games,
             commands::save_game_settings,
             commands::set_wrapped,
+            commands::color_profiles,
+            commands::save_color_profile,
+            commands::delete_color_profile,
+            commands::apply_color_profile,
+            commands::set_tray,
             commands::update_available,
             commands::install_update,
         ])

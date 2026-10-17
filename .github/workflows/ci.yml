@@ -78,7 +78,8 @@ jobs:
     steps:
       - name: Outils de construction
         run: |
-          pacman -Syu --noconfirm --needed base-devel git rust bun webkit2gtk-4.1 gtk3 lcms2 lact jq curl
+          pacman -Syu --noconfirm --needed base-devel git rust bun webkit2gtk-4.1 gtk3 lcms2 lact jq curl \
+            meson glslang spirv-headers vulkan-headers libx11
           useradd -m builder
       - uses: actions/checkout@v4
       - id: version

@@ -1,7 +1,8 @@
-<!-- Couleurs : luminosité, contraste et gamma par écran (profil ICC), vibrance numérique (NVIDIA). -->
+<!-- Couleurs : luminosité, contraste et gamma par écran (profil ICC), vibrance numérique (NVIDIA),
+     profils de couleurs (pour l'écran, ou pour un jeu dans sa seule fenêtre). -->
 <script lang="ts">
   import { api, errorMessage } from "$lib/api/ipc";
-  import type { Channel, ColorAdjust, ColorState, Output } from "$lib/api/types";
+  import type { Channel, ColorAdjust, ColorProfile, ColorState, Output } from "$lib/api/types";
   import { CHANNELS, clampChannel, meanChannel, neutralAdjust, sameChannels } from "$lib/color";
   import CurveGraph from "$lib/components/colors/CurveGraph.svelte";
   import Preview from "$lib/components/colors/Preview.svelte";
@@ -11,10 +12,11 @@
   import Segmented from "$lib/components/ui/Segmented.svelte";
   import Slider from "$lib/components/ui/Slider.svelte";
   import Spinner from "$lib/components/ui/Spinner.svelte";
+  import Switch from "$lib/components/ui/Switch.svelte";
   import { num, t } from "$lib/i18n.svelte";
   import { app } from "$lib/state/app.svelte";
   import { latest } from "$lib/util/latest";
-  import { RotateCcw } from "@lucide/svelte";
+  import { RotateCcw, Save, Trash2 } from "@lucide/svelte";
 
   type ChannelKey = "all" | "red" | "green" | "blue";
 
@@ -29,6 +31,13 @@
   /** Hyprland : réglages pas encore appliqués à l'écran. */
   let dirty = $state(false);
   let applying = $state(false);
+  let profiles = $state<ColorProfile[]>([]);
+  let tray = $state(true);
+  let profileName = $state("");
+  let profileBusy = $state(false);
+  let notice = $state<string | null>(null);
+  /** Profil à supprimer au second clic. */
+  let confirmDelete = $state<string | null>(null);
 
   const live = $derived(app.system?.features?.liveColor ?? false);
   const channelsDiffer = $derived(!sameChannels(adjust));
@@ -76,8 +85,19 @@
     }
   }
 
+  async function loadProfiles() {
+    try {
+      const fresh = await api.colorProfiles();
+      profiles = fresh.profiles;
+      tray = fresh.tray;
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
   $effect(() => {
     load();
+    loadProfiles();
   });
 
   $effect(() => {
@@ -134,6 +154,87 @@
     vibranceSender.push({ output: selected, percent: value });
   }
 
+  const near = (a: number, b: number, margin: number) => Math.abs(a - b) < margin;
+  const sameColors = (a: ColorAdjust, b: ColorAdjust) =>
+    CHANNELS.every(
+      (c) => near(a[c].brightness, b[c].brightness, 0.05) && near(a[c].contrast, b[c].contrast, 0.05) && near(a[c].gamma, b[c].gamma, 0.0005),
+    );
+  /** Profil aux réglages affichés (vibrance comprise, si elle se règle ici). */
+  const isCurrent = (p: ColorProfile) =>
+    sameColors(p.color, adjust) && (!!info?.vibranceUnavailable || near(p.vibrance, vibrance, 0.5));
+
+  function summary(p: ColorProfile): string {
+    const c = p.color.red;
+    const curves = sameChannels(p.color)
+      ? `${t("Luminosité", "Brightness")} ${num(c.brightness)} %, ${t("contraste", "contrast")} ${num(c.contrast)} %, gamma ${num(c.gamma, 2)}`
+      : t("Réglé canal par canal", "Set channel by channel");
+    return `${curves} · ${t("vibrance", "vibrance")} ${num(p.vibrance)} %`;
+  }
+
+  /** Réglages affichés gardés : dans un nouveau profil, ou à la place de `existing`. */
+  async function saveProfile(existing: ColorProfile | null) {
+    profileBusy = true;
+    error = null;
+    notice = null;
+    try {
+      const saved = await api.saveColorProfile(existing?.id ?? null, existing?.name ?? profileName, $state.snapshot(adjust), vibrance);
+      await loadProfiles();
+      if (!existing) profileName = "";
+      notice = existing
+        ? t(`« ${saved.name} » a maintenant ces réglages.`, `“${saved.name}” now has these settings.`)
+        : t(`Profil « ${saved.name} » enregistré : liez-le à un jeu dans Jeux.`, `Profile “${saved.name}” saved: link it to a game in Games.`);
+    } catch (e) {
+      error = errorMessage(e);
+    }
+    profileBusy = false;
+  }
+
+  async function applyProfile(p: ColorProfile) {
+    profileBusy = true;
+    error = null;
+    notice = null;
+    try {
+      await colorSender.flush();
+      await vibranceSender.flush();
+      await api.applyColorProfile(selected, p.id);
+      await loadOutput(selected);
+    } catch (e) {
+      error = errorMessage(e);
+    }
+    profileBusy = false;
+  }
+
+  async function deleteProfile(p: ColorProfile) {
+    if (confirmDelete !== p.id) {
+      confirmDelete = p.id;
+      setTimeout(() => {
+        if (confirmDelete === p.id) confirmDelete = null;
+      }, 3000);
+      return;
+    }
+    confirmDelete = null;
+    profileBusy = true;
+    error = null;
+    try {
+      await api.deleteColorProfile(p.id);
+      await loadProfiles();
+      notice = t(`« ${p.name} » supprimé : ses jeux reprennent les couleurs de l'écran.`, `“${p.name}” deleted: its games go back to the screen's colors.`);
+    } catch (e) {
+      error = errorMessage(e);
+    }
+    profileBusy = false;
+  }
+
+  async function setTray(shown: boolean) {
+    error = null;
+    try {
+      await api.setTray(shown);
+    } catch (e) {
+      tray = !shown;
+      error = errorMessage(e);
+    }
+  }
+
   const percent = (v: number) => `${num(v)} %`;
 </script>
 
@@ -166,6 +267,7 @@
   <OutputTabs {outputs} bind:selected />
 
   {#if error}<Callout kind="danger" title={t("Réglage non appliqué", "Setting not applied")}>{error}</Callout>{/if}
+  {#if notice && !error}<Callout kind="success">{notice}</Callout>{/if}
 
   <div class="layout">
     <section class="panel card">
@@ -240,6 +342,77 @@
       />
     </section>
 
+    <section class="panel card">
+      <div>
+        <h2>{t("Profils de couleurs", "Color profiles")}</h2>
+        <p class="field__hint">
+          {t(
+            "Ces réglages gardés sous un nom : pour les remettre sur l'écran, ou pour un jeu (page Jeux), dans sa seule fenêtre.",
+            "These settings kept under a name: to put them back on the screen, or for a game (Games page), in its window only.",
+          )}
+        </p>
+      </div>
+      <form
+        class="save"
+        onsubmit={(e) => {
+          e.preventDefault();
+          saveProfile(null);
+        }}
+      >
+        <input type="text" maxlength="60" placeholder={t("Nom (ex. Arc Raiders)", "Name (e.g. Arc Raiders)")} aria-label={t("Nom du profil", "Profile name")} bind:value={profileName} />
+        <button class="btn btn--primary" type="submit" disabled={profileBusy || !info}>
+          <Save size={16} />{t("Enregistrer ces réglages", "Save these settings")}
+        </button>
+      </form>
+      {#if profiles.length > 0}
+        <ul class="profiles">
+          {#each profiles as profile (profile.id)}
+            {@const current = isCurrent(profile)}
+            <li class="profile" class:profile--current={current}>
+              <div class="profile__text">
+                <span class="profile__name">{profile.name}</span>
+                <span class="field__hint">{summary(profile)}</span>
+              </div>
+              {#if current}<span class="badge badge--success">{t("Sur l'écran", "On screen")}</span>{/if}
+              <div class="profile__actions">
+                <button class="btn" onclick={() => applyProfile(profile)} disabled={profileBusy || current || !!info?.colorUnavailable}>
+                  {t("Appliquer", "Apply")}
+                </button>
+                <button
+                  class="btn btn--ghost"
+                  onclick={() => saveProfile(profile)}
+                  disabled={profileBusy || current}
+                  title={t("Remplacer par les réglages affichés", "Replace with the settings shown")}
+                  aria-label={t(`Remplacer ${profile.name} par les réglages affichés`, `Replace ${profile.name} with the settings shown`)}
+                >
+                  <Save size={16} />
+                </button>
+                <button
+                  class="btn btn--ghost"
+                  class:btn--danger={confirmDelete === profile.id}
+                  onclick={() => deleteProfile(profile)}
+                  disabled={profileBusy}
+                  title={t("Supprimer", "Delete")}
+                  aria-label={t(`Supprimer ${profile.name}`, `Delete ${profile.name}`)}
+                >
+                  <Trash2 size={16} />{#if confirmDelete === profile.id}{t("Confirmer", "Confirm")}{/if}
+                </button>
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <Switch
+        label={t("Profils dans l'icône près de l'horloge", "Profiles in the icon near the clock")}
+        bind:checked={tray}
+        hint={t(
+          "Clic droit sur l'icône Last1 Panel : un profil sur l'écran en un clic. Clic gauche : cette fenêtre.",
+          "Right-click the Last1 Panel icon: a profile on the screen in one click. Left-click: this window.",
+        )}
+        onchange={setTray}
+      />
+    </section>
+
     <aside class="panel card card--side">
       <CurveGraph {adjust} />
       <Preview {adjust} {vibrance} />
@@ -251,7 +424,7 @@
   .layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 18rem;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     gap: var(--space-4);
   }
 
@@ -264,7 +437,7 @@
 
   .card--side {
     grid-column: 2;
-    grid-row: 1 / span 2;
+    grid-row: 1 / span 3;
   }
 
   .card__head {
@@ -277,5 +450,56 @@
 
   h2 {
     font-size: var(--text-lg);
+  }
+
+  .save {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .save input {
+    flex: 1;
+    min-width: 12rem;
+  }
+
+  .profiles {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .profile {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+  }
+
+  .profile--current {
+    border-color: var(--color-panel-line);
+    background: var(--color-panel-soft);
+  }
+
+  .profile__text {
+    display: grid;
+    flex: 1;
+    gap: 2px;
+    min-width: 12rem;
+  }
+
+  .profile__name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .profile__actions {
+    display: flex;
+    gap: var(--space-1);
   }
 </style>

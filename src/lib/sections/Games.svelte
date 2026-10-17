@@ -20,6 +20,7 @@
     hdr: null,
     overlay: null,
     performanceMode: null,
+    colorProfile: null,
   };
 
   let info = $state<GamesInfo | null>(null);
@@ -292,6 +293,31 @@
             {@render boolOptions(t("Activé", "On"), t("Automatique", "Automatic"))}
           </select>
           <span class="field__hint">{t("Écran en HDR (Affichage) et Proton CachyOS.", "Screen in HDR (Display) and Proton CachyOS.")}</span>
+        </label>
+
+        <label class="field">
+          <span class="field__label">{t("Couleurs dans le jeu", "In-game colors")}</span>
+          <select
+            value={profile.colorProfile === null ? "inherit" : profile.colorProfile === "" ? "screen" : profile.colorProfile}
+            disabled={!info.colorLayer || (info.colorProfiles.length === 0 && profile.colorProfile === null)}
+            onchange={(e) => {
+              const value = e.currentTarget.value;
+              edit("colorProfile", value === "inherit" ? null : value === "screen" ? "" : value);
+            }}
+          >
+            <option value="inherit">{selected === null ? t("Celles de l'écran", "The screen's") : inherit}</option>
+            {#if selected !== null}<option value="screen">{t("Celles de l'écran", "The screen's")}</option>{/if}
+            {#each info.colorProfiles as color (color.id)}<option value={color.id}>{color.name}</option>{/each}
+          </select>
+          <span class="field__hint">
+            {#if !info.colorLayer}
+              {t("Couche Vulkan vkBasalt de Last1 Panel absente : réinstallez Last1 Panel.", "Last1 Panel's vkBasalt Vulkan layer is missing: reinstall Last1 Panel.")}
+            {:else if info.colorProfiles.length === 0}
+              {t("Enregistrez d'abord un profil dans Couleurs.", "Save a profile in Colors first.")}
+            {:else}
+              {t("Dans la seule fenêtre du jeu (Proton et jeux Vulkan). Touche Arrêt défil : profil coupé ou remis.", "In the game window only (Proton and Vulkan games). Scroll Lock key: profile off or back on.")}
+            {/if}
+          </span>
         </label>
 
         <label class="field">

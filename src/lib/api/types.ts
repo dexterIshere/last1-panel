@@ -177,6 +177,22 @@ export interface GameProfile {
   hdr: boolean | null;
   overlay: boolean | null;
   performanceMode: boolean | null;
+  /** Profil de couleurs (identifiant), dans la seule fenêtre du jeu. */
+  colorProfile: string | null;
+}
+
+/** Profil de couleurs gardé sous un nom. */
+export interface ColorProfile {
+  id: string;
+  name: string;
+  color: ColorAdjust;
+  vibrance: number;
+}
+
+export interface ColorProfiles {
+  profiles: ColorProfile[];
+  /** Icône près de l'horloge affichée. */
+  tray: boolean;
 }
 
 export interface GamesSettings {
@@ -199,4 +215,7 @@ export interface GamesInfo {
   settings: GamesSettings;
   /** Option de lancement à mettre dans Steam. */
   launchOption: string;
+  colorProfiles: ColorProfile[];
+  /** Couche Vulkan des couleurs des jeux installée. */
+  colorLayer: boolean;
 }

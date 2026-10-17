@@ -5,6 +5,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { t, type Lang } from "$lib/i18n.svelte";
 import type {
   ColorAdjust,
+  ColorProfile,
+  ColorProfiles,
   ColorState,
   GamesInfo,
   GamesSettings,
@@ -43,6 +45,13 @@ export const api = {
   gpuConfirm: (keep: boolean) => invoke<void>("gpu_confirm", { keep }),
   /** Active le service LACT (pkexec, mot de passe demandé). */
   enableLact: () => invoke<void>("enable_lact"),
+  colorProfiles: () => invoke<ColorProfiles>("color_profiles"),
+  /** Couleurs du profil sur l'écran (`id` null : valeurs par défaut). */
+  applyColorProfile: (output: string, id: string | null) => invoke<void>("apply_color_profile", { output, id }),
+  setTray: (shown: boolean) => invoke<void>("set_tray", { shown }),
+  saveColorProfile: (id: string | null, name: string, color: ColorAdjust, vibrance: number) =>
+    invoke<ColorProfile>("save_color_profile", { id, name, color, vibrance }),
+  deleteColorProfile: (id: string) => invoke<void>("delete_color_profile", { id }),
   updateAvailable: () => invoke<string | null>("update_available"),
   installUpdate: () => invoke<void>("install_update"),
 

@@ -23,6 +23,8 @@ pub struct GameProfile {
     pub overlay: Option<bool>,
     /// Processeur en mode performance pendant le jeu.
     pub performance_mode: Option<bool>,
+    /// Profil de couleurs (identifiant), dans la seule fenêtre du jeu.
+    pub color_profile: Option<String>,
 }
 
 /// Réglage laissé au jeu, ou forcé.
@@ -61,6 +63,7 @@ impl GameProfile {
             hdr: self.hdr.or(global.hdr),
             overlay: self.overlay.or(global.overlay),
             performance_mode: self.performance_mode.or(global.performance_mode),
+            color_profile: self.color_profile.clone().or_else(|| global.color_profile.clone()),
         }
     }
 }

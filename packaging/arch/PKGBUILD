@@ -2,30 +2,35 @@
 # main) depuis le commit en cours, puis publié sur last1.fun : go-to-linux
 # l'installe d'office sous CachyOS et le tient à jour. Aucun paquet de l'AUR :
 # nvibrant (MIT) est livré dans le paquet, ses binaires pris tels quels dans sa
-# version publiée sur PyPI (empreinte vérifiée).
+# version publiée sur PyPI (empreinte vérifiée) ; vkBasalt (zlib), compilé
+# depuis sa version publiée, applique les profils de couleurs dans la seule
+# fenêtre des jeux, sous son propre nom de couche Vulkan.
 pkgname=last1-panel
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="GPU and display settings for Linux gaming on Wayland: screen colors, vibrance, display modes, GPU tuning, per-game 3D settings"
 arch=('x86_64')
 url="https://last1.fun/last1-panel"
-license=('GPL-3.0-or-later' 'MIT')
-depends=('webkit2gtk-4.1' 'gtk3' 'lcms2' 'hicolor-icon-theme' 'systemd' 'lact')
-makedepends=('cargo' 'bun')
+license=('GPL-3.0-or-later' 'MIT' 'Zlib' 'BSD-3-Clause')
+depends=('webkit2gtk-4.1' 'gtk3' 'lcms2' 'hicolor-icon-theme' 'systemd' 'lact' 'libx11')
+makedepends=('cargo' 'bun' 'meson' 'glslang' 'spirv-headers' 'vulkan-headers')
 optdepends=(
   'mangohud: on-screen performance and frame limiter for native games'
   'kscreen: KDE Plasma screen settings (kscreen-doctor)'
 )
 options=('!lto' '!debug')
 _nvibrant=1.3.0
+_vkbasalt=0.3.2.10
 # Archive du commit posée à côté du PKGBUILD par build.sh (git archive).
 source=("$pkgname-$pkgver.tar.gz"
   "nvibrant-$_nvibrant.whl::https://files.pythonhosted.org/packages/5e/fc/453cf625d659ffaac14ef5a89edd5ac1d9e5ff3708c120efd4a3ac145b22/nvibrant-$_nvibrant-py3-none-manylinux_2_17_x86_64.whl"
-  "nvibrant-$_nvibrant-license.txt::https://raw.githubusercontent.com/Tremeschin/nvibrant/v$_nvibrant/license.txt")
+  "nvibrant-$_nvibrant-license.txt::https://raw.githubusercontent.com/Tremeschin/nvibrant/v$_nvibrant/license.txt"
+  "https://github.com/DadSchoorse/vkBasalt/releases/download/v$_vkbasalt/vkBasalt-$_vkbasalt.tar.gz")
 noextract=("nvibrant-$_nvibrant.whl")
 sha256sums=('SKIP'
   'd60a080b52e4a16e16d16a7d4b6405a32a3fe1b8ee0df65dc3685213ef0393e8'
-  '015b42dfc301724c0f8ac8de7658e36801a7a86463d91024bf173ee9ceec495f')
+  '015b42dfc301724c0f8ac8de7658e36801a7a86463d91024bf173ee9ceec495f'
+  'eb196ff446fa36ec0ca99c4406d753c1fa210afddeec5e7a76e1c2e74ed605e3')
 
 prepare() {
   cd "$pkgname-$pkgver"
@@ -44,6 +49,10 @@ build() {
   # l'outil des jeux, sans GTK ni WebKit.
   bun run tauri build --no-bundle -- --frozen
   cargo build --frozen --release -p last1-panel-core --bin last1-panel-cli
+
+  # vkBasalt : la bibliothèque seule, notre manifeste de couche à la place du sien.
+  arch-meson "$srcdir/vkBasalt-$_vkbasalt" "$srcdir/vkbasalt-build" -Dwith_json=false
+  meson compile -C "$srcdir/vkbasalt-build"
 }
 
 check() {
@@ -69,4 +78,11 @@ package() {
   install -dm755 "$pkgdir/usr/lib/last1-panel/nvibrant"
   install -m755 "$srcdir"/nvibrant/nvibrant/resources/nvibrant-* "$pkgdir/usr/lib/last1-panel/nvibrant/"
   install -Dm644 "$srcdir/nvibrant-$_nvibrant-license.txt" "$pkgdir/usr/share/licenses/$pkgname/nvibrant-LICENSE"
+
+  # vkBasalt : couche Vulkan active seulement pour un jeu lancé avec un profil
+  # de couleurs (LAST1_PANEL_COLOR=1, core/src/color/lut.rs).
+  install -Dm755 "$srcdir/vkbasalt-build/src/libvkbasalt.so" "$pkgdir/usr/lib/last1-panel/vkbasalt/libvkbasalt.so"
+  install -Dm644 packaging/last1-panel-color.json "$pkgdir/usr/share/vulkan/implicit_layer.d/last1-panel-color.json"
+  install -Dm644 "$srcdir/vkBasalt-$_vkbasalt/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/vkBasalt-LICENSE"
+  install -Dm644 "$srcdir/vkBasalt-$_vkbasalt/src/reshade/LICENSE.md" "$pkgdir/usr/share/licenses/$pkgname/vkBasalt-reshade-LICENSE"
 }

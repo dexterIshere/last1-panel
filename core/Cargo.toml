@@ -32,6 +32,10 @@ lcms2 = "6.2"
 ed25519-dalek = "2"
 sha2 = "0.10"
 base64 = "0.22"
+# Icône près de l'horloge (StatusNotifierItem, en Rust, sans GTK) et son
+# image de secours si le thème d'icônes n'a pas la nôtre.
+ksni = { version = "0.3", features = ["blocking"] }
+png = "0.18"
 
 [dev-dependencies]
 tempfile = "3"

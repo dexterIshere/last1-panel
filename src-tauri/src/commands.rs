@@ -10,7 +10,7 @@ use last1_panel_core::exec::{Exec, SystemExec, which};
 use last1_panel_core::games::steam::{self, Game};
 use last1_panel_core::i18n::{self, t};
 use last1_panel_core::panel::{ColorState, Panel};
-use last1_panel_core::settings::{GamesSettings, Settings};
+use last1_panel_core::settings::{ColorProfile, GamesSettings, Settings};
 use last1_panel_core::system::desktop::Desktop;
 use last1_panel_core::system::gpu::{Gpu, Vendor};
 use last1_panel_core::tuning::lact::{self, ClockRanges, Device, Lact, OffsetRange, Stats, Tuning};
@@ -249,18 +249,24 @@ pub struct GamesInfo {
     games: Vec<Game>,
     settings: GamesSettings,
     launch_option: String,
+    color_profiles: Vec<ColorProfile>,
+    /// Couche Vulkan des couleurs des jeux installée (vkBasalt livré avec Last1 Panel).
+    color_layer: bool,
 }
 
 #[tauri::command]
 pub async fn games() -> Result<GamesInfo> {
     blocking(|| {
         let root = steam::find_root(&last1_panel_core::paths::home_dir());
+        let settings = Settings::load();
         Ok(GamesInfo {
             steam: root.is_some(),
             steam_running: steam::is_running(Path::new("/proc")),
             games: root.as_deref().map(steam::installed_games).unwrap_or_default(),
-            settings: Settings::load().games,
+            settings: settings.games,
             launch_option: format!("{} %command%", steam::wrapper()),
+            color_profiles: settings.color_profiles,
+            color_layer: last1_panel_core::paths::color_layer_installed(),
         })
     })
     .await
@@ -270,6 +276,70 @@ pub async fn games() -> Result<GamesInfo> {
 pub async fn save_game_settings(panel: State<'_, Arc<Panel>>, settings: GamesSettings) -> Result<()> {
     let panel = panel.inner().clone();
     blocking(move || panel.save_games(settings)).await
+}
+
+/// Profils de couleurs, et l'icône près de l'horloge qui les met sur l'écran.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColorProfiles {
+    profiles: Vec<ColorProfile>,
+    tray: bool,
+}
+
+#[tauri::command]
+pub async fn color_profiles() -> Result<ColorProfiles> {
+    blocking(|| {
+        let settings = Settings::load();
+        Ok(ColorProfiles { profiles: settings.color_profiles, tray: settings.tray })
+    })
+    .await
+}
+
+/// Couleurs d'un profil sur l'écran (`id` absent : valeurs par défaut).
+#[tauri::command]
+pub async fn apply_color_profile(panel: State<'_, Arc<Panel>>, output: String, id: Option<String>) -> Result<()> {
+    let panel = panel.inner().clone();
+    blocking(move || {
+        let (color, vibrance) = match id {
+            None => (ColorAdjust::default(), 50.0),
+            Some(id) => {
+                let profile = panel
+                    .settings()
+                    .color_profile(&id)
+                    .cloned()
+                    .ok_or_else(|| CoreError::message(t("Profil introuvable.", "Profile not found.")))?;
+                (profile.color, profile.vibrance)
+            }
+        };
+        panel.apply_colors(&output, &color, vibrance)
+    })
+    .await
+}
+
+/// Icône près de l'horloge affichée ou masquée (le service de la session
+/// relit le réglage).
+#[tauri::command]
+pub async fn set_tray(shown: bool) -> Result<()> {
+    blocking(move || Settings::update(&Settings::path(), |s| s.tray = shown)).await
+}
+
+/// Profil créé (sans `id`) ou remplacé.
+#[tauri::command]
+pub async fn save_color_profile(
+    id: Option<String>,
+    name: String,
+    color: ColorAdjust,
+    vibrance: f64,
+) -> Result<ColorProfile> {
+    blocking(move || {
+        Settings::update(&Settings::path(), |s| s.put_color_profile(id.as_deref(), &name, color, vibrance))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_color_profile(id: String) -> Result<()> {
+    blocking(move || Settings::update(&Settings::path(), |s| s.remove_color_profile(&id))).await
 }
 
 #[tauri::command]
