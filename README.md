@@ -34,9 +34,10 @@ l'outil : choisir RVB ou YCbCr, plage complète ou limitée, l'overscan.
 ## Installer
 
 go-to-linux l'installe d'office sous CachyOS et le tient à jour. Sinon, sur
-Arch ou CachyOS : téléchargez le paquet sur [last1.fun](https://last1.fun/last1-panel)
-(gratuit, sans compte), puis `sudo pacman -U last1-panel-*.pkg.tar.zst` (LACT
-et les bibliothèques viennent des dépôts officiels ; nvibrant est inclus).
+Arch ou CachyOS : « Installer · gratuit » sur [last1.fun/last1-panel](https://last1.fun/last1-panel)
+(sans compte) l'installe avec ses dépendances et l'ouvre. Le paquet seul est
+aussi sur la page : `sudo pacman -U last1-panel-*.pkg.tar.zst` (LACT et les
+bibliothèques viennent des dépôts officiels ; nvibrant est inclus).
 
 ## Réglages 3D des jeux
 
