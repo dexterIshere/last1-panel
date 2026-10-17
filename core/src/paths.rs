@@ -32,9 +32,3 @@ pub fn user_config_dir() -> PathBuf {
 pub fn icc_dir() -> PathBuf {
     xdg("XDG_DATA_HOME", ".local/share").join("icc")
 }
-
-/// Profil ICC de Last1 Panel pour une sortie (« DP-1 »).
-pub fn icc_profile(output: &str) -> PathBuf {
-    let safe: String = output.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
-    icc_dir().join(format!("last1-panel-{safe}.icc"))
-}

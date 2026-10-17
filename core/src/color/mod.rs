@@ -3,3 +3,4 @@
 
 pub mod curve;
 pub mod icc;
+pub mod vibrance;

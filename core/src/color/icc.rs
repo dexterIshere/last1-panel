@@ -102,6 +102,25 @@ mod tests {
         assert!(close(&blue, &want_blue, 2));
     }
 
+    /// Hyprland n'accepte que la VCGT en table de 3 canaux sur 16 bits
+    /// (« VCGT formula type is not supported »).
+    #[test]
+    fn vcgt_is_a_16_bit_table() {
+        let bytes =
+            build_profile("table", &ColorAdjust::all(Channel { gamma: 1.2, ..Default::default() }), Transfer::Srgb)
+                .unwrap();
+        let u32_at = |offset: usize| u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+        let u16_at = |offset: usize| u16::from_be_bytes(bytes[offset..offset + 2].try_into().unwrap());
+        let count = u32_at(128);
+        let entry = (0..count).map(|i| 132 + i * 12).find(|&at| &bytes[at..at + 4] == b"vcgt").expect("balise vcgt");
+        let data = u32_at(entry + 4);
+        assert_eq!(&bytes[data..data + 4], b"vcgt");
+        assert_eq!(u32_at(data + 8), 0, "type table");
+        assert_eq!(u16_at(data + 12), 3, "trois canaux");
+        assert_eq!(u16_at(data + 14), 256, "256 points");
+        assert_eq!(u16_at(data + 16), 2, "16 bits");
+    }
+
     #[test]
     fn profile_describes_srgb_primaries() {
         let bytes = build_profile("sRGB", &ColorAdjust::default(), Transfer::Srgb).unwrap();

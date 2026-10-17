@@ -13,6 +13,8 @@ pub struct Monitor {
     /// Nom donné par l'écran (« AW2723DF »), s'il en donne un.
     pub name: Option<String>,
     pub serial: Option<String>,
+    /// L'écran annonce le HDR (PQ, SMPTE ST 2084) dans son extension CTA-861.
+    pub hdr: bool,
 }
 
 impl Monitor {
@@ -49,7 +51,29 @@ pub fn parse(edid: &[u8]) -> Option<Monitor> {
             _ => {}
         }
     }
+    monitor.hdr = edid[128..].chunks(128).any(cta_supports_pq);
     Some(monitor)
+}
+
+/// Bloc d'extension CTA-861 : bloc de données « HDR Static Metadata »
+/// (étiquette étendue 6), dont le premier octet liste les fonctions de
+/// transfert reconnues (bit 2 : PQ).
+fn cta_supports_pq(block: &[u8]) -> bool {
+    if block.len() < 4 || block[0] != 0x02 {
+        return false;
+    }
+    let end = usize::from(block[2]).min(block.len());
+    let mut offset = 4;
+    while offset < end {
+        let header = block[offset];
+        let (tag, length) = (header >> 5, usize::from(header & 0x1f));
+        let payload = &block[(offset + 1).min(end)..(offset + 1 + length).min(end)];
+        if tag == 7 && payload.len() >= 2 && payload[0] == 0x06 && payload[1] & 0b100 != 0 {
+            return true;
+        }
+        offset += 1 + length;
+    }
+    false
 }
 
 /// L'écran branché sur `connector` (« DP-2 »), quelle que soit sa carte.
@@ -102,6 +126,26 @@ pub(crate) mod tests {
         assert_eq!(monitor.name.as_deref(), Some("AW2723DF"));
         assert_eq!(monitor.serial.as_deref(), Some("8X1Y2Z3"));
         assert_eq!(monitor.label(), "AW2723DF");
+    }
+
+    #[test]
+    fn hdr_comes_from_the_cta_extension() {
+        let mut edid = sample("SAM", "Odyssey G7", "H4ZR");
+        assert!(!parse(&edid).unwrap().hdr);
+        // Extension CTA : un bloc vidéo (étiquette 2), puis HDR Static Metadata
+        // (étiquette 7, étendue 6) avec SDR, HDR et PQ (0b0111).
+        let mut cta = vec![0u8; 128];
+        cta[0] = 0x02;
+        cta[1] = 0x03;
+        let blocks = [0x42, 0x10, 0x04, 0xe3, 0x06, 0x07, 0x01];
+        cta[4..4 + blocks.len()].copy_from_slice(&blocks);
+        cta[2] = (4 + blocks.len()) as u8;
+        edid.extend_from_slice(&cta);
+        assert!(parse(&edid).unwrap().hdr);
+        // HLG seul (bit 3) : pas de HDR10.
+        let last = edid.len() - 128 + 4 + blocks.len() - 2;
+        edid[last] = 0b1000;
+        assert!(!parse(&edid).unwrap().hdr);
     }
 
     #[test]

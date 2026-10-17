@@ -7,7 +7,8 @@
 //! sa sortie (« applying config failed! »).
 
 use super::model::{self, Mode, Output, OutputChange, Position, Rotation, Vrr};
-use super::{DisplayBackend, ProfileState};
+use super::{DisplayBackend, Features, ProfileState};
+use crate::color::icc::Transfer;
 use crate::error::{CoreError, CoreResult};
 use crate::exec::Exec;
 use serde::Deserialize;
@@ -283,6 +284,16 @@ impl Kde {
 }
 
 impl DisplayBackend for Kde {
+    fn features(&self) -> Features {
+        Features {
+            primary: true,
+            bit_depths: vec![0, 8, 10],
+            live_color: true,
+            icc_transfer: Transfer::Gamma22,
+            read_only: None,
+        }
+    }
+
     fn outputs(&self) -> CoreResult<Vec<Output>> {
         Ok(self.read()?.into_iter().map(|(output, _)| output).collect())
     }

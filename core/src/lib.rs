@@ -11,6 +11,8 @@ pub mod error;
 pub mod exec;
 pub mod games;
 pub mod i18n;
+pub mod panel;
 pub mod paths;
 pub mod settings;
 pub mod system;
+pub mod tuning;

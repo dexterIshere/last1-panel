@@ -6,6 +6,7 @@
 //! réglages des jeux, lus à chaque lancement.
 
 use crate::color::curve::ColorAdjust;
+use crate::display::ProfileState;
 use crate::error::CoreResult;
 use crate::games::profile::GameProfile;
 use serde::{Deserialize, Serialize};
@@ -39,8 +40,8 @@ pub struct OutputSettings {
     pub color: ColorAdjust,
     /// Vibrance numérique, 0 à 100 % (50 : inchangée). Absente : jamais réglée.
     pub vibrance: Option<f64>,
-    /// Profil ICC choisi avant Last1 Panel, remis au retour aux valeurs par défaut.
-    pub previous_icc: Option<String>,
+    /// Profil de couleur d'avant Last1 Panel, remis au retour aux valeurs par défaut.
+    pub previous_profile: Option<ProfileState>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -102,7 +103,7 @@ mod tests {
                 description: "Dell AW2723DF".into(),
                 color: ColorAdjust::all(Channel { brightness: 52.0, contrast: 55.0, gamma: 1.1 }),
                 vibrance: Some(70.0),
-                previous_icc: None,
+                previous_profile: None,
             },
         );
         settings.save_to(&path).unwrap();
