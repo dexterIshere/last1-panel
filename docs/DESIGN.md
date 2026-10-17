@@ -37,7 +37,7 @@ tous deux en Wayland.
 | Carte graphique | **Service LACT** (`lactd`, socket JSON) | Maintenu, NVIDIA (NVML), AMD et Intel ; courbes de ventilateurs tenues par le service ; changement confirmé sous 5 s, sinon annulé. |
 | Réglages 3D par jeu | **Option de lancement Steam `last1-panel-cli run %command%`**, écrite par Last1 Panel (Steam fermé) | Le lanceur lit nos réglages au lancement et pose les variables de Proton, DXVK, VKD3D-Proton, dxvk-nvapi, du pilote et de MangoHud. `dlss-swapper` et `game-performance` de CachyOS sont repris tels quels. |
 | Réglages remis à la connexion | **Service utilisateur `last1-panel-apply.service`** (`last1-panel-cli watch`), actif pour tous les comptes | La vibrance est perdue au redémarrage et au rebranchement d'un écran : remise à la connexion, puis à chaque événement DRM (`udevadm monitor`), réessayée tant que le bureau n'a pas allumé l'écran. Les profils ICC, eux, sont gardés par KWin et par monitors.conf. Le service ne dépend pas du bureau (Hyprland n'active pas graphical-session.target). |
-| Distribution | **AUR `last1-panel-bin`** (binaires compilés une fois par la CI) et **releases GitHub** ; page sur last1.fun | Compilé dans un conteneur Arch à chaque nouvelle version de `Cargo.toml` : la release garde le paquet (`pacman -U`) et l'archive des binaires que télécharge le PKGBUILD de l'AUR, poussé par la CI. Installé en quelques secondes, sans compilation chez le joueur ; dépendances des dépôts officiels (WebKitGTK, lcms2, LACT). go-to-linux l'installe d'office depuis l'AUR (ligne `si-publié` de son `apps.list`). |
+| Distribution | **Paquet Arch publié sur last1.fun** à chaque commit sur `main` (CI, jeton OIDC) ; **gratuit et sans compte** (page et téléchargement publics) ; **aucun paquet de l'AUR** | Disponible à toute heure depuis last1.fun, comme les autres logiciels Last1. go-to-linux l'installe d'office pendant l'installation de CachyOS (premier démarrage) et le tient à jour : liste des fichiers signée par last1.fun, empreinte vérifiée, puis `pacman -U` (dépendances des dépôts officiels : WebKitGTK, lcms2, LACT). |
 
 ## Réglages 3D : ce que pose le lanceur
 
@@ -63,15 +63,16 @@ Le dernier lancement est noté dans `~/.cache/last1-panel/last-launch.txt`
 
 ## Intégration à go-to-linux
 
-1. **last1.fun** : page `/last1-panel` (français et anglais), téléchargement
-   gratuit depuis la dernière release GitHub, sans compte.
-2. **Installation de CachyOS** : `last1-panel-bin` et `lact` sont une ligne
-   `si-publié` de `linux/apps.list` de go-to-linux : dès que le paquet est sur
-   l'AUR, le premier démarrage l'installe (paru) et active le service LACT
-   (`lactd`) ; les PC déjà installés le voient dans « Nouveautés pour ce PC ».
-   Rien à publier côté go-to-linux.
-3. **Mises à jour** : celles des paquets de l'AUR (paru), comme Vesktop ou
-   Spotify.
+1. **last1.fun** : Last1 Panel est un produit gratuit du catalogue
+   (`"free": true`) ; sa liste signée (`/api/public/last1-panel/manifest`) et
+   son paquet sont publics, et sa page propose le téléchargement.
+2. **Installation de CachyOS** : au premier démarrage, après les mises à jour
+   et les pilotes, go-to-linux télécharge le paquet depuis last1.fun, vérifie
+   la signature de la liste et l'empreinte du paquet, l'installe avec pacman et
+   active le service LACT (`lactd`).
+3. **Mises à jour** : la mise à jour quotidienne de go-to-linux fait de même
+   quand last1.fun publie une version plus récente ; les PC déjà installés le
+   reçoivent ainsi à leur prochaine mise à jour.
 4. `gtl-ecrans` ne touche plus aux écrans dès que monitors.conf ne commence
    plus par « # gtl:auto » : Last1 Panel remplace cet en-tête à son premier
    réglage, le choix de l'utilisateur gagne.

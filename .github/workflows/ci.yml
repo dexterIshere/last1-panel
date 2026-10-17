@@ -1,14 +1,12 @@
-# Tests à chaque push. Sur main, paquet Arch construit dans un conteneur Arch ;
-# nouvelle version dans Cargo.toml (pas encore de release v<version>) : release
-# GitHub (paquet et archive des binaires), puis last1-panel-bin poussé sur
-# l'AUR, d'où go-to-linux l'installe d'office sous CachyOS.
+# Tests à chaque push ; sur main, paquet Arch construit et publié sur last1.fun,
+# comme SoundFence : go-to-linux l'installe et le met à jour depuis last1.fun.
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
-  # Relance à la main, par exemple une fois la clé de l'AUR ajoutée.
+  # Relance à la main, par exemple une fois le site déployé avec Last1 Panel.
   workflow_dispatch:
 
 permissions:
@@ -35,74 +33,49 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
 
-  package:
+  # Paquet Arch construit dans un conteneur Arch et publié sur last1.fun (jeton
+  # OIDC de GitHub : le site vérifie qu'il vient de ce dépôt, sur main ; aucun
+  # secret).
+  publish:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: check
     runs-on: ubuntu-24.04
     container: archlinux:latest
     permissions:
-      contents: write
+      contents: read
+      id-token: write
     concurrency:
-      group: release
+      group: publish
       cancel-in-progress: false
     env:
-      GH_TOKEN: ${{ github.token }}
+      SITE_URL: https://last1.fun
     steps:
       - name: Outils de construction
         run: |
-          pacman -Syu --noconfirm --needed base-devel git rust bun webkit2gtk-4.1 gtk3 lcms2 lact github-cli openssh
+          pacman -Syu --noconfirm --needed base-devel git rust bun webkit2gtk-4.1 gtk3 lcms2 lact jq curl
           useradd -m builder
       - uses: actions/checkout@v4
       - id: version
-        name: Version (Cargo.toml), nouvelle ou déjà publiée
+        name: Version (celle de Cargo.toml, et le numéro de la construction)
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
-          echo "release=$version" >> "$GITHUB_OUTPUT"
-          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            # Déjà publiée : paquet de contrôle, numéroté à part.
-            echo "new=false" >> "$GITHUB_OUTPUT"
-            echo "package=$version.r$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
-          else
-            echo "new=true" >> "$GITHUB_OUTPUT"
-            echo "package=$version" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Paquet et archive des binaires
+          echo "value=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1).r${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+      - name: Paquet
         run: |
-          version='${{ steps.version.outputs.package }}'
           chown -R builder "$GITHUB_WORKSPACE"
           sudo -u builder git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          sudo -u builder packaging/arch/build.sh "$version" /home/builder/out
-          packages=(/home/builder/out/last1-panel-"$version"-*-x86_64.pkg.tar.zst)
-          sudo -u builder packaging/aur/archive.sh "${packages[0]}" "$version" /home/builder/out
+          sudo -u builder packaging/arch/build.sh '${{ steps.version.outputs.value }}' /home/builder/out
       - uses: actions/upload-artifact@v4
         with:
-          name: last1-panel-${{ steps.version.outputs.package }}
-          path: /home/builder/out/
-      - name: Release GitHub
-        if: steps.version.outputs.new == 'true'
+          name: last1-panel-${{ steps.version.outputs.value }}
+          path: /home/builder/out/*.pkg.tar.zst
+      - name: Publication sur last1.fun
         run: |
-          version='${{ steps.version.outputs.release }}'
-          packages=(/home/builder/out/last1-panel-"$version"-*-x86_64.pkg.tar.zst)
-          printf '%s\n' "Last1 Panel $version, pour Arch et CachyOS (Wayland : Hyprland ou KDE Plasma 6)." '' \
-            "- AUR : \`paru -S last1-panel-bin\`" \
-            "- Ou ce paquet : \`sudo pacman -U ${packages[0]##*/}\`" '' \
-            "Sous CachyOS installé par go-to-linux, Last1 Panel est installé d'office." >/tmp/notes.md
-          gh release create "v$version" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Last1 Panel $version" --notes-file /tmp/notes.md \
-            "${packages[0]}" "/home/builder/out/last1-panel-$version-x86_64.tar.zst"
-      - name: AUR (last1-panel-bin)
-        env:
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-        run: |
-          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
-            echo "::warning::Secret AUR_SSH_PRIVATE_KEY absent : last1-panel-bin n'est pas publié sur l'AUR."
+          # Site pas encore déployé avec Last1 Panel dans son catalogue : rien à
+          # publier (relancez la CI à la main une fois le site à jour).
+          if ! curl -fsS --max-time 20 "${SITE_URL%/}/api/config" | grep -q '"slug":"last1-panel"'; then
+            echo "::warning::last1-panel n'est pas dans le catalogue de $SITE_URL : paquet non publié."
             exit 0
           fi
-          version='${{ steps.version.outputs.release }}'
-          # Empreinte de l'archive de la release, celle que l'AUR téléchargera.
-          dir=$(mktemp -d)
-          gh release download "v$version" --repo "$GITHUB_REPOSITORY" \
-            --pattern "last1-panel-$version-x86_64.tar.zst" --dir "$dir"
-          sha=$(sha256sum "$dir/last1-panel-$version-x86_64.tar.zst" | cut -d' ' -f1)
-          sudo -u builder --preserve-env=AUR_SSH_PRIVATE_KEY packaging/aur/publish.sh "$version" "$sha"
+          packages=(/home/builder/out/last1-panel-*.pkg.tar.zst)
+          tools/publish-release.sh last1-panel '${{ steps.version.outputs.value }}' "download:${packages[0]}"

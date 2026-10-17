@@ -1,9 +1,8 @@
-# Paquet Arch de Last1 Panel, compilé depuis le commit en cours par
-# packaging/arch/build.sh (CI ou à la main). La CI l'attache à la release
-# GitHub, avec l'archive de ses binaires que reprend last1-panel-bin sur l'AUR
-# (packaging/aur). nvibrant (MIT) est livré dans le paquet, ses binaires pris
-# tels quels dans sa version publiée sur PyPI (empreinte vérifiée) : aucune
-# dépendance de l'AUR.
+# Paquet Arch de Last1 Panel. Construit par packaging/arch/build.sh (CI ou à la
+# main) depuis le commit en cours, puis publié sur last1.fun : go-to-linux
+# l'installe d'office sous CachyOS et le tient à jour. Aucun paquet de l'AUR :
+# nvibrant (MIT) est livré dans le paquet, ses binaires pris tels quels dans sa
+# version publiée sur PyPI (empreinte vérifiée).
 pkgname=last1-panel
 pkgver=0.1.0
 pkgrel=1
