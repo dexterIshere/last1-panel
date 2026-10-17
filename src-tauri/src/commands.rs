@@ -176,7 +176,7 @@ pub async fn gpu_confirm(keep: bool) -> Result<()> {
 #[tauri::command]
 pub async fn enable_lact() -> Result<()> {
     blocking(|| {
-        let exec = SystemExec { timeout: Duration::from_secs(180) };
+        let exec = SystemExec { timeout: Duration::from_secs(180), ..SystemExec::default() };
         exec.run_ok("pkexec", &["systemctl".into(), "enable".into(), "--now".into(), "lactd.service".into()])?;
         // Le socket apparaît un instant après le démarrage du service.
         for _ in 0..30 {
@@ -216,13 +216,9 @@ pub async fn games() -> Result<GamesInfo> {
 }
 
 #[tauri::command]
-pub async fn save_game_settings(settings: GamesSettings) -> Result<()> {
-    blocking(move || {
-        let mut all = Settings::load();
-        all.games = settings;
-        all.save()
-    })
-    .await
+pub async fn save_game_settings(panel: State<'_, Arc<Panel>>, settings: GamesSettings) -> Result<()> {
+    let panel = panel.inner().clone();
+    blocking(move || panel.save_games(settings)).await
 }
 
 #[tauri::command]

@@ -11,14 +11,14 @@ use crate::display::{DisplayBackend, Features, ProfileState};
 use crate::error::{CoreError, CoreResult};
 use crate::exec::{Exec, SystemExec};
 use crate::i18n::t;
-use crate::settings::{OutputSettings, Settings};
+use crate::settings::{GamesSettings, OutputSettings, Settings};
 use crate::system::desktop::Desktop;
 use crate::system::gpu::{self, Gpu, SysPaths, Vendor};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 const ICC_PREFIX: &str = "last1-panel-";
 
@@ -29,7 +29,19 @@ pub struct Panel {
     pub settings_path: PathBuf,
     pub icc_dir: PathBuf,
     display: Option<Box<dyn DisplayBackend>>,
+    /// Un réglage à la fois (couleurs et vibrance arrivent par deux files).
+    busy: Mutex<()>,
 }
+
+/// Variables de la session graphique utiles aux outils des bureaux.
+const SESSION_VARS: [&str; 6] = [
+    "WAYLAND_DISPLAY",
+    "XDG_CURRENT_DESKTOP",
+    "XDG_SESSION_TYPE",
+    "HYPRLAND_INSTANCE_SIGNATURE",
+    "DISPLAY",
+    "XDG_RUNTIME_DIR",
+];
 
 /// État des couleurs d'un écran, pour la page « Couleurs ».
 #[derive(Debug, Clone, Serialize)]
@@ -50,8 +62,17 @@ pub struct ColorState {
 impl Panel {
     /// Le vrai système : bureau de la session, outils installés.
     pub fn system() -> Self {
-        let exec: Arc<dyn Exec> = Arc::new(SystemExec::default());
-        let desktop = Desktop::detect();
+        Self::for_session(BTreeMap::new())
+    }
+
+    /// Le vrai système, vu d'un service lancé avant le bureau : les variables
+    /// de la session graphique sont celles que le bureau a données à systemd
+    /// (`systemctl --user show-environment`), sinon celles du processus.
+    pub fn for_session(session: BTreeMap<String, String>) -> Self {
+        let lookup = |name: &str| session.get(name).cloned().or_else(|| std::env::var(name).ok());
+        let desktop = Desktop::from_env(lookup);
+        let env = SESSION_VARS.iter().filter_map(|name| Some((name.to_string(), lookup(name)?))).collect();
+        let exec: Arc<dyn Exec> = Arc::new(SystemExec { env, ..SystemExec::default() });
         let sys = SysPaths::default();
         let display: Option<Box<dyn DisplayBackend>> = match desktop {
             Desktop::Plasma => Some(Box::new(Kde::new(exec.clone(), sys.sys.clone()))),
@@ -62,7 +83,15 @@ impl Panel {
             ))),
             Desktop::Other => None,
         };
-        Self { exec, desktop, sys, settings_path: Settings::path(), icc_dir: crate::paths::icc_dir(), display }
+        Self {
+            exec,
+            desktop,
+            sys,
+            settings_path: Settings::path(),
+            icc_dir: crate::paths::icc_dir(),
+            display,
+            busy: Mutex::new(()),
+        }
     }
 
     /// Pour les tests : système et bureau donnés.
@@ -74,15 +103,20 @@ impl Panel {
         icc_dir: PathBuf,
         display: Option<Box<dyn DisplayBackend>>,
     ) -> Self {
-        Self { exec, desktop, sys, settings_path, icc_dir, display }
+        Self { exec, desktop, sys, settings_path, icc_dir, display, busy: Mutex::new(()) }
     }
 
     pub fn settings(&self) -> Settings {
         Settings::load_from(&self.settings_path)
     }
 
-    fn save(&self, settings: &Settings) -> CoreResult<()> {
-        settings.save_to(&self.settings_path)
+    fn update<T>(&self, change: impl FnOnce(&mut Settings) -> T) -> CoreResult<T> {
+        Settings::update(&self.settings_path, change)
+    }
+
+    /// Réglages des jeux (page « Jeux »), le reste du fichier gardé.
+    pub fn save_games(&self, games: GamesSettings) -> CoreResult<()> {
+        self.update(|settings| settings.games = games)
     }
 
     pub fn gpus(&self) -> Vec<Gpu> {
@@ -114,7 +148,11 @@ impl Panel {
         let mut after: Vec<Output> = before
             .iter()
             .map(|output| match changes.iter().find(|c| c.name == output.name) {
-                Some(change) => change.applied_to(output),
+                Some(change) => {
+                    let mut next = change.applied_to(output);
+                    next.scale = display.normalize_scale(next.current_mode.as_ref(), next.scale);
+                    next
+                }
                 None => output.clone(),
             })
             .collect();
@@ -193,22 +231,27 @@ impl Panel {
     }
 
     /// Luminosité, contraste et gamma d'un écran : profil ICC écrit puis posé
-    /// (nom de fichier nouveau à chaque fois : KWin et Hyprland ne relisent
-    /// pas un profil dont le chemin n'a pas changé). Valeurs par défaut : le
-    /// profil d'avant Last1 Panel est remis.
+    /// (un nouveau fichier à chaque réglage : KWin et Hyprland ne relisent pas
+    /// un profil dont le chemin n'a pas changé). Valeurs par défaut : le profil
+    /// d'avant Last1 Panel est remis.
     pub fn set_color(&self, output: &str, adjust: &ColorAdjust) -> CoreResult<()> {
+        let _busy = self.busy.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let display = self.display()?;
-        let mut settings = self.settings();
-        let entry = settings.outputs.entry(output.to_string()).or_default();
-        let current = display.profile(output).unwrap_or_default();
+        // Profil illisible : on s'arrête, sinon celui de l'utilisateur serait
+        // noté « aucun » et jamais remis.
+        let current = display.profile(output)?;
+        let previous = self.settings().outputs.get(output).and_then(|o| o.previous_profile.clone());
         if adjust.is_neutral() {
-            if let Some(previous) = entry.previous_profile.take() {
-                display.set_profile(output, &previous)?;
+            if let Some(previous) = &previous {
+                display.set_profile(output, previous)?;
             } else if current.icc.as_deref().is_some_and(|path| self.is_ours(path)) {
                 display.set_profile(output, &ProfileState { icc: None, source: current_source_default(&current) })?;
             }
-            entry.color = *adjust;
-            self.save(&settings)?;
+            self.update(|settings| {
+                let entry = settings.outputs.entry(output.to_string()).or_default();
+                entry.color = *adjust;
+                entry.previous_profile = None;
+            })?;
             self.remove_old_profiles(output, None);
             return Ok(());
         }
@@ -221,9 +264,8 @@ impl Panel {
             fs::write(&temporary, &bytes)?;
             fs::rename(&temporary, &path)?;
         }
-        if entry.previous_profile.is_none() && !current.icc.as_deref().is_some_and(|p| self.is_ours(p)) {
-            entry.previous_profile = Some(current.clone());
-        }
+        let record =
+            (previous.is_none() && !current.icc.as_deref().is_some_and(|p| self.is_ours(p))).then(|| current.clone());
         display.set_profile(
             output,
             &ProfileState {
@@ -231,23 +273,29 @@ impl Panel {
                 source: current.source.as_ref().map(|_| "ICC".into()),
             },
         )?;
-        entry.color = *adjust;
-        self.save(&settings)?;
+        self.update(|settings| {
+            let entry = settings.outputs.entry(output.to_string()).or_default();
+            entry.color = *adjust;
+            if entry.previous_profile.is_none() {
+                entry.previous_profile = record;
+            }
+        })?;
         self.remove_old_profiles(output, Some(&path));
         Ok(())
     }
 
     /// Vibrance d'un écran, avec celles des autres écrans de la même carte
-    /// (nvibrant les règle toutes d'un coup).
+    /// (nvibrant les règle toutes d'un coup). Seul un refus sur cet écran est
+    /// une erreur : un autre écran éteint ne bloque rien.
     pub fn set_vibrance(&self, output: &str, percent: f64) -> CoreResult<()> {
+        let _busy = self.busy.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let gpus = self.gpus();
         let gpu = gpu::gpu_for_connector(&gpus, output)
             .ok_or_else(|| CoreError::message(format!("{output} : {}", t("écran introuvable", "screen not found"))))?;
-        let mut settings = self.settings();
-        settings.outputs.entry(output.to_string()).or_default().vibrance = Some(percent);
-        let values = vibrance_values(&settings, gpu);
-        vibrance::apply(self.exec.as_ref(), gpu, nvidia_index(&gpus, gpu), &values)?;
-        self.save(&settings)
+        let mut values = vibrance_values(&self.settings(), gpu);
+        values.insert(output.to_string(), percent);
+        vibrance::apply(self.exec.as_ref(), gpu, nvidia_index(&gpus, gpu), &values, &[output.to_string()])?;
+        self.update(|settings| settings.outputs.entry(output.to_string()).or_default().vibrance = Some(percent))
     }
 
     /// À la connexion : vibrance réappliquée (perdue au redémarrage), profils
@@ -258,8 +306,11 @@ impl Panel {
         let gpus = self.gpus();
         for gpu in gpus.iter().filter(|g| g.vendor == Vendor::Nvidia) {
             let values = vibrance_values(&settings, gpu);
-            if values.values().any(|v| vibrance::to_nvkms(*v) != 0)
-                && let Err(error) = vibrance::apply(self.exec.as_ref(), gpu, nvidia_index(&gpus, gpu), &values)
+            let targets: Vec<String> =
+                values.iter().filter(|(_, v)| vibrance::to_nvkms(**v) != 0).map(|(name, _)| name.clone()).collect();
+            if !targets.is_empty()
+                && let Err(error) =
+                    vibrance::apply(self.exec.as_ref(), gpu, nvidia_index(&gpus, gpu), &values, &targets)
             {
                 problems.push(error.to_string());
             }
@@ -270,7 +321,7 @@ impl Panel {
                 if saved.color.is_neutral() || !connected.contains(name) {
                     continue;
                 }
-                let current = display.profile(name).unwrap_or_default();
+                let Ok(current) = display.profile(name) else { continue };
                 let ok = current.icc.as_deref().is_some_and(|p| self.is_ours(p) && Path::new(p).exists());
                 if !ok && let Err(error) = self.set_color(name, &saved.color) {
                     problems.push(format!("{name} : {error}"));
@@ -308,7 +359,8 @@ fn safe_name(output: &str) -> String {
     output.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect()
 }
 
-/// Empreinte FNV-1a 64 bits : nom de fichier stable pour un même profil.
+/// Empreinte FNV-1a 64 bits du profil (lcms2 y écrit l'heure : un nouveau
+/// fichier à chaque réglage).
 fn fnv1a(bytes: &[u8]) -> u64 {
     bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3))
 }

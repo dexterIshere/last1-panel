@@ -20,6 +20,8 @@ use std::sync::Arc;
 
 const PROGRAM: &str = "hyprctl";
 const GTL_AUTO: &str = "# gtl:auto";
+/// Règle d'un écran éteint, gardée en commentaire pour le rallumer tel quel.
+const SAVED: &str = "# last1-panel, écran éteint : ";
 const HEADER: [&str; 3] = [
     "# Écrans réglés avec Last1 Panel (définition, fréquence, échelle, couleurs).",
     "# Vous pouvez modifier ce fichier : Last1 Panel ne change que les lignes des écrans",
@@ -150,6 +152,14 @@ impl MonitorsFile {
         Self { lines: text.lines().map(str::to_string).collect() }
     }
 
+    /// Règle mise de côté quand l'écran a été éteint par Last1 Panel.
+    pub fn saved_rule(&self, name: &str) -> Option<Rule> {
+        self.lines
+            .iter()
+            .filter_map(|line| Rule::parse(line.strip_prefix(SAVED)?))
+            .rfind(|rule| rule.name == name && !rule.disabled)
+    }
+
     pub fn rule(&self, name: &str) -> Option<Rule> {
         // Hyprland garde la dernière règle d'un même nom.
         self.lines.iter().filter_map(|line| Rule::parse(line)).rfind(|rule| rule.name == name)
@@ -169,13 +179,29 @@ impl MonitorsFile {
         } else if self.lines.is_empty() {
             self.lines.extend(HEADER.iter().map(|line| line.to_string()));
         }
+        // Écran rallumé : sa règle mise de côté n'a plus lieu d'être.
+        if !rule.disabled {
+            self.lines.retain(|line| {
+                !line.strip_prefix(SAVED).and_then(Rule::parse).is_some_and(|saved| saved.name == rule.name)
+            });
+        }
         let mut replaced = false;
+        let mut saved = None;
         self.lines.retain_mut(|line| match Rule::parse(line) {
             Some(existing) if existing.name == rule.name => {
                 if replaced {
                     false
                 } else {
-                    *line = rule.line();
+                    // Écran éteint : la règle complète reste en commentaire.
+                    if rule.disabled && !existing.disabled {
+                        saved = Some(format!("{SAVED}{}", existing.line()));
+                    }
+                    // Commentaire de fin de ligne de l'utilisateur gardé.
+                    let comment = line.find('#').map(|at| line[at..].to_string());
+                    *line = match comment {
+                        Some(comment) => format!("{} {comment}", rule.line()),
+                        None => rule.line(),
+                    };
                     replaced = true;
                     true
                 }
@@ -185,6 +211,10 @@ impl MonitorsFile {
         if !replaced {
             self.lines.push(rule.line());
         }
+        if let Some(saved) = saved {
+            let at = self.lines.iter().position(|line| Rule::parse(line).is_some_and(|r| r.name == rule.name));
+            self.lines.insert(at.unwrap_or(self.lines.len()), saved);
+        }
     }
 
     pub fn text(&self) -> String {
@@ -192,6 +222,30 @@ impl MonitorsFile {
         text.push('\n');
         text
     }
+}
+
+/// L'échelle que Hyprland appliquera : la plus proche (par pas de 1/120) qui
+/// donne une taille entière, comme CMonitor::applyMonitorRule.
+pub fn valid_scale(width: u32, height: u32, scale: f64) -> f64 {
+    let (w, h) = (f64::from(width), f64::from(height));
+    let clean = |s: f64| (w / s) == (w / s).round() && (h / s) == (h / s).round();
+    if scale <= 0.0 || clean(scale) {
+        return scale;
+    }
+    let search = (scale * 120.0).round();
+    if clean(search / 120.0) {
+        return search / 120.0;
+    }
+    for i in 1..90 {
+        let (up, down) = ((search + f64::from(i)) / 120.0, (search - f64::from(i)) / 120.0);
+        if clean(up) {
+            return up;
+        }
+        if down > 0.0 && clean(down) {
+            return down;
+        }
+    }
+    scale
 }
 
 fn format_number(value: f64, decimals: usize) -> String {
@@ -273,7 +327,9 @@ impl Hyprland {
             modes,
             current_mode,
             position: Position { x: monitor.x, y: monitor.y },
-            scale: monitor.scale,
+            // Hyprland n'utilise que des multiples de 1/120 et n'en affiche que
+            // deux décimales (4/3 lu 1.33).
+            scale: (monitor.scale * 120.0).round() / 120.0,
             rotation: match monitor.transform {
                 1 => Rotation::Left,
                 2 => Rotation::Inverted,
@@ -297,33 +353,42 @@ impl Hyprland {
         }
     }
 
-    /// Règle complète d'un écran après changement : l'état actuel, les
-    /// arguments déjà écrits par l'utilisateur, puis nos changements.
-    fn rule_for(&self, output: &Output, existing: Option<Rule>) -> Rule {
-        let mut rule = existing.filter(|rule| !rule.disabled).unwrap_or(Rule {
-            name: output.name.clone(),
-            mode: String::new(),
-            position: String::new(),
-            scale: String::new(),
-            extras: Vec::new(),
-            disabled: false,
-        });
-        if !output.enabled {
+    /// Règle complète d'un écran après changement : la règle existante (ou
+    /// celle mise de côté quand il a été éteint), puis ce qui change entre
+    /// `before` et `after` ; les arguments qu'on ne change pas restent tels
+    /// quels (rotations en miroir, `vrr, 3`, arguments ajoutés à la main).
+    fn rule_for(&self, before: &Output, after: &Output, file: &MonitorsFile) -> Rule {
+        let mut rule =
+            file.rule(&after.name).filter(|rule| !rule.disabled).or_else(|| file.saved_rule(&after.name)).unwrap_or(
+                Rule {
+                    name: after.name.clone(),
+                    mode: String::new(),
+                    position: String::new(),
+                    scale: String::new(),
+                    extras: Vec::new(),
+                    disabled: false,
+                },
+            );
+        if !after.enabled {
             return Rule { disabled: true, ..rule };
         }
-        if let Some(mode) = &output.current_mode {
+        if let Some(mode) = &after.current_mode {
             rule.mode = format!("{}x{}@{}", mode.width, mode.height, format_number(mode.refresh_hz(), 3));
         }
-        rule.position = format!("{}x{}", output.position.x, output.position.y);
-        rule.scale = format_number(output.scale, 4);
-        let transform = match output.rotation {
-            Rotation::Normal => None,
-            Rotation::Left => Some("1"),
-            Rotation::Inverted => Some("2"),
-            Rotation::Right => Some("3"),
-        };
-        rule.set_extra("transform", transform.map(str::to_string));
-        if let Some(vrr) = output.vrr {
+        rule.position = format!("{}x{}", after.position.x, after.position.y);
+        rule.scale = format_number(after.scale, 4);
+        if after.rotation != before.rotation {
+            let transform = match after.rotation {
+                Rotation::Normal => None,
+                Rotation::Left => Some("1"),
+                Rotation::Inverted => Some("2"),
+                Rotation::Right => Some("3"),
+            };
+            rule.set_extra("transform", transform.map(str::to_string));
+        }
+        if after.vrr != before.vrr
+            && let Some(vrr) = after.vrr
+        {
             let value = match vrr {
                 Vrr::Never => "0",
                 Vrr::Always => "1",
@@ -331,17 +396,21 @@ impl Hyprland {
             };
             rule.set_extra("vrr", Some(value.into()));
         }
-        if let Some(bits) = output.bit_depth {
+        if after.bit_depth != before.bit_depth
+            && let Some(bits) = after.bit_depth
+        {
             rule.set_extra("bitdepth", (bits == 10).then(|| "10".into()));
         }
-        match output.hdr {
-            Some(true) => {
-                // Le HDR ne va pas avec un profil ICC (Hyprland l'ignore alors).
-                rule.set_extra("cm", Some("hdr".into()));
-                rule.set_extra("icc", None);
+        if after.hdr != before.hdr {
+            match after.hdr {
+                Some(true) => {
+                    // Le HDR ne va pas avec un profil ICC (Hyprland l'ignore alors).
+                    rule.set_extra("cm", Some("hdr".into()));
+                    rule.set_extra("icc", None);
+                }
+                Some(false) if matches!(rule.extra("cm"), Some("hdr" | "hdredid")) => rule.set_extra("cm", None),
+                _ => {}
             }
-            Some(false) if matches!(rule.extra("cm"), Some("hdr" | "hdredid")) => rule.set_extra("cm", None),
-            _ => {}
         }
         rule
     }
@@ -388,6 +457,12 @@ impl DisplayBackend for Hyprland {
         Ok(self.monitors()?.iter().map(|monitor| self.to_output(monitor, &file, default_vrr)).collect())
     }
 
+    fn normalize_scale(&self, mode: Option<&Mode>, scale: f64) -> f64 {
+        mode.map(|m| valid_scale(m.width, m.height, scale)).unwrap_or(scale)
+    }
+
+    /// Règles essayées par hyprctl d'abord : une règle refusée n'est jamais
+    /// écrite dans monitors.conf (elle reviendrait à chaque connexion).
     fn apply(&self, changes: &[OutputChange]) -> CoreResult<()> {
         self.writable()?;
         let current = self.outputs()?;
@@ -395,12 +470,12 @@ impl DisplayBackend for Hyprland {
         let mut rules = Vec::new();
         for change in changes {
             let Some(output) = current.iter().find(|o| o.name == change.name) else { continue };
-            let rule = self.rule_for(&change.applied_to(output), file.rule(&change.name));
+            let rule = self.rule_for(output, &change.applied_to(output), &file);
             file.set_rule(&rule);
             rules.push(rule);
         }
-        self.save(&file)?;
-        rules.iter().try_for_each(|rule| self.keyword(rule))
+        rules.iter().try_for_each(|rule| self.keyword(rule))?;
+        self.save(&file)
     }
 
     fn profile(&self, output: &str) -> CoreResult<ProfileState> {
@@ -418,11 +493,11 @@ impl DisplayBackend for Hyprland {
             .find(|o| o.name == output)
             .ok_or_else(|| CoreError::message(format!("{output} : {}", t("écran introuvable", "screen not found"))))?;
         let mut file = self.file();
-        let mut rule = self.rule_for(screen, file.rule(output));
+        let mut rule = self.rule_for(screen, screen, &file);
         rule.set_extra("icc", state.icc.clone().filter(|path| !path.is_empty()));
         file.set_rule(&rule);
-        self.save(&file)?;
         self.keyword(&rule)?;
+        self.save(&file)?;
         // La courbe VCGT n'atteint la table gamma de la carte qu'en réappliquant
         // l'écran entier : un changement de profil seul ne le fait pas.
         self.exec.run_ok(PROGRAM, &["dispatch".into(), "forcerendererreload".into()])?;
@@ -516,14 +591,15 @@ mod tests {
         let text = fs::read_to_string(dir.path().join("monitors.conf")).unwrap();
         assert!(!text.starts_with(GTL_AUTO), "go-to-linux ne remet plus ses réglages");
         assert!(text.starts_with(HEADER[0]));
-        assert!(text.contains("monitor = DP-1, 2560x1440@143.91, 0x0, 1, vrr, 2, bitdepth, 10\n"), "{text}");
+        // Fréquence variable déjà « plein écran » (misc:vrr) : rien à écrire.
+        assert!(text.contains("monitor = DP-1, 2560x1440@143.91, 0x0, 1, bitdepth, 10\n"), "{text}");
         assert!(
             text.contains("monitor = HDMI-A-1, 3840x2160@143.99, auto, auto\n"),
             "les autres écrans ne bougent pas"
         );
         assert_eq!(text.matches("monitor =").count(), 2);
         let keyword = fake.calls().into_iter().find(|(_, args)| args[0] == "keyword").unwrap();
-        assert_eq!(keyword.1, ["keyword", "monitor", "DP-1, 2560x1440@143.91, 0x0, 1, vrr, 2, bitdepth, 10"]);
+        assert_eq!(keyword.1, ["keyword", "monitor", "DP-1, 2560x1440@143.91, 0x0, 1, bitdepth, 10"]);
     }
 
     #[test]
@@ -535,9 +611,7 @@ mod tests {
         let text = fs::read_to_string(dir.path().join("monitors.conf")).unwrap();
         assert!(text.starts_with("# mes écrans\n"));
         assert!(
-            text.contains(
-                "monitor = DP-1, 2560x1440@165, 0x0, 1, sdrbrightness, 1.2, mirror, eDP-1, transform, 1, vrr, 2\n"
-            ),
+            text.contains("monitor = DP-1, 2560x1440@165, 0x0, 1, sdrbrightness, 1.2, mirror, eDP-1, transform, 1\n"),
             "{text}"
         );
     }
@@ -548,7 +622,7 @@ mod tests {
         let icc = "/home/j/.local/share/icc/last1-panel-DP-1.icc";
         hypr.set_profile("DP-1", &ProfileState { icc: Some(icc.into()), source: None }).unwrap();
         let text = fs::read_to_string(dir.path().join("monitors.conf")).unwrap();
-        assert!(text.contains(&format!("monitor = DP-1, 2560x1440@165, 0x0, 1, vrr, 2, icc, {icc}\n")), "{text}");
+        assert!(text.contains(&format!("monitor = DP-1, 2560x1440@165, 0x0, 1, icc, {icc}\n")), "{text}");
         assert_eq!(hypr.profile("DP-1").unwrap().icc.as_deref(), Some(icc));
         let calls = fake.calls();
         assert_eq!(calls.last().unwrap().1, ["dispatch", "forcerendererreload"]);
@@ -565,6 +639,76 @@ mod tests {
         hypr.apply(&[OutputChange { name: "DP-1".into(), hdr: Some(true), ..Default::default() }]).unwrap();
         let text = fs::read_to_string(dir.path().join("monitors.conf")).unwrap();
         assert!(text.contains("cm, hdr") && !text.contains("icc"), "{text}");
+    }
+
+    #[test]
+    fn turning_a_screen_off_keeps_its_rule() {
+        let conf = "monitor = DP-1, 2560x1440@165, 0x0, 1, sdrbrightness, 1.2, mirror, eDP-1 # le mien\n";
+        let (dir, _fake, hypr) = setup(Some(conf));
+        hypr.apply(&[OutputChange { name: "DP-1".into(), enabled: Some(false), ..Default::default() }]).unwrap();
+        let text = fs::read_to_string(dir.path().join("monitors.conf")).unwrap();
+        assert!(text.contains("monitor = DP-1, disable # le mien"), "{text}");
+        assert!(
+            text.contains(&format!("{SAVED}monitor = DP-1, 2560x1440@165, 0x0, 1, sdrbrightness, 1.2, mirror, eDP-1"))
+        );
+
+        hypr.apply(&[OutputChange { name: "DP-1".into(), enabled: Some(true), ..Default::default() }]).unwrap();
+        let text = fs::read_to_string(dir.path().join("monitors.conf")).unwrap();
+        assert!(!text.contains(SAVED), "{text}");
+        assert!(
+            text.contains("monitor = DP-1, 2560x1440@165, 0x0, 1, sdrbrightness, 1.2, mirror, eDP-1 # le mien"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn untouched_arguments_stay_as_written() {
+        let conf = "monitor = DP-1, 2560x1440@165, 0x0, 1, transform, 5, vrr, 3\n";
+        let (dir, _fake, hypr) = setup(Some(conf));
+        hypr.apply(&[OutputChange {
+            name: "DP-1".into(),
+            mode: Some(Mode::new(2560, 1440, 143.91)),
+            ..Default::default()
+        }])
+        .unwrap();
+        let text = fs::read_to_string(dir.path().join("monitors.conf")).unwrap();
+        assert!(text.contains("monitor = DP-1, 2560x1440@143.91, 0x0, 1, transform, 5, vrr, 3\n"), "{text}");
+    }
+
+    #[test]
+    fn refused_rules_are_not_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("monitors.conf"), "monitor = DP-1, 2560x1440@165, 0x0, 1\n").unwrap();
+        let fake = Arc::new(
+            FakeExec::new()
+                .on_args(
+                    PROGRAM,
+                    &["-j", "monitors", "all"],
+                    Out { status: 0, stdout: MONITORS.into(), stderr: String::new() },
+                )
+                .on(PROGRAM, "invalid syntax at \"icc\""),
+        );
+        let hypr = Hyprland::new(fake, PathBuf::from("/nonexistent"), dir.path().to_path_buf());
+        assert!(hypr.set_profile("DP-1", &ProfileState { icc: Some("/p.icc".into()), source: None }).is_err());
+        assert_eq!(
+            fs::read_to_string(dir.path().join("monitors.conf")).unwrap(),
+            "monitor = DP-1, 2560x1440@165, 0x0, 1\n"
+        );
+    }
+
+    #[test]
+    fn scales_follow_hyprland() {
+        // 4/3 affiché 1.33 par hyprctl.
+        let dir = tempfile::tempdir().unwrap();
+        let monitors = MONITORS.replacen("\"scale\":1,", "\"scale\":1.33,", 1);
+        let fake = Arc::new(FakeExec::new().on(PROGRAM, &monitors));
+        let hypr = Hyprland::new(fake, PathBuf::from("/nonexistent"), dir.path().to_path_buf());
+        let scale = hypr.outputs().unwrap()[0].scale;
+        assert!((scale - 4.0 / 3.0).abs() < 1e-9, "{scale}");
+        // 1,75 ne divise pas 2560 × 1440 : Hyprland prend 1,6667.
+        assert!((valid_scale(2560, 1440, 1.75) - 200.0 / 120.0).abs() < 1e-9);
+        assert_eq!(valid_scale(2560, 1440, 1.25), 1.25);
+        assert_eq!(valid_scale(3840, 2160, 1.5), 1.5);
     }
 
     #[test]

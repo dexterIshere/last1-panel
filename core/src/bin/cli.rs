@@ -98,14 +98,29 @@ fn apply(args: &[String]) -> ExitCode {
     {
         std::thread::sleep(Duration::from_secs(seconds.min(60)));
     }
-    if apply_until_ready(&Panel::system(), 10) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    if apply_until_ready(10) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+}
+
+/// Variables que le bureau a données à systemd (Hyprland par
+/// dbus-update-activation-environment, Plasma de lui-même) : le service,
+/// lancé avant le bureau, les relit à chaque passage.
+fn session_panel() -> Panel {
+    let text = Command::new("systemctl")
+        .args(["--user", "show-environment"])
+        .stderr(Stdio::null())
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+        .unwrap_or_default();
+    Panel::for_session(
+        text.lines().filter_map(|line| line.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+    )
 }
 
 /// Réglages remis ; un écran pas encore allumé par le bureau (juste après la
 /// connexion, ou au réveil) est réessayé toutes les 3 s.
-fn apply_until_ready(panel: &Panel, tries: u32) -> bool {
+fn apply_until_ready(tries: u32) -> bool {
     for attempt in 1..=tries {
-        let problems = panel.apply_saved();
+        let problems = session_panel().apply_saved();
         if problems.is_empty() {
             return true;
         }
@@ -124,9 +139,8 @@ fn apply_until_ready(panel: &Panel, tries: u32) -> bool {
 /// remise à la connexion puis à chaque événement des cartes graphiques
 /// (`udevadm monitor`, sous-système drm).
 fn watch() -> ExitCode {
-    let panel = Panel::system();
     std::thread::sleep(Duration::from_secs(3));
-    apply_until_ready(&panel, 20);
+    apply_until_ready(20);
     let child = Command::new("udevadm")
         .args(["monitor", "--kernel", "--subsystem-match=drm"])
         .stdout(Stdio::piped())
@@ -148,7 +162,7 @@ fn watch() -> ExitCode {
     // Un branchement donne plusieurs événements : on attend qu'ils cessent.
     while received.recv().is_ok() {
         while received.recv_timeout(Duration::from_secs(2)).is_ok() {}
-        apply_until_ready(&panel, 5);
+        apply_until_ready(5);
     }
     let _ = child.kill();
     ExitCode::SUCCESS

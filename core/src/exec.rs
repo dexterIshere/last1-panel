@@ -48,14 +48,16 @@ fn last_lines(text: &str, count: usize) -> String {
     lines[lines.len().saturating_sub(count)..].join("\n")
 }
 
-/// Les vrais outils du système, arrêtés au bout de `timeout`.
+/// Les vrais outils du système, arrêtés au bout de `timeout`, avec en plus
+/// les variables `env` (celles de la session graphique pour le service).
 pub struct SystemExec {
     pub timeout: Duration,
+    pub env: Vec<(String, String)>,
 }
 
 impl Default for SystemExec {
     fn default() -> Self {
-        Self { timeout: Duration::from_secs(15) }
+        Self { timeout: Duration::from_secs(15), env: Vec::new() }
     }
 }
 
@@ -214,7 +216,7 @@ mod tests {
 
     #[test]
     fn slow_program_is_stopped() {
-        let exec = SystemExec { timeout: Duration::from_millis(100) };
+        let exec = SystemExec { timeout: Duration::from_millis(100), env: Vec::new() };
         let started = Instant::now();
         assert!(exec.run("sleep", &["5".into()]).is_err());
         assert!(started.elapsed() < Duration::from_secs(2));

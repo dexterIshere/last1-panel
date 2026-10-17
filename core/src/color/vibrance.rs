@@ -127,8 +127,16 @@ pub fn map_ports(ports: &[Port], gpu: &Gpu) -> CoreResult<Vec<Option<String>>> {
 }
 
 /// Règle la vibrance des sorties de `gpu` (pourcentages par nom de sortie ;
-/// les autres sorties reviennent à 50 %). Renvoie les sorties réglées.
-pub fn apply(exec: &dyn Exec, gpu: &Gpu, gpu_index: usize, values: &BTreeMap<String, f64>) -> CoreResult<Vec<String>> {
+/// les autres sorties reviennent à 50 %). Erreur si une des sorties `targets`
+/// refuse (écran éteint, ou pas encore allumé par le bureau). Renvoie les
+/// sorties réglées.
+pub fn apply(
+    exec: &dyn Exec,
+    gpu: &Gpu,
+    gpu_index: usize,
+    values: &BTreeMap<String, f64>,
+    targets: &[String],
+) -> CoreResult<Vec<String>> {
     if gpu.vendor != Vendor::Nvidia {
         return Err(CoreError::message(t(
             "La vibrance numérique ne se règle que sur les sorties d'une carte NVIDIA.",
@@ -172,7 +180,7 @@ pub fn apply(exec: &dyn Exec, gpu: &Gpu, gpu_index: usize, values: &BTreeMap<Str
     let refused: Vec<&String> = names
         .iter()
         .zip(&second)
-        .filter_map(|(name, port)| name.as_ref().filter(|n| port.failed && values.contains_key(*n)))
+        .filter_map(|(name, port)| name.as_ref().filter(|n| port.failed && targets.contains(n)))
         .collect();
     if let Some(name) = refused.first() {
         return Err(CoreError::message(format!(
@@ -271,7 +279,7 @@ mod tests {
         let fake = FakeExec::new().on("env", OUTPUT);
         let card = gpu(&[("DP-1", true), ("DP-2", false), ("DP-3", false), ("HDMI-A-1", true)]);
         let values = BTreeMap::from([("DP-1".to_string(), 80.0), ("HDMI-A-1".to_string(), 50.0)]);
-        let set = apply(&fake, &card, 0, &values).unwrap();
+        let set = apply(&fake, &card, 0, &values, &["DP-1".to_string()]).unwrap();
         assert_eq!(set, ["HDMI-A-1", "DP-1"]);
         let calls = fake.calls();
         assert_eq!(calls[0].1, ["NVIDIA_GPU=0", "ATTRIBUTE=vibrance", "nvibrant"]);
@@ -282,7 +290,7 @@ mod tests {
     fn neutral_values_need_a_single_run() {
         let fake = FakeExec::new().on("env", OUTPUT);
         let card = gpu(&[("DP-1", true), ("DP-2", false), ("DP-3", false), ("HDMI-A-1", true)]);
-        apply(&fake, &card, 0, &BTreeMap::from([("DP-1".to_string(), 50.0)])).unwrap();
+        apply(&fake, &card, 0, &BTreeMap::from([("DP-1".to_string(), 50.0)]), &[]).unwrap();
         assert_eq!(fake.calls().len(), 1);
     }
 
@@ -292,8 +300,11 @@ mod tests {
             .replace("• (1, DP  ) • Set vibrance (    0) • Success", "• (1, DP  ) • Set vibrance (  614) • Failed");
         let fake = FakeExec::new().on("env", &refused);
         let card = gpu(&[("DP-1", true), ("DP-2", false), ("DP-3", false), ("HDMI-A-1", true)]);
-        let error = apply(&fake, &card, 0, &BTreeMap::from([("DP-1".to_string(), 80.0)])).unwrap_err().to_string();
+        let values = BTreeMap::from([("DP-1".to_string(), 80.0), ("HDMI-A-1".to_string(), 60.0)]);
+        let error = apply(&fake, &card, 0, &values, &["DP-1".to_string()]).unwrap_err().to_string();
         assert!(error.starts_with("DP-1"), "{error}");
+        // Un autre écran éteint (DP-1 refusé) ne bloque pas le réglage de HDMI-A-1.
+        assert!(apply(&fake, &card, 0, &values, &["HDMI-A-1".to_string()]).is_ok());
     }
 
     #[test]
@@ -309,11 +320,11 @@ mod tests {
             },
         );
         let card = gpu(&[("DP-1", true)]);
-        let error = apply(&fake, &card, 0, &BTreeMap::new()).unwrap_err().to_string();
+        let error = apply(&fake, &card, 0, &BTreeMap::new(), &[]).unwrap_err().to_string();
         assert!(error.contains("nvidia_drm.modeset=1"), "{error}");
         let amd = Gpu { vendor: Vendor::Amd, ..card };
-        assert!(apply(&fake, &amd, 0, &BTreeMap::new()).is_err());
+        assert!(apply(&fake, &amd, 0, &BTreeMap::new(), &[]).is_err());
         let missing = FakeExec::new().without(PROGRAM);
-        assert!(matches!(apply(&missing, &gpu(&[]), 0, &BTreeMap::new()), Err(CoreError::MissingTool(_))));
+        assert!(matches!(apply(&missing, &gpu(&[]), 0, &BTreeMap::new(), &[]), Err(CoreError::MissingTool(_))));
     }
 }

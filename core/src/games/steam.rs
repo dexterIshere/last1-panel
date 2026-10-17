@@ -168,11 +168,17 @@ pub fn wrap(options: &str) -> String {
     }
 }
 
-/// Options de lancement sans notre outil ; vide s'il ne reste que %command%.
+/// Options de lancement sans notre outil, le reste à l'identique ; vide
+/// s'il ne reste que %command%.
 pub fn unwrap(options: &str) -> String {
-    let rest = options.replace(&format!("{WRAPPER} "), "").replace(WRAPPER, "");
-    let rest = rest.split_whitespace().collect::<Vec<_>>().join(" ");
-    if rest == COMMAND { String::new() } else { rest }
+    let rest = options.replacen(&format!("{WRAPPER} "), "", 1).replacen(WRAPPER, "", 1);
+    if rest.trim() == COMMAND { String::new() } else { rest.trim().to_string() }
+}
+
+/// Steam en Flatpak : les options de lancement s'y exécutent dans le bac à
+/// sable, où /usr/bin du système (donc last1-panel-cli) n'existe pas.
+pub fn is_flatpak(root: &Path) -> bool {
+    root.components().any(|part| part.as_os_str() == "com.valvesoftware.Steam")
 }
 
 /// Steam est-il lancé ? (il réécrirait localconfig.vdf en quittant).
@@ -187,6 +193,12 @@ pub fn is_running(proc_dir: &Path) -> bool {
 /// Met (ou retire) notre option de lancement pour ces jeux, dans tous les
 /// comptes Steam. Refusé si Steam est lancé.
 pub fn set_wrapped(root: &Path, proc_dir: &Path, app_ids: &[u32], wrapped: bool) -> CoreResult<usize> {
+    if wrapped && is_flatpak(root) {
+        return Err(CoreError::message(t(
+            "Steam est installé en Flatpak : un jeu ne pourrait pas lancer Last1 Panel depuis son bac à sable. Installez Steam par le paquet de CachyOS (steam).",
+            "Steam is installed as a Flatpak: a game could not start Last1 Panel from its sandbox. Install Steam from the CachyOS package (steam).",
+        )));
+    }
     if is_running(proc_dir) {
         return Err(CoreError::message(t(
             "Fermez Steam d'abord (menu Steam > Quitter) : il remplacerait ce réglage en se fermant.",
@@ -312,6 +324,20 @@ mod tests {
         assert_eq!(unwrap(&wrap("PROTON_LOG=1 %command% -dx12")), "PROTON_LOG=1 %command% -dx12");
         assert_eq!(unwrap(&wrap("")), "");
         assert_eq!(unwrap(&wrap("-novid")), "%command% -novid");
+        // Les espaces de l'utilisateur ne bougent pas.
+        assert_eq!(unwrap(&wrap(r#"%command% -name "a  b""#)), r#"%command% -name "a  b""#);
+    }
+
+    #[test]
+    fn flatpak_steam_is_refused() {
+        let home = tempfile::tempdir().unwrap();
+        let root = home.path().join(".var/app/com.valvesoftware.Steam/data/Steam");
+        fs::create_dir_all(root.join("steamapps")).unwrap();
+        assert_eq!(find_root(home.path()).as_deref(), Some(root.as_path()));
+        assert!(is_flatpak(&root));
+        let error = set_wrapped(&root, home.path(), &[570], true).unwrap_err().to_string();
+        assert!(error.contains("Flatpak"), "{error}");
+        assert!(!is_flatpak(&home.path().join(".local/share/Steam")));
     }
 
     #[test]

@@ -38,6 +38,10 @@ pub struct Features {
 
 pub trait DisplayBackend: Send + Sync {
     fn features(&self) -> Features;
+    /// L'échelle que le bureau appliquera vraiment pour ce mode.
+    fn normalize_scale(&self, _mode: Option<&model::Mode>, scale: f64) -> f64 {
+        scale
+    }
     /// Sorties branchées.
     fn outputs(&self) -> CoreResult<Vec<Output>>;
     /// Applique tous les changements d'un coup.

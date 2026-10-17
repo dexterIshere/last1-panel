@@ -186,20 +186,39 @@ pub fn sort_modes(modes: &mut Vec<Mode>) {
     modes.dedup();
 }
 
-/// Positions après un changement de taille : les écrans qui se touchaient
-/// côte à côte (gauche à droite) se touchent encore, sans chevauchement ni
-/// trou. Les autres gardent leur position.
+/// Positions après un changement de taille : un écran qui touchait le bord
+/// droit (ou bas) d'un voisin, en face de lui, le touche encore, sans
+/// chevauchement ni trou. Un écran déplacé à la main garde sa position.
 pub fn relayout(before: &[Output], after: &mut [Output]) {
-    let mut order: Vec<usize> = (0..after.len()).filter(|&i| after[i].enabled).collect();
-    order.sort_by_key(|&i| (after[i].position.x, after[i].position.y));
-    for pair in order.windows(2) {
-        let (left, right) = (pair[0], pair[1]);
-        let old_left = before.iter().find(|o| o.name == after[left].name);
-        let old_right = before.iter().find(|o| o.name == after[right].name);
-        let (Some(old_left), Some(old_right)) = (old_left, old_right) else { continue };
-        let touching = old_left.position.x + old_left.logical_size().0 == old_right.position.x;
-        if touching && after[right].position == old_right.position {
-            after[right].position.x = after[left].position.x + after[left].logical_size().0;
+    fn overlap(a: (i32, i32), b: (i32, i32)) -> bool {
+        a.0 < b.0 + b.1 && b.0 < a.0 + a.1
+    }
+    for horizontal in [true, false] {
+        let mut order: Vec<usize> = (0..after.len()).filter(|&i| after[i].enabled).collect();
+        order.sort_by_key(|&i| if horizontal { after[i].position.x } else { after[i].position.y });
+        for i in order {
+            let Some(old) = before.iter().find(|o| o.name == after[i].name) else { continue };
+            let moved =
+                if horizontal { after[i].position.x != old.position.x } else { after[i].position.y != old.position.y };
+            if moved {
+                continue;
+            }
+            let (ow, oh) = old.logical_size();
+            let neighbour = before.iter().filter(|n| n.enabled && n.name != old.name).find(|n| {
+                let (nw, nh) = n.logical_size();
+                if horizontal {
+                    n.position.x + nw == old.position.x && overlap((n.position.y, nh), (old.position.y, oh))
+                } else {
+                    n.position.y + nh == old.position.y && overlap((n.position.x, nw), (old.position.x, ow))
+                }
+            });
+            let Some(next) = neighbour.and_then(|n| after.iter().find(|o| o.name == n.name)).cloned() else { continue };
+            let (nw, nh) = next.logical_size();
+            if horizontal {
+                after[i].position.x = next.position.x + nw;
+            } else {
+                after[i].position.y = next.position.y + nh;
+            }
         }
     }
 }
@@ -309,6 +328,41 @@ pub(crate) mod tests {
         assert_eq!(changes[0].mode, Some(Mode::new(1920, 1080, 144.0)));
         assert_eq!(changes[1].position, Some(Position { x: 1920, y: 0 }));
         assert_eq!(changes[1].mode, None);
+    }
+
+    /// Écran DP-1 (0,0), portable eDP-1 dessous (0,1440), HDMI-A-1 à droite de DP-1.
+    fn three_screens() -> Vec<Output> {
+        let mut laptop = output("eDP-1", 0, 2560, 1600, 1.0);
+        laptop.position.y = 1440;
+        vec![output("DP-1", 0, 2560, 1440, 1.0), laptop, output("HDMI-A-1", 2560, 1920, 1080, 1.0)]
+    }
+
+    #[test]
+    fn only_facing_neighbours_follow() {
+        // Portable plus étroit : HDMI-A-1 n'est pas en face de lui, il ne bouge pas.
+        let before = three_screens();
+        let mut after = before.clone();
+        after[1].current_mode = Some(Mode::new(1920, 1200, 60.0));
+        relayout(&before, &mut after);
+        assert_eq!(after[2].position, Position { x: 2560, y: 0 });
+
+        // DP-1 plus étroit : HDMI-A-1 le suit, le portable reste dessous et
+        // DP-1, moins haut, laisse le portable remonter contre lui.
+        let mut after = before.clone();
+        after[0].current_mode = Some(Mode::new(1920, 1080, 60.0));
+        relayout(&before, &mut after);
+        assert_eq!(after[2].position, Position { x: 1920, y: 0 });
+        assert_eq!(after[1].position, Position { x: 0, y: 1080 });
+    }
+
+    #[test]
+    fn moved_screens_keep_their_position() {
+        let before = three_screens();
+        let mut after = before.clone();
+        after[0].current_mode = Some(Mode::new(1920, 1080, 60.0));
+        after[2].position = Position { x: 4000, y: 0 };
+        relayout(&before, &mut after);
+        assert_eq!(after[2].position, Position { x: 4000, y: 0 });
     }
 
     #[test]

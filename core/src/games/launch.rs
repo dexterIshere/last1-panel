@@ -59,8 +59,22 @@ impl Plan {
             }
             out.push(("DXVK_CONFIG".into(), value));
         }
-        if !self.mangohud.is_empty() && existing("MANGOHUD_CONFIG").is_none() {
-            out.push(("MANGOHUD_CONFIG".into(), self.mangohud.join(",")));
+        if !self.mangohud.is_empty() {
+            // Configuration de l'utilisateur d'abord, nos clés ensuite (sauf
+            // « cacher » : s'il a sa configuration, il veut voir MangoHud).
+            let value = match existing("MANGOHUD_CONFIG").filter(|v| !v.trim().is_empty()) {
+                Some(user) => {
+                    let ours: Vec<&str> = self
+                        .mangohud
+                        .iter()
+                        .map(String::as_str)
+                        .filter(|o| *o != "no_display" && *o != "read_cfg")
+                        .collect();
+                    if ours.is_empty() { user } else { format!("{user},{}", ours.join(",")) }
+                }
+                None => self.mangohud.join(","),
+            };
+            out.push(("MANGOHUD_CONFIG".into(), value));
         }
         out
     }
@@ -307,6 +321,14 @@ mod tests {
         );
         assert!(get(&vars, "PROTON_ENABLE_WAYLAND").is_none(), "déjà posée par l'utilisateur");
         assert_eq!(get(&vars, "DXVK_HDR").as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn user_mangohud_config_keeps_our_limiter() {
+        let limited = GameProfile { fps_limit: Some(60), ..Default::default() };
+        let plan = plan(&limited, &ctx(false, true, &["mangohud"]));
+        let vars = plan.environment(|name| (name == "MANGOHUD_CONFIG").then(|| "fps,frametime".to_string()));
+        assert_eq!(get(&vars, "MANGOHUD_CONFIG").as_deref(), Some("fps,frametime,fps_limit=60"));
     }
 
     #[test]

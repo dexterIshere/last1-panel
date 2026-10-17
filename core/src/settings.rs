@@ -70,18 +70,30 @@ impl Settings {
 
     /// Écrit à côté puis remplace : un lancement de jeu au même moment lit
     /// l'ancien fichier ou le nouveau, jamais un fichier à moitié écrit.
-    pub fn save_to(&self, path: &Path) -> CoreResult<()> {
+    /// Fichier temporaire propre au processus (fenêtre et service écrivent).
+    fn save_to(&self, path: &Path) -> CoreResult<()> {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir)?;
         }
-        let temporary = path.with_extension("json.new");
+        let temporary = path.with_extension(format!("json.{}.new", std::process::id()));
         fs::write(&temporary, serde_json::to_string_pretty(self).expect("réglages sérialisables") + "\n")?;
         fs::rename(&temporary, path)?;
         Ok(())
     }
 
-    pub fn save(&self) -> CoreResult<()> {
-        self.save_to(&Self::path())
+    /// Lit, modifie et réécrit les réglages sous un verrou de fichier : deux
+    /// écritures en même temps (couleurs et vibrance, fenêtre et service de
+    /// session) ne s'effacent jamais l'une l'autre.
+    pub fn update<T>(path: &Path, change: impl FnOnce(&mut Settings) -> T) -> CoreResult<T> {
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        let lock = fs::OpenOptions::new().create(true).truncate(false).write(true).open(path.with_extension("lock"))?;
+        lock.lock()?;
+        let mut settings = Self::load_from(path);
+        let result = change(&mut settings);
+        settings.save_to(path)?;
+        Ok(result)
     }
 }
 
@@ -106,8 +118,27 @@ mod tests {
                 previous_profile: None,
             },
         );
-        settings.save_to(&path).unwrap();
+        Settings::update(&path, |saved| *saved = settings.clone()).unwrap();
         assert_eq!(Settings::load_from(&path), settings);
+    }
+
+    #[test]
+    fn concurrent_updates_keep_every_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let threads: Vec<_> = (0..8)
+            .map(|i| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    Settings::update(&path, |s| {
+                        s.outputs.entry(format!("DP-{i}")).or_default().vibrance = Some(f64::from(i));
+                    })
+                    .unwrap();
+                })
+            })
+            .collect();
+        threads.into_iter().for_each(|t| t.join().unwrap());
+        assert_eq!(Settings::load_from(&path).outputs.len(), 8);
     }
 
     #[test]
