@@ -1,0 +1,32 @@
+[package]
+name = "last1-panel-core"
+description = "Réglages GPU et écran de Last1 Panel, sans interface"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+name = "last1_panel_core"
+
+# Outil en ligne de commande : réglages réappliqués à la connexion
+# (`last1-panel-cli apply`) et lanceur des jeux (`last1-panel-cli run %command%`).
+# Sans GTK ni WebKit : un jeu se lance même si la fenêtre ne peut pas s'ouvrir.
+[[bin]]
+name = "last1-panel-cli"
+path = "src/bin/cli.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+log.workspace = true
+# Profils ICC (courbes de calibration VCGT) : la bibliothèque de couleur que
+# KWin et Hyprland utilisent eux-mêmes pour les lire.
+lcms2 = "6.2"
+
+[dev-dependencies]
+tempfile = "3"

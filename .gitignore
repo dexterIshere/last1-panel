@@ -1,0 +1,8 @@
+/target/
+/node_modules/
+/build/
+/.svelte-kit/
+/src-tauri/gen/
+/packaging/arch/*.pkg.tar.zst
+/packaging/arch/src/
+/packaging/arch/pkg/

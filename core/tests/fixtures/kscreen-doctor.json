@@ -1,0 +1,163 @@
+{
+    "outputs": [
+        {
+            "brightness": 0.6,
+            "clones": [],
+            "connected": true,
+            "currentModeId": "1",
+            "enabled": true,
+            "followPreferredMode": false,
+            "iccProfilePath": "",
+            "icon": "",
+            "id": 1,
+            "maxBpc": 0,
+            "modes": [
+                {
+                    "id": "1",
+                    "name": "2560x1600@165",
+                    "refreshRate": 165,
+                    "size": {
+                        "height": 1600,
+                        "width": 2560
+                    }
+                },
+                {
+                    "id": "2",
+                    "name": "2560x1600@60",
+                    "refreshRate": 60.00199890136719,
+                    "size": {
+                        "height": 1600,
+                        "width": 2560
+                    }
+                },
+                {
+                    "id": "3",
+                    "name": "1920x1200@60",
+                    "refreshRate": 59.95000076293945,
+                    "size": {
+                        "height": 1200,
+                        "width": 1920
+                    }
+                }
+            ],
+            "name": "eDP-1",
+            "pos": {
+                "x": 0,
+                "y": 0
+            },
+            "preferredModes": [
+                "1"
+            ],
+            "priority": 1,
+            "replicationSource": 0,
+            "rotation": 1,
+            "scale": 1.25,
+            "size": {
+                "height": 1600,
+                "width": 2560
+            },
+            "sizeMM": {
+                "height": 215,
+                "width": 344
+            },
+            "type": 7,
+            "vrrPolicy": 2
+        },
+        {
+            "clones": [],
+            "connected": true,
+            "currentModeId": "4",
+            "ddcCiAllowed": true,
+            "edrPolicy": 1,
+            "enabled": true,
+            "followPreferredMode": false,
+            "hdr": false,
+            "iccProfilePath": "/home/user/.local/share/icc/DP-2.icc",
+            "icon": "",
+            "id": 2,
+            "maxBpc": 10,
+            "modes": [
+                {
+                    "id": "4",
+                    "name": "3840x2160@144",
+                    "refreshRate": 143.9810028076172,
+                    "size": {
+                        "height": 2160,
+                        "width": 3840
+                    }
+                },
+                {
+                    "id": "5",
+                    "name": "3840x2160@120",
+                    "refreshRate": 119.98200225830078,
+                    "size": {
+                        "height": 2160,
+                        "width": 3840
+                    }
+                },
+                {
+                    "id": "6",
+                    "name": "3840x2160@60",
+                    "refreshRate": 59.99700164794922,
+                    "size": {
+                        "height": 2160,
+                        "width": 3840
+                    }
+                },
+                {
+                    "id": "7",
+                    "name": "3840x2160@60",
+                    "refreshRate": 60,
+                    "size": {
+                        "height": 2160,
+                        "width": 3840
+                    }
+                }
+            ],
+            "name": "DP-2",
+            "overscan": 0,
+            "pos": {
+                "x": 2048,
+                "y": 0
+            },
+            "preferredModes": [
+                "7"
+            ],
+            "priority": 2,
+            "replicationSource": 0,
+            "rgbRange": 0,
+            "rotation": 1,
+            "scale": 1.5,
+            "sdr-brightness": 200,
+            "size": {
+                "height": 2160,
+                "width": 3840
+            },
+            "sizeMM": {
+                "height": 336,
+                "width": 597
+            },
+            "type": 14,
+            "vrrPolicy": 2,
+            "wcg": false
+        }
+    ],
+    "screen": {
+        "currentSize": {
+            "height": 1600,
+            "width": 4608
+        },
+        "id": 0,
+        "maxActiveOutputsCount": 2,
+        "maxSize": {
+            "height": 64000,
+            "width": 64000
+        },
+        "minSize": {
+            "height": 0,
+            "width": 0
+        }
+    },
+    "tabletModeAvailable": false,
+    "tabletModeEngaged": false
+}
