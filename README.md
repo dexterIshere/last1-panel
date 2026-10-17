@@ -33,10 +33,15 @@ l'outil : choisir RVB ou YCbCr, plage complète ou limitée, l'overscan.
 
 ## Installer
 
-go-to-linux l'installe d'office sous CachyOS et le tient à jour. Sinon, sur
-Arch ou CachyOS : téléchargez le paquet sur [last1.fun](https://last1.fun/last1-panel)
-(gratuit, sans compte), puis `sudo pacman -U last1-panel-*.pkg.tar.zst` (LACT
-et les bibliothèques viennent des dépôts officiels ; nvibrant est inclus).
+go-to-linux l'installe d'office sous CachyOS. Sinon, sur Arch ou CachyOS :
+
+```sh
+paru -S last1-panel-bin   # AUR, binaires déjà compilés
+```
+
+ou le paquet de la [dernière release](https://github.com/dexterIshere/last1-panel/releases/latest) :
+`sudo pacman -U last1-panel-*.pkg.tar.zst`. LACT et les bibliothèques viennent
+des dépôts officiels ; nvibrant est inclus. Page : [last1.fun/last1-panel](https://last1.fun/last1-panel).
 
 ## Réglages 3D des jeux
 
@@ -63,8 +68,13 @@ paramètres d'adresse : `?bureau=plasma`, `?carte=amd`, `?lact=arrete`,
 
 Paquet Arch : `packaging/arch/build.sh <version> <dossier>` (PKGBUILD dans
 `packaging/arch/`). À chaque commit sur `main`, la CI construit le paquet dans
-un conteneur Arch et le publie sur last1.fun (`tools/publish-release.sh`,
-jeton OIDC de GitHub, aucun secret).
+un conteneur Arch. Pour publier une version, changez `version` dans
+`Cargo.toml` : la CI crée la release GitHub `v<version>` (paquet et archive
+des binaires, `packaging/aur/archive.sh`), puis pousse `last1-panel-bin` sur
+l'AUR (`packaging/aur/publish.sh`, clé SSH du compte AUR dans le secret
+`AUR_SSH_PRIVATE_KEY` ; sans lui, l'étape est sautée avec un avertissement).
+Une fois la clé ajoutée, relancez la CI à la main (« Run workflow ») pour
+publier la version déjà sortie.
 
 Le cœur (`core/`) ne dépend ni de GTK ni de WebKit : `cargo test -p last1-panel-core`
 suffit pour travailler sur les réglages.
