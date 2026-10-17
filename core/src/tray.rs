@@ -106,7 +106,7 @@ static PIXMAP: LazyLock<Vec<ksni::Icon>> = LazyLock::new(|| {
         return Vec::new();
     }
     // ARGB32, octets de poids fort en premier.
-    let data = rgba[..info.buffer_size()].chunks_exact(4).flat_map(|p| [p[3], p[0], p[1], p[2]]).collect();
+    let data = rgba[..info.buffer_size()].as_chunks::<4>().0.iter().flat_map(|p| [p[3], p[0], p[1], p[2]]).collect();
     vec![ksni::Icon { width: info.width as i32, height: info.height as i32, data }]
 });
 
