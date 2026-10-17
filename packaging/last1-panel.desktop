@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Last1 Panel
+GenericName=GPU and display settings
+GenericName[fr]=Réglages carte graphique et écran
+Comment=Screen colors, digital vibrance, display modes, GPU tuning and per-game 3D settings
+Comment[fr]=Couleurs de l'écran, vibrance, affichage, carte graphique et réglages 3D des jeux
+Exec=last1-panel
+Icon=last1-panel
+Terminal=false
+Categories=Settings;HardwareSettings;Game;
+Keywords=nvidia;amd;gamma;vibrance;color;display;monitor;gpu;overclock;fan;dlss;fps;écran;couleur;
+StartupWMClass=last1-panel

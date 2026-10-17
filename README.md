@@ -31,6 +31,19 @@ l'outil : choisir RVB ou YCbCr, plage complète ou limitée, l'overscan.
 - **Hyprland** (bureau « Signal » de go-to-linux) ;
 - **KDE Plasma 6** en session Wayland.
 
+## Installer
+
+Sur Arch ou CachyOS, depuis l'AUR : `paru -S last1-panel` (avec `lact` pour
+la carte graphique, et `nvibrant-bin` pour la vibrance NVIDIA). go-to-linux
+l'installe d'office.
+
+## Réglages 3D des jeux
+
+Chaque jeu Steam réglé dans Last1 Panel est lancé par
+`last1-panel-cli run %command%` (option de lancement mise par Last1 Panel,
+Steam fermé). Le détail des variables posées est dans
+[docs/DESIGN.md](docs/DESIGN.md#réglages-3d--ce-que-pose-le-lanceur).
+
 ## Construire
 
 Il faut Rust (1.90 ou plus récent), [Bun](https://bun.sh) et les bibliothèques
@@ -38,9 +51,17 @@ de Tauri (`webkit2gtk-4.1`, `gtk3`) et `lcms2`.
 
 ```sh
 bun install
-bun run tauri build      # fenêtre : target/release/last1-panel
-cargo test --workspace   # tests
+bun run tauri build --no-bundle   # target/release/last1-panel et last1-panel-cli
+cargo test --workspace            # tests
+bun run dev                       # interface dans un navigateur, PC simulé
 ```
+
+`bun run dev` hors de Tauri simule un PC (Hyprland, RTX 4070, deux écrans) ;
+paramètres d'adresse : `?bureau=plasma`, `?carte=amd`, `?lact=arrete`,
+`?steam=ouvert`, `?page=display|gpu|games`.
+
+Paquet Arch : `packaging/arch/PKGBUILD`. Pour chaque tag `vX.Y.Z`, la CI
+joint le paquet compilé à la version GitHub.
 
 Le cœur (`core/`) ne dépend ni de GTK ni de WebKit : `cargo test -p last1-panel-core`
 suffit pour travailler sur les réglages.

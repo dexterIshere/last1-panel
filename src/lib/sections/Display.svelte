@@ -148,9 +148,11 @@
   )}
 >
   {#snippet actions()}
-    <button class="btn btn--primary" onclick={apply} disabled={!changed || applying || !!features?.readOnly}>
-      {#if applying}<Spinner />{/if}{t("Appliquer", "Apply")}
-    </button>
+    {#if outputs.length > 0}
+      <button class="btn btn--primary" onclick={apply} disabled={!changed || applying || !!features?.readOnly}>
+        {#if applying}<Spinner />{/if}{t("Appliquer", "Apply")}
+      </button>
+    {/if}
   {/snippet}
 </SectionHeader>
 

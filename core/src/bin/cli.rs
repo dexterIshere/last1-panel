@@ -2,16 +2,22 @@
 //!
 //!   last1-panel-cli run <commande du jeu…>   lanceur des jeux (option Steam
 //!                                            « last1-panel-cli run %command% »)
-//!   last1-panel-cli apply [--delay S]        réglages remis à la connexion
+//!   last1-panel-cli apply [--delay S]        réglages remis maintenant
 //!                                            (vibrance, profils de couleur)
+//!   last1-panel-cli watch                    service de la session : réglages
+//!                                            remis à la connexion, puis à
+//!                                            chaque écran branché ou rallumé
 
 use last1_panel_core::games::launch::{self, Context};
 use last1_panel_core::i18n::{self, t};
 use last1_panel_core::panel::Panel;
 use last1_panel_core::settings::Settings;
 use last1_panel_core::system::gpu::{self, SysPaths, Vendor};
+use std::io::{BufRead, BufReader};
 use std::os::unix::process::CommandExt;
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
+use std::sync::mpsc;
+use std::time::Duration;
 
 fn main() -> ExitCode {
     i18n::init_from_env();
@@ -19,12 +25,13 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         Some("run") => run(&args[1..]),
         Some("apply") => apply(&args[1..]),
+        Some("watch") => watch(),
         _ => {
             eprintln!(
                 "{}",
                 t(
-                    "Utilisation : last1-panel-cli run <commande du jeu…> | last1-panel-cli apply [--delay secondes]",
-                    "Usage: last1-panel-cli run <game command…> | last1-panel-cli apply [--delay seconds]",
+                    "Utilisation : last1-panel-cli run <commande du jeu…> | apply [--delay secondes] | watch",
+                    "Usage: last1-panel-cli run <game command…> | apply [--delay seconds] | watch",
                 )
             );
             ExitCode::from(2)
@@ -86,16 +93,63 @@ fn log_launch(command: &[String], env: &[(String, String)], wrappers: &[String])
 }
 
 fn apply(args: &[String]) -> ExitCode {
-    // À la connexion, le pilote et le bureau ne sont pas toujours prêts tout
-    // de suite (nvibrant le signale) : attente demandée par --delay.
     if let Some(index) = args.iter().position(|a| a == "--delay")
         && let Some(seconds) = args.get(index + 1).and_then(|s| s.parse::<u64>().ok())
     {
-        std::thread::sleep(std::time::Duration::from_secs(seconds.min(60)));
+        std::thread::sleep(Duration::from_secs(seconds.min(60)));
     }
-    let problems = Panel::system().apply_saved();
-    for problem in &problems {
-        eprintln!("last1-panel-cli apply : {problem}");
+    if apply_until_ready(&Panel::system(), 10) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+}
+
+/// Réglages remis ; un écran pas encore allumé par le bureau (juste après la
+/// connexion, ou au réveil) est réessayé toutes les 3 s.
+fn apply_until_ready(panel: &Panel, tries: u32) -> bool {
+    for attempt in 1..=tries {
+        let problems = panel.apply_saved();
+        if problems.is_empty() {
+            return true;
+        }
+        if attempt == tries {
+            for problem in &problems {
+                eprintln!("last1-panel-cli : {problem}");
+            }
+        }
+        std::thread::sleep(Duration::from_secs(3));
     }
-    if problems.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    false
+}
+
+/// Service de la session (last1-panel-apply.service) : la vibrance NVIDIA
+/// est perdue au redémarrage et quand un écran est rebranché ; elle est
+/// remise à la connexion puis à chaque événement des cartes graphiques
+/// (`udevadm monitor`, sous-système drm).
+fn watch() -> ExitCode {
+    let panel = Panel::system();
+    std::thread::sleep(Duration::from_secs(3));
+    apply_until_ready(&panel, 20);
+    let child = Command::new("udevadm")
+        .args(["monitor", "--kernel", "--subsystem-match=drm"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn();
+    let Ok(mut child) = child else {
+        eprintln!("last1-panel-cli watch : udevadm introuvable, réglages remis une seule fois");
+        return ExitCode::SUCCESS;
+    };
+    let (events, received) = mpsc::channel();
+    let stdout = child.stdout.take().expect("stdout demandé");
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if line.contains(" change ") && events.send(()).is_err() {
+                break;
+            }
+        }
+    });
+    // Un branchement donne plusieurs événements : on attend qu'ils cessent.
+    while received.recv().is_ok() {
+        while received.recv_timeout(Duration::from_secs(2)).is_ok() {}
+        apply_until_ready(&panel, 5);
+    }
+    let _ = child.kill();
+    ExitCode::SUCCESS
 }

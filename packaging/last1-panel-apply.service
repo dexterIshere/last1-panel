@@ -1,0 +1,14 @@
+# Réglages de Last1 Panel remis à chaque connexion : la vibrance NVIDIA est
+# perdue au redémarrage et quand un écran est rebranché (docs/DESIGN.md).
+# Activé pour tous les comptes par le paquet ; sans réglage, il ne fait rien.
+[Unit]
+Description=Last1 Panel : vibrance et couleurs des écrans
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/last1-panel-cli watch
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

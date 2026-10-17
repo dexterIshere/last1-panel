@@ -39,6 +39,9 @@ pub struct Port {
     pub kind: PortKind,
     /// Écran branché (nvibrant a pu régler la prise, ou a échoué dessus).
     pub connected: bool,
+    /// Branché mais refusé par le pilote : écran éteint ou pas encore allumé
+    /// par le bureau (juste après la connexion).
+    pub failed: bool,
 }
 
 /// Prises listées par nvibrant, dans l'ordre de ses arguments.
@@ -57,10 +60,10 @@ pub fn parse(stdout: &str) -> Vec<Port> {
                 "LVDS" => PortKind::Lvds,
                 _ => PortKind::Other,
             };
-            ports.push(Port { kind, connected: !line.ends_with("None") });
+            ports.push(Port { kind, connected: !line.ends_with("None"), failed: line.ends_with("Failed") });
         } else if line == "QueryConnector ioctl failed" || line == "QueryDpy ioctl failed" {
             // Prise comptée par nvibrant (elle prend un argument), mais illisible.
-            ports.push(Port { kind: PortKind::Other, connected: false });
+            ports.push(Port { kind: PortKind::Other, connected: false, failed: false });
         }
     }
     ports
@@ -158,10 +161,23 @@ pub fn apply(exec: &dyn Exec, gpu: &Gpu, gpu_index: usize, values: &BTreeMap<Str
         .map(|name| name.as_ref().and_then(|n| values.get(n)).map(|v| to_nvkms(*v)).unwrap_or(0).to_string())
         .collect();
     let second = run(args)?;
-    if second != ports {
+    let same = second.len() == ports.len()
+        && second.iter().zip(&ports).all(|(a, b)| a.kind == b.kind && a.connected == b.connected);
+    if !same {
         return Err(CoreError::message(t(
             "Les écrans ont changé pendant le réglage : réessayez.",
             "Screens changed while applying: try again.",
+        )));
+    }
+    let refused: Vec<&String> = names
+        .iter()
+        .zip(&second)
+        .filter_map(|(name, port)| name.as_ref().filter(|n| port.failed && values.contains_key(*n)))
+        .collect();
+    if let Some(name) = refused.first() {
+        return Err(CoreError::message(format!(
+            "{name} : {}",
+            t("écran pas encore prêt (éteint ou en cours d'allumage)", "screen not ready yet (off or starting)")
         )));
     }
     Ok(names.into_iter().flatten().filter(|name| values.contains_key(name)).collect())
@@ -220,14 +236,17 @@ mod tests {
     fn reads_ports_in_argument_order() {
         let ports = parse(OUTPUT);
         assert_eq!(ports.len(), 4);
-        assert_eq!(ports[0], Port { kind: PortKind::Hdmi, connected: true });
-        assert_eq!(ports[1], Port { kind: PortKind::Dp, connected: true });
+        assert_eq!(ports[0], Port { kind: PortKind::Hdmi, connected: true, failed: false });
+        assert_eq!(ports[1], Port { kind: PortKind::Dp, connected: true, failed: false });
         assert!(!ports[2].connected);
         // Une prise illisible prend quand même un argument.
         let odd = parse("Display 0:\nQueryConnector ioctl failed\n• (1, HDMI) • Set vibrance (    0) • Failed\n");
         assert_eq!(
             odd,
-            [Port { kind: PortKind::Other, connected: false }, Port { kind: PortKind::Hdmi, connected: true }]
+            [
+                Port { kind: PortKind::Other, connected: false, failed: false },
+                Port { kind: PortKind::Hdmi, connected: true, failed: true }
+            ]
         );
     }
 
@@ -265,6 +284,16 @@ mod tests {
         let card = gpu(&[("DP-1", true), ("DP-2", false), ("DP-3", false), ("HDMI-A-1", true)]);
         apply(&fake, &card, 0, &BTreeMap::from([("DP-1".to_string(), 50.0)])).unwrap();
         assert_eq!(fake.calls().len(), 1);
+    }
+
+    #[test]
+    fn screen_not_ready_is_an_error() {
+        let refused = OUTPUT
+            .replace("• (1, DP  ) • Set vibrance (    0) • Success", "• (1, DP  ) • Set vibrance (  614) • Failed");
+        let fake = FakeExec::new().on("env", &refused);
+        let card = gpu(&[("DP-1", true), ("DP-2", false), ("DP-3", false), ("HDMI-A-1", true)]);
+        let error = apply(&fake, &card, 0, &BTreeMap::from([("DP-1".to_string(), 80.0)])).unwrap_err().to_string();
+        assert!(error.starts_with("DP-1"), "{error}");
     }
 
     #[test]

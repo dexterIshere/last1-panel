@@ -130,6 +130,7 @@
   )}
 >
   {#snippet actions()}
+    {#if outputs.length > 0}
     <button class="btn" onclick={reset} disabled={!info || !!info.colorUnavailable || applying}>
       <RotateCcw size={16} />{t("Valeurs par défaut", "Defaults")}
     </button>
@@ -137,6 +138,7 @@
       <button class="btn btn--primary" onclick={apply} disabled={!dirty || applying || !!info?.colorUnavailable}>
         {#if applying}<Spinner />{/if}{t("Appliquer", "Apply")}
       </button>
+    {/if}
     {/if}
   {/snippet}
 </SectionHeader>

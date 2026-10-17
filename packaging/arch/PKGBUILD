@@ -1,0 +1,55 @@
+# Paquet Arch (AUR) de Last1 Panel, construit depuis les sources d'une version.
+# Mise à jour : pkgver, puis `updpkgsums` et `makepkg --printsrcinfo > .SRCINFO`.
+pkgname=last1-panel
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="GPU and display settings for Linux gaming on Wayland: screen colors, vibrance, display modes, GPU tuning, per-game 3D settings"
+arch=('x86_64')
+url="https://github.com/dexterIshere/last1-panel"
+license=('GPL-3.0-or-later')
+depends=('webkit2gtk-4.1' 'gtk3' 'lcms2' 'hicolor-icon-theme' 'systemd')
+makedepends=('cargo' 'bun')
+optdepends=(
+  'lact: graphics card power limit, fans and clocks'
+  'nvibrant-bin: NVIDIA digital vibrance (AUR)'
+  'mangohud: on-screen performance and frame limiter for native games'
+  'kscreen: KDE Plasma screen settings (kscreen-doctor)'
+)
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+  bun install --frozen-lockfile
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+  # Interface compilée et intégrée à l'exécutable (sans paquet Tauri), puis
+  # l'outil des jeux, sans GTK ni WebKit.
+  bun run tauri build --no-bundle -- --frozen
+  cargo build --frozen --release -p last1-panel-core --bin last1-panel-cli
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen --release -p last1-panel-core
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/last1-panel "$pkgdir/usr/bin/last1-panel"
+  install -Dm755 target/release/last1-panel-cli "$pkgdir/usr/bin/last1-panel-cli"
+  install -Dm644 packaging/last1-panel.desktop "$pkgdir/usr/share/applications/last1-panel.desktop"
+  install -Dm644 src-tauri/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/last1-panel.png"
+  install -Dm644 packaging/last1-panel-apply.service "$pkgdir/usr/lib/systemd/user/last1-panel-apply.service"
+  # Service de session actif pour tous les comptes.
+  install -dm755 "$pkgdir/usr/lib/systemd/user/default.target.wants"
+  ln -s ../last1-panel-apply.service "$pkgdir/usr/lib/systemd/user/default.target.wants/last1-panel-apply.service"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

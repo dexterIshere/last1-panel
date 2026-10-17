@@ -36,6 +36,42 @@ tous deux en Wayland.
 | Écrans | **`kscreen-doctor`** (Plasma), **`hyprctl` + `monitors.conf`** (Hyprland) | Les outils des bureaux eux-mêmes ; KWin garde ses réglages, Hyprland relit `monitors.conf`. |
 | Carte graphique | **Service LACT** (`lactd`, socket JSON) | Maintenu, NVIDIA (NVML), AMD et Intel ; courbes de ventilateurs tenues par le service ; changement confirmé sous 5 s, sinon annulé. |
 | Réglages 3D par jeu | **Option de lancement Steam `last1-panel-cli run %command%`**, écrite par Last1 Panel (Steam fermé) | Le lanceur lit nos réglages au lancement et pose les variables de Proton, DXVK, VKD3D-Proton, dxvk-nvapi, du pilote et de MangoHud. `dlss-swapper` et `game-performance` de CachyOS sont repris tels quels. |
+| Réglages remis à la connexion | **Service utilisateur `last1-panel-apply.service`** (`last1-panel-cli watch`), actif pour tous les comptes | La vibrance est perdue au redémarrage et au rebranchement d'un écran : remise à la connexion, puis à chaque événement DRM (`udevadm monitor`), réessayée tant que le bureau n'a pas allumé l'écran. Les profils ICC, eux, sont gardés par KWin et par monitors.conf. Le service ne dépend pas du bureau (Hyprland n'active pas graphical-session.target). |
+| Paquet | **AUR `last1-panel`** (sources d'un tag, `packaging/arch/PKGBUILD`) ; paquet compilé joint à chaque version GitHub par la CI | go-to-linux installe déjà ses applications de l'AUR avec paru (`data/linux-apps.json`) : une entrée suffit. `lact` (extra) et `nvibrant-bin` (AUR) en dépendances optionnelles. |
+
+## Réglages 3D : ce que pose le lanceur
+
+Vérifié dans les sources de chaque projet (octobre 2026). Une variable déjà
+posée par l'utilisateur dans l'option de lancement n'est jamais remplacée.
+
+| Réglage | Jeu par Proton | Jeu natif | Remarques |
+|---|---|---|---|
+| Images par seconde max. | `DXVK_CONFIG` : `dxgi.maxFrameRate`, `d3d9.maxFrameRate` ; `VKD3D_FRAME_RATE` | MangoHud caché (`fps_limit`, `no_display`) | `DXVK_FRAME_RATE` n'existe plus depuis DXVK 3.0. La DXGI de DXVK limite aussi le D3D12. |
+| V-Sync forcée | `dxgi.syncInterval`, `d3d9.presentInterval` ; `VKD3D_SWAPCHAIN_PRESENT_MODE` | NVIDIA : `__GL_SYNC_TO_VBLANK` ; Mesa : `vblank_mode`, `MESA_VK_WSI_PRESENT_MODE` | |
+| Faible latence | `dxgi.maxFrameLatency=1`, `d3d9.maxFrameLatency=1`, `VKD3D_SWAPCHAIN_LATENCY_FRAMES=1` | — | `__GL_MaxFramesAllowed` n'est documentée nulle part : pas utilisée. |
+| Ultra (Reflex) | + `DXVK_NVAPI_VKREFLEX=1` (jeux Vulkan) | idem | Les jeux D3D11 avec Reflex l'ont par dxvk-nvapi, actif d'office dans Proton. |
+| Filtrage anisotrope | `d3d11.samplerAnisotropy`, `d3d9.samplerAnisotropy` | NVIDIA : `__GL_LOG_MAX_ANISO` ; AMD : `RADV_TEX_ANISO` | Pas d'équivalent dans VKD3D-Proton (sauf RADV). |
+| DLSS dernière version | `dlss-swapper` de CachyOS (sinon ses variables : `PROTON_ENABLE_NGX_UPDATER`, `DXVK_NVAPI_DRS_NGX_DLSS_*`) | — | |
+| Indicateur DLSS | `PROTON_DLSS_INDICATOR=1` | — | Proton CachyOS. |
+| Smooth Motion | `NVPRESENT_ENABLE_SMOOTH_MOTION=1` | idem (Vulkan) | RTX 40 et plus récentes. |
+| HDR | `PROTON_ENABLE_WAYLAND=1`, `DXVK_HDR=1` ; désactivé : `DXVK_NO_HDR=1` | — | Proton CachyOS active le HDR seul quand c'est possible. |
+| Performances à l'écran | `mangohud` (configuration de l'utilisateur gardée : `read_cfg`) | idem | |
+| Mode performance | `game-performance` de CachyOS, sinon `gamemoderun` | idem | |
+
+Le dernier lancement est noté dans `~/.cache/last1-panel/last-launch.txt`
+(variables posées, commande), pour vérifier ce qu'un jeu a reçu.
+
+## Intégration à go-to-linux
+
+1. Ajouter Last1 Panel à `data/linux-apps.json` (paquets `last1-panel`,
+   `lact`, et `nvibrant-bin` pour les cartes NVIDIA) : paru l'installe au
+   premier démarrage, comme Vesktop et Spotify.
+2. Activer `lactd.service` à l'installation (sinon, la page « Carte graphique »
+   propose de l'activer, mot de passe demandé).
+3. Bureau Signal : un raccourci dans la barre (Waybar) vers `last1-panel`.
+4. `gtl-ecrans` ne touche plus aux écrans dès que monitors.conf ne commence
+   plus par « # gtl:auto » : Last1 Panel remplace cet en-tête à son premier
+   réglage, le choix de l'utilisateur gagne.
 
 ## Limites connues (Wayland, octobre 2026)
 
