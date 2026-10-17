@@ -12,11 +12,13 @@ export const neutralAdjust = (): ColorAdjust => ({
 });
 
 export function applyChannel(channel: Channel, x: number): number {
-  const contrast = (channel.contrast - 50) / 50 / 3;
-  const brightness = (channel.brightness - 50) / 50 / 3;
-  const slope = contrast > 0 ? 0.5 / (0.5 - contrast) : (0.5 + contrast) / 0.5;
-  const y = Math.min(1, Math.max(0, (x - 0.5) * slope + 0.5 + brightness));
-  return Math.pow(y, 1 / channel.gamma);
+  const contrast = (channel.contrast - 50) / 50;
+  const brightness = (channel.brightness - 50) / 50;
+  let offset = contrast > 0 ? (-contrast * 25.4) / 255 : (-contrast * 32) / 255;
+  const range = 1 + 2 * offset;
+  offset += (brightness * range) / 5;
+  const y = (x + offset) / range;
+  return y <= 0 ? 0 : Math.min(1, Math.pow(y, 1 / channel.gamma));
 }
 
 export const CHANNELS = ["red", "green", "blue"] as const;

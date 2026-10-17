@@ -2,10 +2,16 @@
 //! « Régler les paramètres de couleur du bureau » du panneau NVIDIA.
 //!
 //! Les valeurs se règlent comme sous Windows (luminosité et contraste à 50 %,
-//! gamma à 1,00 par défaut), pour que chacun retrouve ses réglages. Le calcul
-//! suit celui de nvidia-settings sous X11 : contraste autour du gris moyen,
-//! luminosité en décalage, puis gamma en puissance. Luminosité et contraste
-//! extrêmes déplacent d'un tiers de la plage, comme lui.
+//! gamma à 1,00 par défaut), et donnent la même courbe que là-bas, pour que
+//! chacun retrouve ses réglages : le calcul est celui de la rampe gamma de
+//! Windows tel que l'emploient les outils NVIDIA sous Windows (bibliothèque
+//! WindowsDisplayAPI, `DisplayGammaRamp`, LGPL-3.0, réécrit ici). Le contraste
+//! étire ou resserre la courbe autour du milieu (noir rogné d'au plus 10 %,
+//! ou relevé d'au plus 12,5 %), la luminosité la décale d'au plus un
+//! cinquième, puis le gamma en puissance. Celui de nvidia-settings sous X11,
+//! bien plus fort (contraste jusqu'à 3 fois la pente), écrasait les ombres :
+//! un contraste à 72 % sur le seul bleu, réglage courant sous Windows, y
+//! jaunissait toute l'image sombre.
 
 use serde::{Deserialize, Serialize};
 
@@ -62,15 +68,18 @@ impl Channel {
     /// Valeur de sortie (0 à 1) pour une entrée `x` (0 à 1).
     pub fn apply(&self, x: f64) -> f64 {
         let c = self.clamped();
-        // -1 à 1, puis la part de la plage déplacée (un tiers au maximum).
-        let contrast = (c.contrast - PERCENT_DEFAULT) / PERCENT_DEFAULT / 3.0;
-        let brightness = (c.brightness - PERCENT_DEFAULT) / PERCENT_DEFAULT / 3.0;
+        // -1 à 1.
+        let contrast = (c.contrast - PERCENT_DEFAULT) / PERCENT_DEFAULT;
+        let brightness = (c.brightness - PERCENT_DEFAULT) / PERCENT_DEFAULT;
 
-        // Contraste : pente autour du gris moyen. Plus fort, la pente monte
-        // jusqu'à 3 (0,5 / (0,5 − 1/3)) ; plus faible, elle descend à 1/3.
-        let slope = if contrast > 0.0 { 0.5 / (0.5 - contrast) } else { (0.5 + contrast) / 0.5 };
-        let y = ((x - 0.5) * slope + 0.5 + brightness).clamp(0.0, 1.0);
-        y.powf(1.0 / c.gamma)
+        // Contraste : début de la courbe déplacé (25,4 ou 32 points sur 255 au
+        // maximum), sa hauteur réduite ou agrandie d'autant aux deux bouts.
+        let mut offset = if contrast > 0.0 { -contrast * 25.4 / 255.0 } else { -contrast * 32.0 / 255.0 };
+        let range = 1.0 + 2.0 * offset;
+        // Luminosité : un cinquième de cette hauteur au maximum.
+        offset += brightness * range / 5.0;
+        let y = (x + offset) / range;
+        if y <= 0.0 { 0.0 } else { y.powf(1.0 / c.gamma).min(1.0) }
     }
 }
 
@@ -143,10 +152,10 @@ mod tests {
     }
 
     #[test]
-    fn brightness_shifts_by_up_to_a_third() {
-        assert!((channel(100.0, 50.0, 1.0).apply(0.0) - 1.0 / 3.0).abs() < 1e-12);
-        assert!((channel(0.0, 50.0, 1.0).apply(1.0) - 2.0 / 3.0).abs() < 1e-12);
-        assert!((channel(75.0, 50.0, 1.0).apply(0.5) - (0.5 + 1.0 / 6.0)).abs() < 1e-12);
+    fn brightness_shifts_by_up_to_a_fifth() {
+        assert!((channel(100.0, 50.0, 1.0).apply(0.0) - 0.2).abs() < 1e-12);
+        assert!((channel(0.0, 50.0, 1.0).apply(1.0) - 0.8).abs() < 1e-12);
+        assert!((channel(75.0, 50.0, 1.0).apply(0.5) - 0.6).abs() < 1e-12);
     }
 
     #[test]
@@ -155,10 +164,32 @@ mod tests {
         let weak = channel(50.0, 0.0, 1.0);
         assert!((strong.apply(0.5) - 0.5).abs() < 1e-12);
         assert!((weak.apply(0.5) - 0.5).abs() < 1e-12);
-        // Pente 3 au maximum, 1/3 au minimum.
-        assert!((strong.apply(0.6) - 0.8).abs() < 1e-9);
-        assert!((weak.apply(1.0) - (0.5 + 0.5 / 3.0)).abs() < 1e-9);
-        assert_eq!(strong.apply(0.9), 1.0);
+        // Au maximum, le noir rogné jusqu'à 25,4/255 ; au minimum, relevé à 32/319.
+        assert_eq!(strong.apply(25.0 / 255.0), 0.0);
+        assert!(strong.apply(26.0 / 255.0) > 0.0);
+        assert!((weak.apply(0.0) - 32.0 / 319.0).abs() < 1e-12);
+        assert!((weak.apply(1.0) - 287.0 / 319.0).abs() < 1e-12);
+    }
+
+    /// Réglages d'un guide Arc Raiders du panneau NVIDIA : tous les canaux à
+    /// 52 % / 47 % / 1,47, puis le bleu seul à 62 % / 72 % / 1,65. Sous
+    /// Windows, l'image s'éclaircit sans teinte : les ombres gardent leur bleu.
+    #[test]
+    fn guide_settings_brighten_without_a_yellow_cast() {
+        let all = channel(52.0, 47.0, 1.47);
+        let blue = channel(62.0, 72.0, 1.65);
+        // Valeurs de la rampe de Windows (DisplayGammaRamp), à 0,001 près.
+        for (x, want_all, want_blue) in [(0.1, 0.228, 0.262), (0.2, 0.349, 0.399), (0.5, 0.631, 0.695)] {
+            assert!((all.apply(x) - want_all).abs() < 1e-3, "tous {x}");
+            assert!((blue.apply(x) - want_blue).abs() < 1e-3, "bleu {x}");
+        }
+        // Ombres plus claires, et le bleu n'y tombe jamais loin sous les autres
+        // (dès 2 % : sous le noir quasi pur, l'écart ne se voit pas).
+        for i in 2..=20 {
+            let x = i as f64 / 100.0;
+            assert!(all.apply(x) > x);
+            assert!(blue.apply(x) > 0.9 * all.apply(x), "ombre {x}");
+        }
     }
 
     #[test]
