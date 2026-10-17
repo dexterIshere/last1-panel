@@ -7,7 +7,7 @@
 FROM debian:12
 
 ARG RUST_VERSION=1.97.1
-ARG BUN_VERSION=1.3.5
+ARG BUN_VERSION=1.4.2
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
