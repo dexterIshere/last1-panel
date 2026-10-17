@@ -16,6 +16,11 @@ use tauri::Manager;
 
 pub fn run() {
     last1_panel_core::i18n::init_from_env();
+    // Mise à jour par le service de session : la nouvelle AppImage s'installe
+    // (outil des jeux, nvibrant), sans fenêtre.
+    if std::env::args().nth(1).as_deref() == Some("--integrate") {
+        std::process::exit(integrate_only());
+    }
     if install::running_appimage().is_some() && Path::new(install::SYSTEM_BINARY).is_file() {
         hand_over_to_package();
     }
@@ -117,17 +122,38 @@ fn integrate_appimage() {
     }
 }
 
+/// `last1-panel --integrate` : installation seule, code de sortie 0 si faite.
+/// Le service qui l'a lancée se relance ensuite lui-même.
+fn integrate_only() -> i32 {
+    let (Some((appimage, appdir)), Some(layout)) = (install::running_appimage(), Layout::for_user()) else {
+        eprintln!("Last1 Panel : --integrate ne sert que depuis l'AppImage");
+        return 2;
+    };
+    match install::integrate(&appimage, &appdir, &layout) {
+        Ok(report) => {
+            if report.restart_service {
+                systemctl(&["daemon-reload"]);
+            }
+            0
+        }
+        Err(error) => {
+            eprintln!("Last1 Panel : installation impossible : {error}");
+            1
+        }
+    }
+}
+
 /// Service de session relu et relancé (nouvel outil, ou celui du paquet).
 fn restart_service() {
-    let exec = SystemExec::default();
-    let systemctl = |args: &[&str]| {
-        let args: Vec<String> = ["--user"].iter().chain(args).map(|arg| arg.to_string()).collect();
-        if let Err(error) = exec.run_ok("systemctl", &args) {
-            eprintln!("Last1 Panel : systemctl {} : {error}", args.join(" "));
-        }
-    };
     systemctl(&["daemon-reload"]);
     systemctl(&["restart", "last1-panel-apply.service"]);
+}
+
+fn systemctl(args: &[&str]) {
+    let args: Vec<String> = ["--user"].iter().chain(args).map(|arg| arg.to_string()).collect();
+    if let Err(error) = SystemExec::default().run_ok("systemctl", &args) {
+        eprintln!("Last1 Panel : systemctl {} : {error}", args.join(" "));
+    }
 }
 
 fn notify(message: &str) {

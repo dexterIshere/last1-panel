@@ -29,6 +29,8 @@ bun install --frozen-lockfile
 # l'AppImage, sans dépendre des bibliothèques du système. Aucun chemin local
 # (nom d'utilisateur) dans les exécutables.
 export LCMS2_STATIC=1 RUSTFLAGS="--remap-path-prefix=/work=."
+# Version de cette AppImage, pour sa mise à jour automatique (core/src/update.rs).
+export LAST1_PANEL_RELEASE=$VERSION
 cargo build --locked --release -p last1-panel-core --bin last1-panel-cli
 
 # nvibrant (MIT) : mêmes binaires et empreintes que packaging/arch/PKGBUILD.

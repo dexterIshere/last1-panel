@@ -16,3 +16,4 @@ pub mod paths;
 pub mod settings;
 pub mod system;
 pub mod tuning;
+pub mod update;

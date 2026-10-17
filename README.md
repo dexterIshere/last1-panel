@@ -38,8 +38,10 @@ téléchargez l'AppImage sur [last1.fun/last1-panel](https://last1.fun/last1-pan
 (gratuit, sans compte) et ouvrez-la, comme SoundFence : elle s'installe
 d'elle-même dans votre dossier (`~/.local/bin/last1-panel`, menu des
 applications, outil des jeux et nvibrant dans `~/.local/lib/last1-panel`,
-service de session qui remet les réglages à chaque connexion). Rouvrir une
-AppImage plus récente met tout à jour. Pour la carte graphique, un bouton
+service de session qui remet les réglages à chaque connexion). Elle se met
+ensuite à jour toute seule : chaque jour, le service vérifie la liste signée
+de last1.fun et installe la version plus récente (`last1-panel-cli update`
+le fait tout de suite). Pour la carte graphique, un bouton
 installe LACT (service du système, avec votre mot de passe). Si le paquet Arch
 est installé (`/usr/bin/last1-panel`), l'AppImage lui laisse la place.
 

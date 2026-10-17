@@ -47,3 +47,11 @@ pub fn user_lib_dir() -> PathBuf {
 pub fn cli() -> PathBuf {
     if Path::new(SYSTEM_CLI).is_file() { PathBuf::from(SYSTEM_CLI) } else { user_lib_dir().join("last1-panel-cli") }
 }
+
+/// Last1 Panel installé par le paquet Arch (go-to-linux le tient à jour).
+pub const SYSTEM_APP: &str = "/usr/bin/last1-panel";
+
+/// ~/.local/bin/last1-panel : l'AppImage installée pour l'utilisateur.
+pub fn user_appimage() -> PathBuf {
+    home().join(".local/bin/last1-panel")
+}

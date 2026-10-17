@@ -27,6 +27,11 @@ log.workspace = true
 # Profils ICC (courbes de calibration VCGT) : la bibliothèque de couleur que
 # KWin et Hyprland utilisent eux-mêmes pour les lire.
 lcms2 = "6.2"
+# Mise à jour de l'AppImage : liste signée par last1.fun (Ed25519, jetons en
+# base64url) et empreinte SHA-256 du fichier téléchargé.
+ed25519-dalek = "2"
+sha2 = "0.10"
+base64 = "0.22"
 
 [dev-dependencies]
 tempfile = "3"
