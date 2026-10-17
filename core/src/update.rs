@@ -8,7 +8,7 @@
 //! Rien quand le paquet Arch est installé : go-to-linux s'en charge.
 
 use crate::error::{CoreError, CoreResult};
-use crate::exec::Exec;
+use crate::exec::{Exec, SystemExec};
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signature, VerifyingKey};
@@ -19,6 +19,8 @@ use std::fs;
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::process::{Command, Stdio};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const SITE: &str = "https://last1.fun";
 const PRODUCT: &str = "last1-panel";
@@ -68,6 +70,33 @@ fn refused(detail: &str) -> CoreError {
 /// La mise à jour automatique concerne-t-elle cette installation ?
 pub fn enabled() -> bool {
     RELEASE.is_some() && !Path::new(crate::paths::SYSTEM_APP).exists() && crate::paths::user_appimage().is_file()
+}
+
+/// Heure actuelle, en secondes (expiration de la liste).
+pub fn now() -> i64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+}
+
+/// Installe `release` : l'AppImage est téléchargée (sauf si elle est déjà là,
+/// installation interrompue), puis lancée en `--integrate` : elle repose
+/// elle-même l'outil des jeux et nvibrant, sans fenêtre ; extraite le temps
+/// de l'installation, sans besoin de FUSE.
+pub fn install(release: &Release) -> CoreResult<()> {
+    let appimage = crate::paths::user_appimage();
+    if sha256(&appimage).ok().as_deref() != Some(release.appimage.sha256.as_str()) {
+        let exec = SystemExec { timeout: Duration::from_secs(3700), ..SystemExec::default() };
+        download(&exec, release, &appimage)?;
+    }
+    let mut command = Command::new(&appimage);
+    command.arg("--integrate").stdin(Stdio::null());
+    crate::exec::without_appimage_env(&mut command);
+    if !command.env("APPIMAGE_EXTRACT_AND_RUN", "1").status()?.success() {
+        return Err(CoreError::message(crate::i18n::t(
+            "la nouvelle version ne s'est pas installée",
+            "the new version did not install",
+        )));
+    }
+    Ok(())
 }
 
 /// Charge d'un jeton « charge.signature » (base64url) signé par `key`

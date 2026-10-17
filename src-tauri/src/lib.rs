@@ -63,6 +63,8 @@ pub fn run() {
             commands::games,
             commands::save_game_settings,
             commands::set_wrapped,
+            commands::update_available,
+            commands::install_update,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {
@@ -84,12 +86,7 @@ fn hand_over_to_package() -> ! {
     }
     let mut command = std::process::Command::new(install::SYSTEM_BINARY);
     command.args(std::env::args_os().skip(1));
-    for (key, value) in install::system_env() {
-        match value {
-            Some(value) => command.env(key, value),
-            None => command.env_remove(key),
-        };
-    }
+    last1_panel_core::exec::without_appimage_env(&mut command);
     let error = command.exec();
     eprintln!("Last1 Panel : {} introuvable : {error}", install::SYSTEM_BINARY);
     std::process::exit(1);
@@ -144,7 +141,7 @@ fn integrate_only() -> i32 {
 }
 
 /// Service de session relu et relancé (nouvel outil, ou celui du paquet).
-fn restart_service() {
+pub(crate) fn restart_service() {
     systemctl(&["daemon-reload"]);
     systemctl(&["restart", "last1-panel-apply.service"]);
 }

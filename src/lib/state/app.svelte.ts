@@ -11,12 +11,15 @@ class App {
   section = $state<Section>("colors");
   /** Erreur au démarrage (le reste de l'interface reste utilisable). */
   error = $state<string | null>(null);
+  /** Version plus récente sur last1.fun (installation par l'AppImage). */
+  update = $state<string | null>(null);
 
   async init(): Promise<void> {
     try {
       this.system = await api.systemInfo();
       i18n.lang = savedLang() ?? this.system.lang;
       await api.setLanguage(i18n.lang);
+      api.updateAvailable().then((version) => (this.update = version), () => undefined);
     } catch (error) {
       this.error = errorMessage(error);
     }

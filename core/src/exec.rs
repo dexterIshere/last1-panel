@@ -67,12 +67,7 @@ impl Exec for SystemExec {
         let path = self.which(program).ok_or_else(|| CoreError::MissingTool(program.to_string()))?;
         let mut command = Command::new(path);
         command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        for (key, value) in appimage_env(std::env::vars_os()) {
-            match value {
-                Some(value) => command.env(key, value),
-                None => command.env_remove(key),
-            };
-        }
+        without_appimage_env(&mut command);
         command.envs(self.env.iter().map(|(key, value)| (key, value)));
         let mut child = command.spawn()?;
         // Lecture dans des fils à part : une sortie plus grande que le tampon
@@ -143,6 +138,16 @@ pub fn appimage_env(vars: impl Iterator<Item = (OsString, OsString)>) -> Vec<(Os
         changes.push((key, (!kept.is_empty()).then(|| OsString::from(kept.join(":")))));
     }
     changes
+}
+
+/// `command` lancée sans les variables de l'AppImage (voir [`appimage_env`]).
+pub fn without_appimage_env(command: &mut Command) {
+    for (key, value) in appimage_env(std::env::vars_os()) {
+        match value {
+            Some(value) => command.env(key, value),
+            None => command.env_remove(key),
+        };
+    }
 }
 
 /// Recherche dans `PATH`, comme le shell.

@@ -14,6 +14,7 @@ use last1_panel_core::settings::{GamesSettings, Settings};
 use last1_panel_core::system::desktop::Desktop;
 use last1_panel_core::system::gpu::{Gpu, Vendor};
 use last1_panel_core::tuning::lact::{self, ClockRanges, Device, Lact, OffsetRange, Stats, Tuning};
+use last1_panel_core::update;
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Arc;
@@ -62,7 +63,7 @@ pub async fn system_info(panel: State<'_, Arc<Panel>>) -> Result<SystemInfo> {
     let panel = panel.inner().clone();
     blocking(move || {
         Ok(SystemInfo {
-            version: env!("CARGO_PKG_VERSION"),
+            version: last1_panel_core::update::RELEASE.unwrap_or(env!("CARGO_PKG_VERSION")),
             lang: if i18n::is_english() { "en" } else { "fr" },
             desktop: panel.desktop,
             features: panel.features(),
@@ -176,6 +177,43 @@ pub async fn gpu_try(panel: State<'_, Arc<Panel>>, id: String, tuning: Tuning) -
 #[tauri::command]
 pub async fn gpu_confirm(keep: bool) -> Result<()> {
     blocking(move || Lact::connect()?.confirm(keep)).await
+}
+
+/// Version plus récente publiée sur last1.fun, pour Last1 Panel installé par
+/// l'AppImage (le paquet Arch se met à jour par go-to-linux ou pacman).
+#[tauri::command]
+pub async fn update_available() -> Result<Option<String>> {
+    blocking(|| {
+        if !update::enabled() {
+            return Ok(None);
+        }
+        let exec = SystemExec { timeout: Duration::from_secs(90), ..SystemExec::default() };
+        Ok(update::check(&exec, update::now())?.map(|release| release.version))
+    })
+    .await
+}
+
+/// Installe la version plus récente, relance le service de session, puis
+/// rouvre Last1 Panel sur la nouvelle version.
+#[tauri::command]
+pub async fn install_update(app: tauri::AppHandle) -> Result<()> {
+    blocking(|| {
+        let exec = SystemExec { timeout: Duration::from_secs(90), ..SystemExec::default() };
+        if let Some(release) = update::check(&exec, update::now())? {
+            update::install(&release)?;
+            crate::restart_service();
+        }
+        // Nouvelle fenêtre une fois celle-ci fermée (une seule à la fois).
+        let mut command = std::process::Command::new("/bin/sh");
+        command.args(["-c", "sleep 1; exec \"$0\""]).arg(last1_panel_core::paths::user_appimage());
+        last1_panel_core::exec::without_appimage_env(&mut command);
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        command.stdin(std::process::Stdio::null()).spawn()?;
+        Ok(())
+    })
+    .await?;
+    app.exit(0);
+    Ok(())
 }
 
 /// Installe LACT s'il manque (pacman ; avec une mise à jour du système si

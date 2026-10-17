@@ -8,7 +8,6 @@
 //! Installé par le paquet Arch (go-to-linux le pose d'office), Last1 Panel est
 //! dans /usr/bin : l'AppImage lui passe alors la main sans rien installer.
 
-use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Read};
 use std::os::unix::fs::PermissionsExt;
@@ -27,6 +26,8 @@ const SERVICE_UNIT: &str = include_str!("../../packaging/last1-panel-apply.servi
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Layout {
     pub binary: PathBuf,
+    /// `last1-panel-cli` à côté, pour le terminal (lien vers l'outil des jeux).
+    pub command: PathBuf,
     pub desktop_entry: PathBuf,
     pub icon: PathBuf,
     /// Outil des jeux et nvibrant.
@@ -47,6 +48,7 @@ impl Layout {
     fn under(home: &Path, data: &Path, config: &Path) -> Self {
         Self {
             binary: home.join(".local/bin/last1-panel"),
+            command: home.join(".local/bin/last1-panel-cli"),
             desktop_entry: data.join("applications/last1-panel.desktop"),
             icon: data.join("icons/hicolor/512x512/apps/last1-panel.png"),
             lib: home.join(".local/lib/last1-panel"),
@@ -103,6 +105,10 @@ pub fn integrate(appimage: &Path, appdir: &Path, layout: &Layout) -> io::Result<
 
     let mut restart_service = sync_file(&appdir.join("usr/bin/last1-panel-cli"), &layout.cli(), 0o755)?;
     sync_dir(&appdir.join("usr/lib/last1-panel/nvibrant"), &layout.lib.join("nvibrant"))?;
+    if fs::read_link(&layout.command).ok() != Some(layout.cli()) {
+        let _ = fs::remove_file(&layout.command);
+        std::os::unix::fs::symlink(layout.cli(), &layout.command)?;
+    }
 
     write_if_changed(&layout.icon, ICON)?;
     write_if_changed(&layout.desktop_entry, desktop_entry(&layout.binary).as_bytes())?;
@@ -121,7 +127,9 @@ pub fn integrate(appimage: &Path, appdir: &Path, layout: &Layout) -> io::Result<
 /// jeux reste : des options de lancement Steam peuvent encore l'appeler.
 pub fn yield_to_package(layout: &Layout) -> io::Result<bool> {
     let mut removed = false;
-    for path in [&layout.desktop_entry, &layout.icon, &layout.unit_link(), &layout.unit(), &layout.binary] {
+    for path in
+        [&layout.desktop_entry, &layout.icon, &layout.unit_link(), &layout.unit(), &layout.command, &layout.binary]
+    {
         match fs::remove_file(path) {
             Ok(()) => removed = true,
             Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
@@ -129,12 +137,6 @@ pub fn yield_to_package(layout: &Layout) -> io::Result<bool> {
         }
     }
     Ok(removed)
-}
-
-/// Variables d'environnement pour lancer Last1 Panel du paquet depuis
-/// l'AppImage : sans celles de l'AppImage (bibliothèques et modules GTK).
-pub fn system_env() -> Vec<(OsString, Option<OsString>)> {
-    last1_panel_core::exec::appimage_env(std::env::vars_os())
 }
 
 fn desktop_entry(binary: &Path) -> String {
@@ -275,6 +277,7 @@ mod tests {
         assert!(unit.contains(&format!("ExecStart=\"{}\" watch", layout.cli().display())));
         assert!(!unit.contains("/usr/bin"));
         assert_eq!(fs::read_link(layout.unit_link()).unwrap(), PathBuf::from("../last1-panel-apply.service"));
+        assert_eq!(fs::read(&layout.command).unwrap(), b"cli v1", "commande du terminal");
 
         // Rouverte, ou lancée depuis le menu (la copie installée est sa source).
         assert_eq!(
@@ -303,7 +306,9 @@ mod tests {
         let (_dir, layout, appimage, appdir) = setup();
         integrate(&appimage, &appdir, &layout).unwrap();
         assert!(yield_to_package(&layout).unwrap());
-        for path in [&layout.binary, &layout.desktop_entry, &layout.icon, &layout.unit(), &layout.unit_link()] {
+        for path in
+            [&layout.binary, &layout.command, &layout.desktop_entry, &layout.icon, &layout.unit(), &layout.unit_link()]
+        {
             assert!(fs::symlink_metadata(path).is_err(), "{} reste", path.display());
         }
         // L'outil reste pour les options de lancement Steam déjà écrites.

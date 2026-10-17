@@ -10,19 +10,19 @@
 //!                                            AppImage tenue à jour
 //!   last1-panel-cli update                   AppImage mise à jour maintenant
 
-use last1_panel_core::error::{CoreError, CoreResult};
+use last1_panel_core::error::CoreResult;
 use last1_panel_core::exec::SystemExec;
 use last1_panel_core::games::launch::{self, Context};
 use last1_panel_core::i18n::{self, t};
 use last1_panel_core::panel::Panel;
 use last1_panel_core::settings::Settings;
 use last1_panel_core::system::gpu::{self, SysPaths, Vendor};
-use last1_panel_core::{paths, update};
+use last1_panel_core::update;
 use std::io::{BufRead, BufReader};
 use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 fn main() -> ExitCode {
     i18n::init_from_env();
@@ -234,28 +234,9 @@ fn update_now() -> ExitCode {
 
 /// Version installée, s'il y en avait une plus récente.
 fn update_appimage() -> CoreResult<Option<String>> {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
     let exec = SystemExec { timeout: Duration::from_secs(90), ..SystemExec::default() };
-    let Some(release) = update::check(&exec, now)? else { return Ok(None) };
-    let appimage = paths::user_appimage();
-    // Déjà téléchargée (installation interrompue) : seulement à installer.
-    if update::sha256(&appimage).ok().as_deref() != Some(release.appimage.sha256.as_str()) {
-        let exec = SystemExec { timeout: Duration::from_secs(3700), ..SystemExec::default() };
-        update::download(&exec, &release, &appimage)?;
-    }
-    // La nouvelle AppImage pose elle-même son outil des jeux et nvibrant, sans
-    // fenêtre ; extraite le temps de l'installation (pas besoin de FUSE).
-    let status = Command::new(&appimage)
-        .arg("--integrate")
-        .env("APPIMAGE_EXTRACT_AND_RUN", "1")
-        .stdin(Stdio::null())
-        .status()?;
-    if !status.success() {
-        return Err(CoreError::message(t(
-            "la nouvelle version ne s'est pas installée",
-            "the new version did not install",
-        )));
-    }
+    let Some(release) = update::check(&exec, update::now())? else { return Ok(None) };
+    update::install(&release)?;
     Ok(Some(release.version))
 }
 

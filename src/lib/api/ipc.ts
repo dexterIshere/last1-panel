@@ -43,6 +43,8 @@ export const api = {
   gpuConfirm: (keep: boolean) => invoke<void>("gpu_confirm", { keep }),
   /** Active le service LACT (pkexec, mot de passe demandé). */
   enableLact: () => invoke<void>("enable_lact"),
+  updateAvailable: () => invoke<string | null>("update_available"),
+  installUpdate: () => invoke<void>("install_update"),
 
   games: () => invoke<GamesInfo>("games"),
   saveGameSettings: (settings: GamesSettings) => invoke<void>("save_game_settings", { settings }),

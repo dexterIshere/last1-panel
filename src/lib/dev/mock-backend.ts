@@ -9,6 +9,7 @@
 //   ?steam=ouvert         Steam lancé (options de lancement bloquées)
 //   ?page=display|gpu|games   page affichée au démarrage
 //   ?lang=en              système en anglais
+//   ?maj=1                version plus récente sur last1.fun
 
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
@@ -230,6 +231,11 @@ export function installMockBackend(): void {
     gpu_confirm: (args) => {
       if (args.keep && pending) tuning = pending;
       pending = null;
+    },
+    update_available: () => (params.get("maj") ? "0.1.0.r12" : null),
+    install_update: async () => {
+      await wait(1500);
+      window.location.reload();
     },
     enable_lact: async () => {
       await wait(1200);

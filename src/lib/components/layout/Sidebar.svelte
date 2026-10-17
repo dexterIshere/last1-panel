@@ -1,6 +1,8 @@
 <!-- Barre latérale : marque, pages, carte graphique et bureau, langue. -->
 <script lang="ts">
   import Mark from "$lib/components/ui/Mark.svelte";
+  import Spinner from "$lib/components/ui/Spinner.svelte";
+  import { api, errorMessage } from "$lib/api/ipc";
   import { i18n, t, type Lang } from "$lib/i18n.svelte";
   import { app, type Section } from "$lib/state/app.svelte";
   import { Cpu, Gamepad2, Monitor, Palette } from "@lucide/svelte";
@@ -13,6 +15,21 @@
     { id: "gpu", title: t("Carte graphique", "Graphics card"), detail: t("Puissance, ventilateurs", "Power, fans"), icon: Cpu },
     { id: "games", title: t("Jeux", "Games"), detail: t("Réglages 3D par jeu", "Per-game 3D settings"), icon: Gamepad2 },
   ]);
+
+  let updating = $state(false);
+  let updateError = $state<string | null>(null);
+
+  /** Installe la nouvelle version ; Last1 Panel se rouvre dessus. */
+  async function installUpdate() {
+    updating = true;
+    updateError = null;
+    try {
+      await api.installUpdate();
+    } catch (e) {
+      updateError = errorMessage(e);
+      updating = false;
+    }
+  }
 
   const desktop = $derived(
     app.system?.desktop === "hyprland" ? "Hyprland" : app.system?.desktop === "plasma" ? "KDE Plasma" : t("Bureau non pris en charge", "Unsupported desktop"),
@@ -58,6 +75,12 @@
         {#if gpu.driver}<span class="pc__driver mono">{gpu.driver}{gpu.driverVersion ? ` ${gpu.driverVersion}` : ""}</span>{/if}
       </div>
     {/each}
+    {#if app.update}
+      <button class="btn btn--primary update" onclick={installUpdate} disabled={updating}>
+        {#if updating}<Spinner />{t("Mise à jour…", "Updating…")}{:else}{t(`Mettre à jour (${app.update})`, `Update (${app.update})`)}{/if}
+      </button>
+      {#if updateError}<p class="pc__meta update__error">{updateError}</p>{/if}
+    {/if}
     <p class="pc__meta mono">{desktop} · v{app.system?.version ?? "0.1.0"}</p>
   </div>
 </aside>
@@ -227,5 +250,13 @@
     padding: 0 var(--space-2);
     color: var(--color-text-faint);
     font-size: var(--text-2xs);
+  }
+
+  .update {
+    justify-content: center;
+  }
+
+  .update__error {
+    color: var(--color-danger);
   }
 </style>
