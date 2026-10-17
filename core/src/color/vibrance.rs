@@ -25,8 +25,17 @@ const PROGRAM: &str = "nvibrant";
 /// Binaires de nvibrant livrés avec Last1 Panel (variable pour les essais).
 const BUNDLED_DIR: &str = "/usr/lib/last1-panel/nvibrant";
 
-fn bundled_dir() -> PathBuf {
-    std::env::var_os("LAST1_PANEL_NVIBRANT_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(BUNDLED_DIR))
+/// Dossiers des binaires nvibrant, dans l'ordre : celui du paquet, celui posé
+/// par l'AppImage dans le dossier de l'utilisateur, celui de l'AppImage lancée.
+fn bundled_dirs() -> Vec<PathBuf> {
+    if let Some(dir) = std::env::var_os("LAST1_PANEL_NVIBRANT_DIR") {
+        return vec![PathBuf::from(dir)];
+    }
+    let mut dirs = vec![PathBuf::from(BUNDLED_DIR), crate::paths::user_lib_dir().join("nvibrant")];
+    if let Some(appdir) = std::env::var_os("APPDIR") {
+        dirs.push(PathBuf::from(appdir).join(BUNDLED_DIR.trim_start_matches('/')));
+    }
+    dirs
 }
 
 /// « 595.58.03 » → (595, 58, 3) pour comparer les versions du pilote.
@@ -55,7 +64,7 @@ pub fn bundled_binary(dir: &Path, driver: &str) -> Option<PathBuf> {
 /// Ce qui règle la vibrance pour ce pilote : binaire livré, sinon `nvibrant`.
 pub fn program(exec: &dyn Exec, driver: Option<&str>) -> Option<String> {
     driver
-        .and_then(|version| bundled_binary(&bundled_dir(), version))
+        .and_then(|version| bundled_dirs().iter().find_map(|dir| bundled_binary(dir, version)))
         .map(|path| path.to_string_lossy().into_owned())
         .or_else(|| exec.which(PROGRAM).map(|_| PROGRAM.to_string()))
 }

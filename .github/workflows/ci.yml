@@ -1,5 +1,7 @@
-# Tests à chaque push ; sur main, paquet Arch construit et publié sur last1.fun,
-# comme SoundFence : go-to-linux l'installe et le met à jour depuis last1.fun.
+# Tests à chaque push. Sur main, publiés ensemble sur last1.fun, comme
+# SoundFence : l'AppImage (téléchargée depuis la page, elle s'installe à sa
+# première ouverture) et le paquet Arch (installé et tenu à jour d'office par
+# go-to-linux sous CachyOS).
 name: CI
 
 on:
@@ -33,12 +35,36 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
 
-  # Paquet Arch construit dans un conteneur Arch et publié sur last1.fun (jeton
-  # OIDC de GitHub : le site vérifie qu'il vient de ce dépôt, sur main ; aucun
-  # secret).
-  publish:
+  # AppImage construite dans Debian 12 (packaging/appimage), comme celle de
+  # SoundFence : elle tourne sur tous les systèmes plus récents.
+  appimage:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Version (celle de Cargo.toml, et le numéro de la construction)
+        run: echo "value=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1).r${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+      - name: AppImage
+        run: |
+          docker build --quiet --tag last1-panel-appimage packaging/appimage
+          mkdir -p dist
+          docker run --rm --env VERSION='${{ steps.version.outputs.value }}' \
+            --env HOST_UID="$(id -u)" --env HOST_GID="$(id -g)" \
+            --volume "$PWD:/src:ro" --volume "$PWD/dist:/out" last1-panel-appimage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: last1-panel-appimage
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  # Paquet Arch construit dans un conteneur Arch, puis publié avec l'AppImage
+  # sur last1.fun (jeton OIDC de GitHub : le site vérifie qu'il vient de ce
+  # dépôt, sur main ; aucun secret).
+  publish:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [check, appimage]
     runs-on: ubuntu-24.04
     container: archlinux:latest
     permissions:
@@ -69,6 +95,10 @@ jobs:
         with:
           name: last1-panel-${{ steps.version.outputs.value }}
           path: /home/builder/out/*.pkg.tar.zst
+      - uses: actions/download-artifact@v4
+        with:
+          name: last1-panel-appimage
+          path: /home/builder/appimage
       - name: Publication sur last1.fun
         run: |
           # Site pas encore déployé avec Last1 Panel dans son catalogue : rien à
@@ -78,4 +108,7 @@ jobs:
             exit 0
           fi
           packages=(/home/builder/out/last1-panel-*.pkg.tar.zst)
-          tools/publish-release.sh last1-panel '${{ steps.version.outputs.value }}' "download:${packages[0]}"
+          appimages=(/home/builder/appimage/Last1Panel_*_amd64.AppImage)
+          # L'AppImage d'abord : c'est le téléchargement proposé aux joueurs.
+          tools/publish-release.sh last1-panel '${{ steps.version.outputs.value }}' \
+            "download:${appimages[0]}" "download:${packages[0]}"

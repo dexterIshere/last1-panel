@@ -33,11 +33,15 @@ l'outil : choisir RVB ou YCbCr, plage complète ou limitée, l'overscan.
 
 ## Installer
 
-go-to-linux l'installe d'office sous CachyOS et le tient à jour. Sinon, sur
-Arch ou CachyOS : « Installer · gratuit » sur [last1.fun/last1-panel](https://last1.fun/last1-panel)
-(sans compte) l'installe avec ses dépendances et l'ouvre. Le paquet seul est
-aussi sur la page : `sudo pacman -U last1-panel-*.pkg.tar.zst` (LACT et les
-bibliothèques viennent des dépôts officiels ; nvibrant est inclus).
+go-to-linux l'installe d'office sous CachyOS et le tient à jour. Sinon,
+téléchargez l'AppImage sur [last1.fun/last1-panel](https://last1.fun/last1-panel)
+(gratuit, sans compte) et ouvrez-la, comme SoundFence : elle s'installe
+d'elle-même dans votre dossier (`~/.local/bin/last1-panel`, menu des
+applications, outil des jeux et nvibrant dans `~/.local/lib/last1-panel`,
+service de session qui remet les réglages à chaque connexion). Rouvrir une
+AppImage plus récente met tout à jour. Pour la carte graphique, un bouton
+installe LACT (service du système, avec votre mot de passe). Si le paquet Arch
+est installé (`/usr/bin/last1-panel`), l'AppImage lui laisse la place.
 
 ## Réglages 3D des jeux
 
@@ -63,9 +67,11 @@ paramètres d'adresse : `?bureau=plasma`, `?carte=amd`, `?lact=arrete`,
 `?steam=ouvert`, `?page=display|gpu|games`.
 
 Paquet Arch : `packaging/arch/build.sh <version> <dossier>` (PKGBUILD dans
-`packaging/arch/`). À chaque commit sur `main`, la CI construit le paquet dans
-un conteneur Arch et le publie sur last1.fun (`tools/publish-release.sh`,
-jeton OIDC de GitHub, aucun secret), comme SoundFence. Tant que le site ne
+`packaging/arch/`). AppImage : conteneur Debian 12 de `packaging/appimage/`
+(commandes en tête de son `build.sh`). À chaque commit sur `main`, la CI
+construit les deux et les publie ensemble sur last1.fun
+(`tools/publish-release.sh`, jeton OIDC de GitHub, aucun secret), comme
+SoundFence. Tant que le site ne
 connaît pas Last1 Panel, l'étape est sautée avec un avertissement : relancez
 alors la CI à la main (*Actions → CI → Run workflow*).
 

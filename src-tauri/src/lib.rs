@@ -2,14 +2,23 @@
 //! `commands.rs`, qui passent au cœur (crate last1-panel-core).
 
 mod commands;
+mod install;
 
+use install::{Layout, Outcome};
+use last1_panel_core::exec::{Exec, SystemExec};
+use last1_panel_core::i18n::t;
 use last1_panel_core::panel::Panel;
 use last1_panel_core::system::gpu::{self, SysPaths, Vendor};
+use std::os::unix::process::CommandExt;
+use std::path::Path;
 use std::sync::Arc;
 use tauri::Manager;
 
 pub fn run() {
     last1_panel_core::i18n::init_from_env();
+    if install::running_appimage().is_some() && Path::new(install::SYSTEM_BINARY).is_file() {
+        hand_over_to_package();
+    }
     // WebKitGTK affiche une fenêtre vide avec le pilote NVIDIA sous Wayland
     // quand il partage ses images par DMA-BUF : rendu classique dans ce cas.
     let nvidia = gpu::detect(&SysPaths::default()).iter().any(|g| g.vendor == Vendor::Nvidia);
@@ -29,6 +38,7 @@ pub fn run() {
         }))
         .setup(|app| {
             app.manage(Arc::new(Panel::system()));
+            integrate_appimage();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -54,4 +64,73 @@ pub fn run() {
         eprintln!("Last1 Panel : démarrage impossible : {error}");
         std::process::exit(1);
     }
+}
+
+/// Ouvert depuis l'AppImage alors que le paquet est installé (go-to-linux) :
+/// ce qu'avait posé l'AppImage est retiré, puis Last1 Panel du paquet prend
+/// la place, avec un environnement sans celui de l'AppImage.
+fn hand_over_to_package() -> ! {
+    if let Some(layout) = Layout::for_user() {
+        match install::yield_to_package(&layout) {
+            Ok(true) => restart_service(),
+            Ok(false) => {}
+            Err(error) => eprintln!("Last1 Panel : fichiers de l'AppImage non retirés : {error}"),
+        }
+    }
+    let mut command = std::process::Command::new(install::SYSTEM_BINARY);
+    command.args(std::env::args_os().skip(1));
+    for (key, value) in install::system_env() {
+        match value {
+            Some(value) => command.env(key, value),
+            None => command.env_remove(key),
+        };
+    }
+    let error = command.exec();
+    eprintln!("Last1 Panel : {} introuvable : {error}", install::SYSTEM_BINARY);
+    std::process::exit(1);
+}
+
+/// AppImage : installée ou mise à jour pour l'utilisateur (menu, outil des
+/// jeux, service de session), sans retarder l'ouverture de la fenêtre.
+fn integrate_appimage() {
+    let (Some((appimage, appdir)), Some(layout)) = (install::running_appimage(), Layout::for_user()) else {
+        return;
+    };
+    let spawned = std::thread::Builder::new().name("last1-panel-install".into()).spawn(move || {
+        match install::integrate(&appimage, &appdir, &layout) {
+            Ok(report) => {
+                if report.restart_service {
+                    restart_service();
+                }
+                if report.outcome == Outcome::Installed {
+                    notify(&t(
+                        "Last1 Panel est installé : il est dans le menu des applications, et vos réglages reviennent à chaque connexion.",
+                        "Last1 Panel is installed: it's in the applications menu, and your settings come back at every login.",
+                    ));
+                }
+            }
+            Err(error) => eprintln!("Last1 Panel : installation impossible : {error}"),
+        }
+    });
+    if let Err(error) = spawned {
+        eprintln!("Last1 Panel : installation non lancée : {error}");
+    }
+}
+
+/// Service de session relu et relancé (nouvel outil, ou celui du paquet).
+fn restart_service() {
+    let exec = SystemExec::default();
+    let systemctl = |args: &[&str]| {
+        let args: Vec<String> = ["--user"].iter().chain(args).map(|arg| arg.to_string()).collect();
+        if let Err(error) = exec.run_ok("systemctl", &args) {
+            eprintln!("Last1 Panel : systemctl {} : {error}", args.join(" "));
+        }
+    };
+    systemctl(&["daemon-reload"]);
+    systemctl(&["restart", "last1-panel-apply.service"]);
+}
+
+fn notify(message: &str) {
+    let args = ["--app-name=Last1 Panel", "--icon=last1-panel", "Last1 Panel", message].map(String::from);
+    let _ = SystemExec::default().run("notify-send", &args);
 }

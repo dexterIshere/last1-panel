@@ -4,6 +4,7 @@
 //! [`FakeExec`], qui rejoue des sorties enregistrées.
 
 use crate::error::{CoreError, CoreResult};
+use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -64,8 +65,16 @@ impl Default for SystemExec {
 impl Exec for SystemExec {
     fn run(&self, program: &str, args: &[String]) -> CoreResult<Output> {
         let path = self.which(program).ok_or_else(|| CoreError::MissingTool(program.to_string()))?;
-        let mut child =
-            Command::new(path).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+        let mut command = Command::new(path);
+        command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        for (key, value) in appimage_env(std::env::vars_os()) {
+            match value {
+                Some(value) => command.env(key, value),
+                None => command.env_remove(key),
+            };
+        }
+        command.envs(self.env.iter().map(|(key, value)| (key, value)));
+        let mut child = command.spawn()?;
         // Lecture dans des fils à part : une sortie plus grande que le tampon
         // du tube bloquerait l'outil avant sa fin.
         let mut stdout = child.stdout.take().expect("stdout demandé");
@@ -103,6 +112,37 @@ impl Exec for SystemExec {
     fn which(&self, program: &str) -> Option<PathBuf> {
         which(program)
     }
+}
+
+/// Variables posées par l'AppImage (ses bibliothèques, modules GTK et
+/// dossiers) à corriger pour les outils du système, qui chargeraient sinon
+/// nos copies : retirées, ou leurs listes (`PATH`, `XDG_DATA_DIRS`…) sans les
+/// dossiers de l'AppImage. Rien hors d'une AppImage.
+pub fn appimage_env(vars: impl Iterator<Item = (OsString, OsString)>) -> Vec<(OsString, Option<OsString>)> {
+    let vars: Vec<(OsString, OsString)> = vars.collect();
+    let Some(appdir) =
+        vars.iter().find(|(key, _)| key == "APPDIR").map(|(_, value)| value.to_string_lossy().into_owned())
+    else {
+        return Vec::new();
+    };
+    let appdir = appdir.trim_end_matches('/');
+    if appdir.is_empty() {
+        return Vec::new();
+    }
+    let mut changes = Vec::new();
+    for (key, value) in vars {
+        if ["APPDIR", "APPIMAGE", "ARGV0", "OWD"].iter().any(|name| key == *name) {
+            changes.push((key, None));
+            continue;
+        }
+        let text = value.to_string_lossy();
+        if !text.contains(appdir) {
+            continue;
+        }
+        let kept: Vec<&str> = text.split(':').filter(|part| !part.is_empty() && !part.starts_with(appdir)).collect();
+        changes.push((key, (!kept.is_empty()).then(|| OsString::from(kept.join(":")))));
+    }
+    changes
 }
 
 /// Recherche dans `PATH`, comme le shell.
@@ -190,6 +230,41 @@ impl Exec for FakeExec {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_variables_reach_the_tool() {
+        let exec = SystemExec { env: vec![("LAST1_TEST_VAR".into(), "bonjour".into())], ..SystemExec::default() };
+        let output = exec.run("sh", &["-c".into(), "echo $LAST1_TEST_VAR".into()]).unwrap();
+        assert_eq!(output.stdout.trim(), "bonjour");
+    }
+
+    #[test]
+    fn appimage_variables_are_cleaned_for_system_tools() {
+        let vars = |list: &[(&str, &str)]| -> Vec<(OsString, OsString)> {
+            list.iter().map(|(k, v)| (OsString::from(k), OsString::from(v))).collect()
+        };
+        // Hors d'une AppImage : rien ne change.
+        assert!(appimage_env(vars(&[("PATH", "/usr/bin")]).into_iter()).is_empty());
+
+        let changes = appimage_env(
+            vars(&[
+                ("APPDIR", "/tmp/.mount_abc/"),
+                ("APPIMAGE", "/home/a/Last1Panel.AppImage"),
+                ("PATH", "/tmp/.mount_abc/usr/bin:/usr/local/bin:/usr/bin"),
+                ("XDG_DATA_DIRS", "/tmp/.mount_abc/usr/share:/usr/share"),
+                ("GDK_PIXBUF_MODULE_FILE", "/tmp/.mount_abc/usr/lib/loaders.cache"),
+                ("HOME", "/home/a"),
+            ])
+            .into_iter(),
+        );
+        let get = |name: &str| changes.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone());
+        assert_eq!(get("APPDIR"), Some(None));
+        assert_eq!(get("APPIMAGE"), Some(None));
+        assert_eq!(get("PATH"), Some(Some("/usr/local/bin:/usr/bin".into())));
+        assert_eq!(get("XDG_DATA_DIRS"), Some(Some("/usr/share".into())));
+        assert_eq!(get("GDK_PIXBUF_MODULE_FILE"), Some(None));
+        assert_eq!(get("HOME"), None);
+    }
 
     #[test]
     fn system_exec_reads_output_and_status() {

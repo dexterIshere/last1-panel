@@ -32,3 +32,18 @@ pub fn user_config_dir() -> PathBuf {
 pub fn icc_dir() -> PathBuf {
     xdg("XDG_DATA_HOME", ".local/share").join("icc")
 }
+
+/// Outil des jeux et du service installé par le paquet Arch.
+pub const SYSTEM_CLI: &str = "/usr/bin/last1-panel-cli";
+
+/// ~/.local/lib/last1-panel : outil des jeux et nvibrant posés par l'AppImage
+/// à sa première ouverture (`src-tauri/src/install.rs`).
+pub fn user_lib_dir() -> PathBuf {
+    home().join(".local/lib/last1-panel")
+}
+
+/// L'outil des jeux et du service : celui du paquet s'il est là, sinon celui
+/// de l'AppImage.
+pub fn cli() -> PathBuf {
+    if Path::new(SYSTEM_CLI).is_file() { PathBuf::from(SYSTEM_CLI) } else { user_lib_dir().join("last1-panel-cli") }
+}

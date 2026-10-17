@@ -1,21 +1,73 @@
 //! Steam : jeux installés et options de lancement.
 //!
 //! Nos réglages passent par l'option de lancement
-//! `last1-panel-cli run %command%`, écrite dans localconfig.vdf de chaque
-//! compte Steam du PC. Steam réécrit ce fichier en quittant : on n'y touche
-//! que Steam fermé.
+//! `last1-panel-cli run %command%` (chemin complet de l'outil quand il vient
+//! de l'AppImage, hors du PATH), écrite dans localconfig.vdf de chaque compte
+//! Steam du PC. Steam réécrit ce fichier en quittant : on n'y touche que
+//! Steam fermé.
 
 use super::vdf;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::t;
+use crate::paths;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Ce que notre option de lancement ajoute devant la commande du jeu.
-pub const WRAPPER: &str = "last1-panel-cli run";
+const CLI: &str = "last1-panel-cli";
 const COMMAND: &str = "%command%";
+
+/// Ce que notre option de lancement ajoute devant la commande du jeu :
+/// `last1-panel-cli run` avec le paquet, le chemin complet de l'outil posé
+/// par l'AppImage sinon.
+pub fn wrapper() -> String {
+    wrapper_for(&paths::cli())
+}
+
+fn wrapper_for(cli: &Path) -> String {
+    if cli == Path::new(paths::SYSTEM_CLI) {
+        return format!("{CLI} run");
+    }
+    let text = cli.to_string_lossy();
+    if text.chars().all(|c| c.is_ascii_alphanumeric() || "/._-+".contains(c)) {
+        format!("{text} run")
+    } else {
+        // Options exécutées par le shell : chemin entre apostrophes.
+        format!("'{}' run", text.replace('\'', r"'\''"))
+    }
+}
+
+/// Position de notre outil dans les options (début et fin, « run » compris),
+/// quel que soit son chemin : `last1-panel-cli run`, `/chemin/last1-panel-cli
+/// run` ou `'/chemin avec espace/last1-panel-cli' run`.
+fn wrapper_span(options: &str) -> Option<(usize, usize)> {
+    for (index, _) in options.match_indices(CLI) {
+        let after = &options[index + CLI.len()..];
+        let quote = after.starts_with('\'');
+        let rest = if quote { &after[1..] } else { after };
+        let Some(tail) = rest.strip_prefix(" run") else { continue };
+        if !(tail.is_empty() || tail.starts_with(char::is_whitespace)) {
+            continue;
+        }
+        let before = &options[..index];
+        let start = if quote {
+            match before.rfind('\'') {
+                Some(start) => start,
+                None => continue,
+            }
+        } else {
+            before.rfind(char::is_whitespace).map_or(0, |i| i + 1)
+        };
+        // Le mot entier est l'outil : seul ou au bout d'un chemin.
+        let prefix = options[start..index].trim_start_matches('\'');
+        if !(prefix.is_empty() || prefix.ends_with('/')) {
+            continue;
+        }
+        return Some((start, options.len() - tail.len()));
+    }
+    None
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -147,31 +199,43 @@ fn launch_options(root: &Path) -> BTreeMap<u32, Vec<String>> {
 }
 
 pub fn is_wrapped(options: &str) -> bool {
-    options.contains(WRAPPER)
+    wrapper_span(options).is_some()
 }
 
 /// Options de lancement avec notre outil devant le jeu. Les variables et
 /// arguments déjà présents restent (`FOO=1 %command% -dx12` devient
-/// `FOO=1 last1-panel-cli run %command% -dx12`).
+/// `FOO=1 last1-panel-cli run %command% -dx12`) ; un outil déjà là, à un
+/// autre chemin (AppImage puis paquet), est remplacé.
 pub fn wrap(options: &str) -> String {
-    let options = options.trim();
-    if is_wrapped(options) {
-        return options.to_string();
+    wrap_with(options, &wrapper())
+}
+
+fn wrap_with(options: &str, wrapper: &str) -> String {
+    let current = options.trim();
+    if wrapper_span(current).is_some_and(|(start, end)| &current[start..end] == wrapper) {
+        return current.to_string();
     }
+    let options = unwrap(current);
     if options.contains(COMMAND) {
-        options.replacen(COMMAND, &format!("{WRAPPER} {COMMAND}"), 1)
+        options.replacen(COMMAND, &format!("{wrapper} {COMMAND}"), 1)
     } else if options.is_empty() {
-        format!("{WRAPPER} {COMMAND}")
+        format!("{wrapper} {COMMAND}")
     } else {
         // Sans %command%, Steam ajoute les options après la commande du jeu.
-        format!("{WRAPPER} {COMMAND} {options}")
+        format!("{wrapper} {COMMAND} {options}")
     }
 }
 
 /// Options de lancement sans notre outil, le reste à l'identique ; vide
 /// s'il ne reste que %command%.
 pub fn unwrap(options: &str) -> String {
-    let rest = options.replacen(&format!("{WRAPPER} "), "", 1).replacen(WRAPPER, "", 1);
+    let rest = match wrapper_span(options) {
+        Some((start, end)) => {
+            let after = &options[end..];
+            format!("{}{}", &options[..start], after.strip_prefix(' ').unwrap_or(after))
+        }
+        None => options.to_string(),
+    };
     if rest.trim() == COMMAND { String::new() } else { rest.trim().to_string() }
 }
 
@@ -316,6 +380,9 @@ mod tests {
 
     #[test]
     fn wrap_keeps_existing_options() {
+        let package = wrapper_for(Path::new(paths::SYSTEM_CLI));
+        assert_eq!(package, "last1-panel-cli run");
+        let wrap = |options: &str| wrap_with(options, &package);
         assert_eq!(wrap(""), "last1-panel-cli run %command%");
         assert_eq!(wrap("PROTON_LOG=1 %command% -dx12"), "PROTON_LOG=1 last1-panel-cli run %command% -dx12");
         assert_eq!(wrap("-novid -high"), "last1-panel-cli run %command% -novid -high");
@@ -326,6 +393,26 @@ mod tests {
         assert_eq!(unwrap(&wrap("-novid")), "%command% -novid");
         // Les espaces de l'utilisateur ne bougent pas.
         assert_eq!(unwrap(&wrap(r#"%command% -name "a  b""#)), r#"%command% -name "a  b""#);
+        // Un autre outil qui finit pareil n'est pas le nôtre.
+        assert!(!is_wrapped("my-last1-panel-cli run %command%"));
+    }
+
+    #[test]
+    fn appimage_tool_is_called_by_its_full_path() {
+        let appimage = wrapper_for(Path::new("/home/nelly/.local/lib/last1-panel/last1-panel-cli"));
+        assert_eq!(appimage, "/home/nelly/.local/lib/last1-panel/last1-panel-cli run");
+        let options = wrap_with("PROTON_LOG=1 %command% -dx12", &appimage);
+        assert_eq!(options, "PROTON_LOG=1 /home/nelly/.local/lib/last1-panel/last1-panel-cli run %command% -dx12");
+        assert!(is_wrapped(&options));
+        assert_eq!(unwrap(&options), "PROTON_LOG=1 %command% -dx12");
+        // Passage au paquet : le chemin de l'AppImage est remplacé.
+        assert_eq!(wrap_with(&options, "last1-panel-cli run"), "PROTON_LOG=1 last1-panel-cli run %command% -dx12");
+
+        let spaced = wrapper_for(Path::new("/home/N l/.local/lib/last1-panel/last1-panel-cli"));
+        assert_eq!(spaced, "'/home/N l/.local/lib/last1-panel/last1-panel-cli' run");
+        let options = wrap_with("%command% -novid", &spaced);
+        assert!(is_wrapped(&options));
+        assert_eq!(unwrap(&options), "%command% -novid");
     }
 
     #[test]
@@ -358,7 +445,8 @@ mod tests {
         assert_eq!(file.path(&["UserLocalConfigStore", "friends"]).unwrap().text("PersonaName"), Some("joueur"));
         let app = file.path(&["UserLocalConfigStore", "Software", "Valve", "Steam", "apps", "1091500"]).unwrap();
         assert_eq!(app.text("LastPlayed"), Some("1760000000"));
-        assert_eq!(app.text("LaunchOptions"), Some("PROTON_LOG=1 last1-panel-cli run %command% -dx12"));
+        let expected = format!("PROTON_LOG=1 {} %command% -dx12", wrapper());
+        assert_eq!(app.text("LaunchOptions"), Some(expected.as_str()));
         assert!(path.with_extension("vdf.last1-panel.bak").is_file());
 
         set_wrapped(&root, proc_dir.path(), &[1091500, 570], false).unwrap();

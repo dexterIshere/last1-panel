@@ -37,7 +37,7 @@ tous deux en Wayland.
 | Carte graphique | **Service LACT** (`lactd`, socket JSON) | Maintenu, NVIDIA (NVML), AMD et Intel ; courbes de ventilateurs tenues par le service ; changement confirmé sous 5 s, sinon annulé. |
 | Réglages 3D par jeu | **Option de lancement Steam `last1-panel-cli run %command%`**, écrite par Last1 Panel (Steam fermé) | Le lanceur lit nos réglages au lancement et pose les variables de Proton, DXVK, VKD3D-Proton, dxvk-nvapi, du pilote et de MangoHud. `dlss-swapper` et `game-performance` de CachyOS sont repris tels quels. |
 | Réglages remis à la connexion | **Service utilisateur `last1-panel-apply.service`** (`last1-panel-cli watch`), actif pour tous les comptes | La vibrance est perdue au redémarrage et au rebranchement d'un écran : remise à la connexion, puis à chaque événement DRM (`udevadm monitor`), réessayée tant que le bureau n'a pas allumé l'écran. Les profils ICC, eux, sont gardés par KWin et par monitors.conf. Le service ne dépend pas du bureau (Hyprland n'active pas graphical-session.target). |
-| Distribution | **Paquet Arch publié sur last1.fun** à chaque commit sur `main` (CI, jeton OIDC) ; **gratuit et sans compte** (page et téléchargement publics) ; **aucun paquet de l'AUR** | Disponible à toute heure depuis last1.fun, comme les autres logiciels Last1. go-to-linux l'installe d'office pendant l'installation de CachyOS (premier démarrage) et le tient à jour : liste des fichiers signée par last1.fun, empreinte vérifiée, puis `pacman -U` (dépendances des dépôts officiels : WebKitGTK, lcms2, LACT). |
+| Distribution | **AppImage et paquet Arch publiés ensemble sur last1.fun** à chaque commit sur `main` (CI, jeton OIDC) ; **gratuit et sans compte** ; **aucun paquet de l'AUR** | Comme SoundFence : le joueur télécharge l'AppImage (construite dans Debian 12, elle tourne partout) et l'ouvre, elle s'installe dans son dossier sans mot de passe (`src-tauri/src/install.rs`) : copie dans `~/.local/bin`, entrée du menu, outil des jeux et nvibrant dans `~/.local/lib/last1-panel`, service de session. L'option de lancement Steam appelle alors l'outil par son chemin complet. LACT, service du système, s'installe par un bouton (pkexec, pacman). go-to-linux installe d'office le paquet Arch sous CachyOS et le tient à jour (liste signée, empreinte, `pacman -U`) ; l'AppImage passe alors la main à `/usr/bin/last1-panel` et retire ce qu'elle avait posé. Les outils lancés depuis l'AppImage reçoivent un environnement sans le sien (`exec::appimage_env`). |
 
 ## Réglages 3D : ce que pose le lanceur
 
@@ -64,8 +64,8 @@ Le dernier lancement est noté dans `~/.cache/last1-panel/last-launch.txt`
 ## Intégration à go-to-linux
 
 1. **last1.fun** : Last1 Panel est un produit gratuit du catalogue
-   (`"free": true`) ; sa liste signée (`/api/public/last1-panel/manifest`) et
-   son paquet sont publics, et sa page propose le téléchargement.
+   (`"free": true`) ; sa liste signée (`/api/public/last1-panel/manifest`),
+   son AppImage et son paquet sont publics, et sa page propose l'AppImage.
 2. **Installation de CachyOS** : au premier démarrage, après les mises à jour
    et les pilotes, go-to-linux télécharge le paquet depuis last1.fun, vérifie
    la signature de la liste et l'empreinte du paquet, l'installe avec pacman et

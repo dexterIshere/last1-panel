@@ -38,6 +38,8 @@ pub struct Tools {
     nvibrant: bool,
     lact: bool,
     lact_running: bool,
+    /// LACT installable par le bouton (pacman : Arch, CachyOS).
+    pacman: bool,
     mangohud: bool,
     dlss_swapper: bool,
     game_performance: bool,
@@ -72,6 +74,7 @@ pub async fn system_info(panel: State<'_, Arc<Panel>>) -> Result<SystemInfo> {
                 }),
                 lact: which("lact").is_some(),
                 lact_running: lact::find_socket().is_some(),
+                pacman: which("pacman").is_some(),
                 mangohud: which("mangohud").is_some(),
                 dlss_swapper: which("dlss-swapper").is_some(),
                 game_performance: which("game-performance").is_some(),
@@ -175,12 +178,19 @@ pub async fn gpu_confirm(keep: bool) -> Result<()> {
     blocking(move || Lact::connect()?.confirm(keep)).await
 }
 
-/// Active et démarre le service LACT (mot de passe demandé par pkexec).
+/// Installe LACT s'il manque (pacman ; avec une mise à jour du système si
+/// la liste des paquets est trop ancienne), puis active et démarre son service.
+/// Mot de passe demandé par pkexec.
+const INSTALL_LACT: &str = "pacman -S --needed --noconfirm lact || pacman -Syu --needed --noconfirm lact";
+
 #[tauri::command]
 pub async fn enable_lact() -> Result<()> {
     blocking(|| {
-        let exec = SystemExec { timeout: Duration::from_secs(180), ..SystemExec::default() };
-        exec.run_ok("pkexec", &["systemctl".into(), "enable".into(), "--now".into(), "lactd.service".into()])?;
+        let enable = "systemctl enable --now lactd.service";
+        let script =
+            if which("lact").is_some() { enable.to_string() } else { format!("{{ {INSTALL_LACT}; }} && {enable}") };
+        let exec = SystemExec { timeout: Duration::from_secs(1800), ..SystemExec::default() };
+        exec.run_ok("pkexec", &["/bin/sh".into(), "-c".into(), script])?;
         // Le socket apparaît un instant après le démarrage du service.
         for _ in 0..30 {
             if lact::find_socket().is_some() {
@@ -212,7 +222,7 @@ pub async fn games() -> Result<GamesInfo> {
             steam_running: steam::is_running(Path::new("/proc")),
             games: root.as_deref().map(steam::installed_games).unwrap_or_default(),
             settings: Settings::load().games,
-            launch_option: format!("{} %command%", steam::WRAPPER),
+            launch_option: format!("{} %command%", steam::wrapper()),
         })
     })
     .await

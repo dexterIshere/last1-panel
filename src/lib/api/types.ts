@@ -27,6 +27,8 @@ export interface Tools {
   nvibrant: boolean;
   lact: boolean;
   lactRunning: boolean;
+  /** LACT installable par le bouton (Arch, CachyOS). */
+  pacman: boolean;
   mangohud: boolean;
   dlssSwapper: boolean;
   gamePerformance: boolean;

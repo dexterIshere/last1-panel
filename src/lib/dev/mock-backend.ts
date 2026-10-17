@@ -5,6 +5,7 @@
 //   ?bureau=plasma        KDE Plasma (couleurs en direct) ; Hyprland sinon
 //   ?carte=amd            carte AMD (pas de vibrance ni de DLSS)
 //   ?lact=arrete          service LACT installé mais arrêté
+//   ?lact=absent          LACT pas installé
 //   ?steam=ouvert         Steam lancé (options de lancement bloquées)
 //   ?page=display|gpu|games   page affichée au démarrage
 //   ?lang=en              système en anglais
@@ -27,7 +28,7 @@ export function installMockBackend(): void {
   const params = new URLSearchParams(window.location.search);
   const plasma = params.get("bureau") === "plasma";
   const amd = params.get("carte") === "amd";
-  let lactRunning = params.get("lact") !== "arrete";
+  let lactRunning = !["arrete", "absent"].includes(params.get("lact") ?? "");
   const steamRunning = params.get("steam") === "ouvert";
   const page = params.get("page");
   if (page && ["colors", "display", "gpu", "games"].includes(page)) app.section = page as Section;
@@ -44,7 +45,7 @@ export function installMockBackend(): void {
         ? { card: "card1", pciSlot: "0000:03:00.0", vendor: "amd", name: "Radeon RX 7800 XT", driver: "amdgpu", driverVersion: null, bootVga: true }
         : { card: "card1", pciSlot: "0000:01:00.0", vendor: "nvidia", name: "GeForce RTX 4070", driver: "nvidia", driverVersion: "595.58.03", bootVga: true },
     ],
-    tools: { nvibrant: !amd, lact: true, lactRunning, mangohud: true, dlssSwapper: true, gamePerformance: true, steam: true },
+    tools: { nvibrant: !amd, lact: params.get("lact") !== "absent", lactRunning, pacman: true, mangohud: true, dlssSwapper: true, gamePerformance: true, steam: true },
   };
 
   const mode = (width: number, height: number, hz: number) => ({ width, height, refreshMhz: Math.round(hz * 1000) });
@@ -233,6 +234,7 @@ export function installMockBackend(): void {
     enable_lact: async () => {
       await wait(1200);
       lactRunning = true;
+      system.tools.lact = true;
       system.tools.lactRunning = true;
     },
     games: () => ({

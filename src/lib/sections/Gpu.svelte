@@ -133,6 +133,7 @@
     error = null;
     try {
       await api.enableLact();
+      app.system = await api.systemInfo().catch(() => app.system);
       await load();
     } catch (e) {
       error = errorMessage(e);
@@ -174,8 +175,15 @@
           {#if enabling}<Spinner />{/if}{t("Activer le service LACT", "Enable the LACT service")}
         </button>
       </p>
+    {:else if !app.system?.tools.lact && app.system?.tools.pacman}
+      <p>{t("Last1 Panel règle la carte graphique par LACT, un service du système : il s'installe une fois, avec votre mot de passe.", "Last1 Panel tunes the graphics card through LACT, a system service: it's installed once, with your password.")}</p>
+      <p class="action">
+        <button class="btn btn--primary" onclick={enableLact} disabled={enabling}>
+          {#if enabling}<Spinner />{t("Installation de LACT…", "Installing LACT…")}{:else}{t("Installer LACT", "Install LACT")}{/if}
+        </button>
+      </p>
     {:else if !app.system?.tools.lact}
-      <p>{t("Installez le paquet lact (go-to-linux l'installe sous CachyOS).", "Install the lact package (go-to-linux installs it on CachyOS).")}</p>
+      <p>{t("Installez le paquet lact avec le gestionnaire de paquets de votre système.", "Install the lact package with your system's package manager.")}</p>
     {/if}
   </Callout>
 {:else if !device || !tuning}
