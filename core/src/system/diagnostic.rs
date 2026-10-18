@@ -226,8 +226,8 @@ pub fn run(src: &Sources) -> Report {
             Level::Info,
             t(&format!("Ordonnanceur {name} actif"), &format!("{name} scheduler active")),
             t(
-                "Conçu pour le Steam Deck : sur un PC fixe, aucun gain d'images par seconde prouvé, et des chutes rapportées. go-to-linux garde l'ordonnanceur de CachyOS sur un PC fixe et arrête celui-ci à sa mise à jour, sauf s'il a été choisi.",
-                "Designed for the Steam Deck: on a desktop PC, no proven frame rate gain, and drops reported. go-to-linux keeps CachyOS's scheduler on desktop PCs and stops this one at its update, unless it was picked.",
+                "Conçu pour le Steam Deck : aucun gain d'images par seconde prouvé, et des chutes rapportées. go-to-linux garde l'ordonnanceur de CachyOS et arrête celui-ci à sa mise à jour.",
+                "Designed for the Steam Deck: no proven frame rate gain, and drops reported. go-to-linux keeps CachyOS's scheduler and stops this one at its update.",
             ),
         ));
     }
