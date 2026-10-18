@@ -192,7 +192,9 @@ pub fn check(exec: &dyn Exec, now: i64) -> CoreResult<Option<Release>> {
 /// n'est remplacé au moindre écart de taille ou d'empreinte.
 pub fn download(exec: &dyn Exec, release: &Release, target: &Path) -> CoreResult<()> {
     let temporary = target.with_extension("download");
-    let url = format!("{SITE}/api/public/{PRODUCT}/files/{}", release.appimage.name);
+    // ask=1 : installation demandée par l'utilisateur (clic). last1.fun ne
+    // sert plus l'AppImage aux versions qui l'installaient sans demander.
+    let url = format!("{SITE}/api/public/{PRODUCT}/files/{}?ask=1", release.appimage.name);
     let fetched = exec.run_ok(
         "curl",
         &["-fsS", "--proto", "=https", "--max-time", "3600", "-o", &temporary.to_string_lossy(), &url]
