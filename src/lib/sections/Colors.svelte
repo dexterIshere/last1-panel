@@ -5,6 +5,7 @@
   import type { Channel, ColorAdjust, ColorProfile, ColorState, Game, GamesInfo, Output } from "$lib/api/types";
   import { CHANNELS, type ChannelName, DEFAULT_CHANNEL, neutralAdjust, ownChannels, resolve, sameChannels, sliders } from "$lib/color";
   import CurveGraph from "$lib/components/colors/CurveGraph.svelte";
+  import GameColorWarning from "$lib/components/colors/GameColorWarning.svelte";
   import Preview from "$lib/components/colors/Preview.svelte";
   import SectionHeader from "$lib/components/layout/SectionHeader.svelte";
   import Callout from "$lib/components/ui/Callout.svelte";
@@ -43,6 +44,13 @@
   /** Jeu choisi en enregistrant un nouveau profil. */
   let profileGame = $state("");
   let steamBusy = $state(false);
+  /** Mise en garde ouverte pour ce jeu, et la réponse attendue. */
+  let riskPrompt = $state<{ game: string; answer: (accepted: boolean) => void } | null>(null);
+  const acceptRisk = (game: string) => new Promise<boolean>((answer) => (riskPrompt = { game, answer }));
+  function answerRisk(accepted: boolean) {
+    riskPrompt?.answer(accepted);
+    riskPrompt = null;
+  }
 
   const live = $derived(app.system?.features?.liveColor ?? false);
   /** Curseurs de « Tous » et de chaque canal, indépendants. */
@@ -129,6 +137,8 @@
 
   /** `profile` à chaque lancement de ce jeu, dans sa seule fenêtre (null : plus de profil). */
   async function link(appId: number, profile: ColorProfile | null) {
+    const game = games?.games.find((g) => g.appId === appId)?.name ?? "";
+    if (profile && !(await acceptRisk(game))) return;
     profileBusy = true;
     error = null;
     notice = null;
@@ -539,7 +549,10 @@
       {:else if games && games.games.length === 0}
         <p class="field__hint">{t("Aucun jeu Steam installé : les profils se lient aux jeux Steam.", "No Steam game installed: profiles link to Steam games.")}</p>
       {:else}
-        <p class="field__hint">{t("Lié à un jeu, un profil s'active dès son lancement, dans sa seule fenêtre (jeux Proton et Vulkan). Touche Arrêt défil : profil coupé ou remis.", "Linked to a game, a profile turns on as soon as it starts, in its window only (Proton and Vulkan games). Scroll Lock key: profile off or back on.")}</p>
+        <p class="field__hint">
+          {t("Lié à un jeu, un profil s'active dès son lancement, dans sa seule fenêtre (jeux Proton et Vulkan). Touche Arrêt défil : profil coupé ou remis.", "Linked to a game, a profile turns on as soon as it starts, in its window only (Proton and Vulkan games). Scroll Lock key: profile off or back on.")}
+          <strong class="risk">{t("Jeux en ligne : filtres d'image parfois interdits par leurs règles, à vos risques.", "Online games: image filters are sometimes forbidden by their rules, at your own risk.")}</strong>
+        </p>
       {/if}
       <Switch
         label={t("Profils dans l'icône près de l'horloge", "Profiles in the icon near the clock")}
@@ -557,6 +570,10 @@
       <Preview {adjust} {vibrance} />
     </aside>
   </div>
+{/if}
+
+{#if riskPrompt}
+  <GameColorWarning game={riskPrompt.game} oncancel={() => answerRisk(false)} onconfirm={() => answerRisk(true)} />
 {/if}
 
 <style>
@@ -635,6 +652,12 @@
   .profile__name {
     font-weight: 600;
     overflow-wrap: anywhere;
+  }
+
+  .risk {
+    display: block;
+    color: var(--color-warning);
+    font-weight: 600;
   }
 
   .save__game {

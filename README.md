@@ -71,7 +71,10 @@ jeux (« Lier à un jeu », ou « Couleurs dans le jeu » dans **Jeux**) : il
 s'active dès le lancement du jeu et ne colore que sa fenêtre, le bureau garde
 ses couleurs. L'option de lancement Steam de Last1 Panel est mise d'office ;
 Steam ouvert, un bouton le ferme, la met et le rouvre. Jeux par Proton et jeux
-Vulkan ; la touche Arrêt défil coupe ou remet le profil en jeu.
+Vulkan ; la touche Arrêt défil coupe ou remet le profil en jeu. Aucun fichier
+du jeu n'est modifié, mais certains jeux en ligne interdisent les filtres
+d'image : une mise en garde est à accepter avant de lier un profil à un jeu,
+que le joueur active sous sa seule responsabilité.
 
 Comme dans le panneau NVIDIA, « Tous », rouge, vert et bleu ont chacun leurs
 curseurs, et aucun ne déplace les autres. Un curseur de canal laissé à sa

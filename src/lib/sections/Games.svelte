@@ -6,6 +6,7 @@
   import Callout from "$lib/components/ui/Callout.svelte";
   import Spinner from "$lib/components/ui/Spinner.svelte";
   import WarningDialog from "$lib/components/ui/WarningDialog.svelte";
+  import GameColorWarning from "$lib/components/colors/GameColorWarning.svelte";
   import { t } from "$lib/i18n.svelte";
   import { app } from "$lib/state/app.svelte";
   import { Check, Copy, Search } from "@lucide/svelte";
@@ -37,6 +38,15 @@
   let copied = $state(false);
   /** DLSS : dernière version choisie, en attente de la mise en garde acceptée. */
   let dlssWarning = $state<{ select: HTMLSelectElement; previous: string } | null>(null);
+  /** Profil de couleurs choisi pour le jeu, en attente de la mise en garde acceptée. */
+  let colorWarning = $state<{ select: HTMLSelectElement; previous: string; value: string } | null>(null);
+  const colorValue = (p: GameProfile) => (p.colorProfile === null ? "inherit" : p.colorProfile === "" ? "screen" : p.colorProfile);
+  const fromColorValue = (value: string) => (value === "inherit" ? null : value === "screen" ? "" : value);
+
+  function chooseColor(select: HTMLSelectElement) {
+    if (select.value === "inherit" || select.value === "screen") edit("colorProfile", fromColorValue(select.value));
+    else colorWarning = { select, previous: colorValue(profile), value: select.value };
+  }
 
   const tools = $derived(app.system?.tools);
   const nvidia = $derived(app.nvidia);
@@ -314,12 +324,9 @@
         <label class="field">
           <span class="field__label">{t("Couleurs dans le jeu", "In-game colors")}</span>
           <select
-            value={profile.colorProfile === null ? "inherit" : profile.colorProfile === "" ? "screen" : profile.colorProfile}
+            value={colorValue(profile)}
             disabled={!info.colorLayer || (info.colorProfiles.length === 0 && profile.colorProfile === null)}
-            onchange={(e) => {
-              const value = e.currentTarget.value;
-              edit("colorProfile", value === "inherit" ? null : value === "screen" ? "" : value);
-            }}
+            onchange={(e) => chooseColor(e.currentTarget)}
           >
             <option value="inherit">{selected === null ? t("Celles de l'écran", "The screen's") : inherit}</option>
             {#if selected !== null}<option value="screen">{t("Celles de l'écran", "The screen's")}</option>{/if}
@@ -332,6 +339,7 @@
               {t("Enregistrez d'abord un profil dans Couleurs.", "Save a profile in Colors first.")}
             {:else}
               {t("Dans la seule fenêtre du jeu (Proton et jeux Vulkan). Touche Arrêt défil : profil coupé ou remis.", "In the game window only (Proton and Vulkan games). Scroll Lock key: profile off or back on.")}
+              <strong class="risk">{t("Jeux en ligne : filtres d'image parfois interdits, à vos risques.", "Online games: image filters are sometimes forbidden, at your own risk.")}</strong>
             {/if}
           </span>
         </label>
@@ -369,6 +377,20 @@
       </div>
     </section>
   </div>
+{/if}
+
+{#if colorWarning}
+  <GameColorWarning
+    game={selected === null ? null : (game?.name ?? "")}
+    oncancel={() => {
+      if (colorWarning) colorWarning.select.value = colorWarning.previous;
+      colorWarning = null;
+    }}
+    onconfirm={() => {
+      if (colorWarning) edit("colorProfile", fromColorValue(colorWarning.value));
+      colorWarning = null;
+    }}
+  />
 {/if}
 
 {#if dlssWarning}
