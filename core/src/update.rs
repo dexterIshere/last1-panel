@@ -1,6 +1,8 @@
-//! Mise à jour automatique de Last1 Panel installé par l'AppImage
+//! Mise à jour de Last1 Panel installé par l'AppImage
 //! (`~/.local/bin/last1-panel`), comme le fait go-to-linux pour le paquet :
-//! une fois par jour, par le service de session (`last1-panel-cli watch`).
+//! cherchée une fois par jour par le service de session (`last1-panel-cli
+//! watch`), qui la propose ; installée seulement au clic de l'utilisateur
+//! (notification ou bouton « Mettre à jour » de la fenêtre).
 //!
 //! Liste publique de last1.fun, signée (Ed25519, même clé que go-to-linux) :
 //! seulement une version plus récente que celle installée, AppImage
@@ -29,7 +31,7 @@ const PUBLIC_KEY: &str = "LDh9ERH5mg2iTfgydusH9g8mi662SPRDGJRg9aVgl0s=";
 
 /// Version publiée de cette construction (« 0.1.0.r42 »), posée par la CI de
 /// l'AppImage ; absente (construction locale, paquet Arch) : pas de mise à
-/// jour automatique.
+/// jour proposée.
 pub const RELEASE: Option<&str> = option_env!("LAST1_PANEL_RELEASE");
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -67,7 +69,7 @@ fn refused(detail: &str) -> CoreError {
     ))
 }
 
-/// La mise à jour automatique concerne-t-elle cette installation ?
+/// La mise à jour proposée concerne-t-elle cette installation ?
 pub fn enabled() -> bool {
     RELEASE.is_some() && !Path::new(crate::paths::SYSTEM_APP).exists() && crate::paths::user_appimage().is_file()
 }

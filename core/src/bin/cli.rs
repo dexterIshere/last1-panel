@@ -142,7 +142,7 @@ fn apply_until_ready(tries: u32) -> bool {
 /// l'horloge (tray.rs).
 fn watch() -> ExitCode {
     if update::enabled() {
-        std::thread::spawn(keep_up_to_date);
+        std::thread::spawn(propose_updates);
     }
     let tray = last1_panel_core::tray::spawn();
     std::thread::sleep(Duration::from_secs(3));
@@ -178,20 +178,38 @@ fn watch() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Installation par l'AppImage tenue à jour (update.rs) : cinq minutes après
-/// la connexion, puis chaque jour ; une heure plus tard en cas d'échec (pas
+/// Installation par l'AppImage (update.rs) : cinq minutes après la connexion,
+/// puis chaque jour, une version plus récente est cherchée et proposée
+/// (notification avec « Mettre à jour », comme le bouton de la fenêtre) ;
+/// rien ne s'installe sans ce clic. Une heure plus tard en cas d'échec (pas
 /// d'Internet). Une fois la mise à jour faite, le service s'arrête en erreur
 /// et systemd le relance sur le nouvel outil.
-fn keep_up_to_date() {
+fn propose_updates() {
     std::thread::sleep(Duration::from_secs(300));
     loop {
-        let wait = match update_appimage() {
-            Ok(Some(version)) => {
-                desktop::notify(&t(
-                    &format!("Last1 Panel est à jour (version {version})."),
-                    &format!("Last1 Panel is up to date (version {version})."),
-                ));
-                std::process::exit(75);
+        let exec = SystemExec { timeout: Duration::from_secs(90), ..SystemExec::default() };
+        let wait = match update::check(&exec, update::now()) {
+            Ok(Some(release)) => {
+                let message = t(
+                    &format!("Mise à jour disponible : version {}. « Mettre à jour » l'installe.", release.version),
+                    &format!("Update available: version {}. \"Update\" installs it.", release.version),
+                );
+                if !desktop::ask(&message, &t("Mettre à jour", "Update")) {
+                    Duration::from_secs(24 * 3600)
+                } else if let Err(error) = update::install(&release) {
+                    eprintln!("last1-panel-cli : mise à jour : {error}");
+                    desktop::notify(&t(
+                        "La mise à jour n'a pas abouti : réessayez avec « Mettre à jour » dans la fenêtre.",
+                        "The update did not finish: try again with \"Update\" in the window.",
+                    ));
+                    Duration::from_secs(3600)
+                } else {
+                    desktop::notify(&t(
+                        &format!("Last1 Panel est à jour (version {}).", release.version),
+                        &format!("Last1 Panel is up to date (version {}).", release.version),
+                    ));
+                    std::process::exit(75);
+                }
             }
             Ok(None) => Duration::from_secs(24 * 3600),
             Err(error) => {

@@ -60,6 +60,20 @@ pub fn notify(message: &str) {
         .status();
 }
 
+/// Notification avec un bouton, qui reste jusqu'à ce que l'utilisateur
+/// réponde : vrai s'il a cliqué sur le bouton (notify-send attend la
+/// réponse) ; la fermer ne fait rien.
+pub fn ask(message: &str, button: &str) -> bool {
+    Command::new("notify-send")
+        .args(["--app-name=Last1 Panel", "--icon=last1-panel", "--urgency=critical", &format!("--action=yes={button}")])
+        .args(["Last1 Panel", message])
+        .envs(session_env())
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .is_ok_and(|output| String::from_utf8_lossy(&output.stdout).trim() == "yes")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
