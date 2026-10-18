@@ -5,6 +5,7 @@
   import SectionHeader from "$lib/components/layout/SectionHeader.svelte";
   import Callout from "$lib/components/ui/Callout.svelte";
   import Spinner from "$lib/components/ui/Spinner.svelte";
+  import WarningDialog from "$lib/components/ui/WarningDialog.svelte";
   import { t } from "$lib/i18n.svelte";
   import { app } from "$lib/state/app.svelte";
   import { Check, Copy, Search } from "@lucide/svelte";
@@ -34,6 +35,8 @@
   let error = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let copied = $state(false);
+  /** DLSS : dernière version choisie, en attente de la mise en garde acceptée. */
+  let dlssWarning = $state<{ select: HTMLSelectElement; previous: string } | null>(null);
 
   const tools = $derived(app.system?.tools);
   const nvidia = $derived(app.nvidia);
@@ -122,6 +125,16 @@
   const inherit = $derived(selected === null ? t("Réglage du jeu", "Game setting") : t("Comme tous les jeux", "Same as all games"));
   const boolValue = (v: boolean | null) => (v === null ? "inherit" : v ? "on" : "off");
   const fromBool = (v: string) => (v === "inherit" ? null : v === "on");
+
+  /** Une autre version du DLSS que celle du jeu : risque de bannissement en
+   * ligne, accepté par le joueur avant d'activer. */
+  function chooseDlss(select: HTMLSelectElement) {
+    if (select.value === "on") {
+      dlssWarning = { select, previous: boolValue(profile.dlssLatest) };
+    } else {
+      edit("dlssLatest", fromBool(select.value));
+    }
+  }
 </script>
 
 <SectionHeader
@@ -264,10 +277,13 @@
         {#if nvidia}
           <label class="field">
             <span class="field__label">{t("DLSS : dernière version", "DLSS: latest version")}</span>
-            <select value={boolValue(profile.dlssLatest)} onchange={(e) => edit("dlssLatest", fromBool(e.currentTarget.value))}>
+            <select value={boolValue(profile.dlssLatest)} onchange={(e) => chooseDlss(e.currentTarget)}>
               {@render boolOptions(t("Activée", "On"), t("Version du jeu", "Game's version"))}
             </select>
-            <span class="field__hint">{t("Comme « Remplacement DLSS » de l'application NVIDIA (RTX).", "Like the NVIDIA app's “DLSS Override” (RTX).")}</span>
+            <span class="field__hint">
+              {t("Comme « Remplacement DLSS » de l'application NVIDIA (RTX).", "Like the NVIDIA app's “DLSS Override” (RTX).")}
+              <strong class="risk">{t("Jeux en ligne : risque de bannissement, à vos risques.", "Online games: risk of a ban, at your own risk.")}</strong>
+            </span>
           </label>
 
           <label class="field">
@@ -355,7 +371,52 @@
   </div>
 {/if}
 
+{#if dlssWarning}
+  <WarningDialog
+    title={t("DLSS : risque de bannissement en ligne", "DLSS: risk of an online ban")}
+    confirmLabel={t("J'accepte le risque, activer", "I accept the risk, turn on")}
+    oncancel={() => {
+      if (dlssWarning) dlssWarning.select.value = dlssWarning.previous;
+      dlssWarning = null;
+    }}
+    onconfirm={() => {
+      edit("dlssLatest", true);
+      dlssWarning = null;
+    }}
+  >
+    <p>
+      {selected === null
+        ? t("Pour tous les jeux lancés avec Last1 Panel, jeux en ligne compris :", "For every game launched with Last1 Panel, online games included:")
+        : t(`Pour ${game?.name ?? "ce jeu"} :`, `For ${game?.name ?? "this game"}:`)}
+      {t(
+        "le jeu utilisera une autre version du DLSS que celle qu'il fournit.",
+        "the game will use another DLSS version than the one it ships with.",
+      )}
+    </p>
+    <p>
+      {t(
+        "Certains jeux en ligne n'acceptent que leur propre DLSS : leur anti-triche (Easy Anti-Cheat, BattlEye…) ou leurs conditions d'utilisation peuvent y voir une modification du jeu et suspendre ou bannir le compte. N'activez pas cette option pour un jeu en ligne sans savoir qu'il l'autorise.",
+        "Some online games only accept their own DLSS: their anti-cheat (Easy Anti-Cheat, BattlEye…) or terms of use may treat it as a modification of the game and suspend or ban the account. Do not turn this on for an online game unless you know it allows it.",
+      )}
+    </p>
+    <p>
+      <strong>
+        {t(
+          "Vous l'activez sous votre seule responsabilité : Last1 Panel et ses auteurs déclinent toute responsabilité en cas de sanction, de perte de compte ou de problème dans le jeu.",
+          "You turn it on at your own risk: Last1 Panel and its authors accept no liability for any sanction, account loss or in-game problem.",
+        )}
+      </strong>
+    </p>
+  </WarningDialog>
+{/if}
+
 <style>
+  .risk {
+    display: block;
+    color: var(--color-warning);
+    font-weight: 600;
+  }
+
   .layout {
     display: grid;
     grid-template-columns: 17rem minmax(0, 1fr);

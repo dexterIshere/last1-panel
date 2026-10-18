@@ -55,6 +55,12 @@ Chaque jeu Steam réglé dans Last1 Panel est lancé par
 Steam fermé). Le détail des variables posées est dans
 [docs/DESIGN.md](docs/DESIGN.md#réglages-3d--ce-que-pose-le-lanceur).
 
+« DLSS : dernière version » fait utiliser au jeu une autre version du DLSS que
+la sienne : certains jeux en ligne (anti-triche, conditions d'utilisation)
+peuvent le sanctionner. Last1 Panel le dit et demande d'accepter ce risque
+avant de l'activer ; le joueur l'active sous sa seule responsabilité (voir
+aussi l'absence de garantie de la licence GPL).
+
 ## Profils de couleurs
 
 Dans **Couleurs**, « Enregistrer ces réglages » garde luminosité, contraste,
