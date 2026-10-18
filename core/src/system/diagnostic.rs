@@ -66,6 +66,8 @@ pub struct Sources<'a> {
     pub desktop: Desktop,
     /// Outil de compatibilité de Steam par défaut (« proton-cachyos… »).
     pub default_proton: Option<String>,
+    /// Derniers jeux lancés et leur Proton (« ARC Raiders (proton_experimental) »).
+    pub recent_games: Vec<String>,
 }
 
 fn read(path: &Path) -> Option<String> {
@@ -128,6 +130,9 @@ pub fn run(src: &Sources) -> Report {
     }
     if let Some(proton) = &src.default_proton {
         facts.push((t("Proton par défaut (Steam)", "Default Proton (Steam)"), proton.clone()));
+    }
+    if !src.recent_games.is_empty() {
+        facts.push((t("Derniers jeux lancés", "Last games played"), src.recent_games.join(", ")));
     }
 
     // Mode d'énergie : « performance » en permanence (PC fixe installé par
@@ -221,8 +226,8 @@ pub fn run(src: &Sources) -> Report {
             Level::Info,
             t(&format!("Ordonnanceur {name} actif"), &format!("{name} scheduler active")),
             t(
-                "Il change la façon dont les cœurs sont partagés : en cas de chutes d'images par seconde, comparez sans lui (sudo systemctl stop scx_loader, puis start pour le remettre).",
-                "It changes how cores are shared: if the frame rate drops, compare without it (sudo systemctl stop scx_loader, then start to bring it back).",
+                "Il change la façon dont les cœurs sont partagés : en cas de chutes d'images par seconde, comparez sans lui (go-to-linux > Jeux et performances > Ordonnanceur de jeu, ou sudo systemctl stop scx_loader).",
+                "It changes how cores are shared: if the frame rate drops, compare without it (go-to-linux > Games and performance > Game scheduler, or sudo systemctl stop scx_loader).",
             ),
         ));
     }
@@ -495,6 +500,7 @@ mod tests {
             gpus: &[gpu("580.95.05")],
             desktop: Desktop::Hyprland,
             default_proton: Some("proton-cachyos-slr".into()),
+            recent_games: vec!["ARC Raiders (proton_experimental)".into()],
         });
         let ids =
             |level: Level| -> Vec<&str> { report.checks.iter().filter(|c| c.level == level).map(|c| c.id).collect() };
@@ -547,6 +553,7 @@ mod tests {
             gpus: &[gpu("595.58.03")],
             desktop: Desktop::Plasma,
             default_proton: None,
+            recent_games: Vec::new(),
         });
         assert!(report.checks.iter().all(|c| c.level == Level::Ok), "{:#?}", report.checks);
         assert!(report.checks.iter().any(|c| c.id == "rebar" && c.detail.contains("16384")));
@@ -566,6 +573,7 @@ mod tests {
                 gpus: &[],
                 desktop: Desktop::Plasma,
                 default_proton: None,
+                recent_games: Vec::new(),
             })
             .checks
             .into_iter()

@@ -308,7 +308,25 @@ impl Panel {
     /// Diagnostic des performances en jeu (system/diagnostic.rs), avec les
     /// variables de la session dont Steam et ses jeux héritent.
     pub fn performance_report(&self) -> crate::system::diagnostic::Report {
-        let steam = crate::games::steam::find_root(&crate::paths::home_dir());
+        use crate::games::steam;
+        let steam = steam::find_root(&crate::paths::home_dir());
+        let default_proton = steam.as_deref().and_then(steam::default_compat_tool);
+        // Les trois derniers jeux lancés, avec le Proton de chacun.
+        let recent_games = steam
+            .as_deref()
+            .map(|root| {
+                steam::recently_played(root)
+                    .into_iter()
+                    .take(3)
+                    .map(|game| {
+                        let proton = steam::compat_tool(root, &game.app_id.to_string())
+                            .or_else(|| default_proton.clone())
+                            .unwrap_or_else(|| t("Proton de Steam", "Steam's Proton"));
+                        format!("{} ({proton})", game.name)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         crate::system::diagnostic::run(&crate::system::diagnostic::Sources {
             sys: &self.sys.sys,
             dev: Path::new("/dev"),
@@ -318,7 +336,8 @@ impl Panel {
             settings: &self.settings(),
             gpus: &self.gpus(),
             desktop: self.desktop,
-            default_proton: steam.as_deref().and_then(crate::games::steam::default_compat_tool),
+            default_proton,
+            recent_games,
         })
     }
 

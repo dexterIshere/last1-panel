@@ -258,10 +258,37 @@ pub fn is_running(proc_dir: &Path) -> bool {
 /// Outil de compatibilité de Steam pour tous les jeux sans réglage propre
 /// (Paramètres > Compatibilité) : « proton_experimental », « proton-cachyos… ».
 pub fn default_compat_tool(root: &Path) -> Option<String> {
+    compat_tool(root, "0")
+}
+
+/// Outil de compatibilité choisi pour un jeu (Propriétés > Compatibilité),
+/// ou pour tous (« 0 »).
+pub fn compat_tool(root: &Path, key: &str) -> Option<String> {
     let text = fs::read_to_string(root.join("config/config.vdf")).ok()?;
     let file = vdf::parse(&text).ok()?;
-    let mapping = file.path(&["InstallConfigStore", "Software", "Valve", "Steam", "CompatToolMapping", "0"])?;
+    let mapping = file.path(&["InstallConfigStore", "Software", "Valve", "Steam", "CompatToolMapping", key])?;
     mapping.text("name").filter(|name| !name.is_empty()).map(str::to_string)
+}
+
+/// Jeux installés, du dernier lancé au plus ancien (date « LastPlayed » de
+/// chaque compte Steam du PC) ; jamais lancés : absents.
+pub fn recently_played(root: &Path) -> Vec<Game> {
+    let mut last: BTreeMap<u32, u64> = BTreeMap::new();
+    for path in local_configs(root) {
+        let Some(file) = fs::read_to_string(&path).ok().and_then(|text| vdf::parse(&text).ok()) else { continue };
+        let Some(apps) = file.path(&APPS_PATH) else { continue };
+        for (key, value) in &apps.entries {
+            let (Ok(app_id), vdf::Value::Block(app)) = (key.parse::<u32>(), value) else { continue };
+            if let Some(time) = app.text("LastPlayed").and_then(|t| t.parse::<u64>().ok()).filter(|t| *t > 0) {
+                let entry = last.entry(app_id).or_default();
+                *entry = (*entry).max(time);
+            }
+        }
+    }
+    let mut games: Vec<(u64, Game)> =
+        installed_games(root).into_iter().filter_map(|game| last.get(&game.app_id).map(|time| (*time, game))).collect();
+    games.sort_by_key(|(time, _)| std::cmp::Reverse(*time));
+    games.into_iter().map(|(_, game)| game).collect()
 }
 
 /// Attend que Steam soit fermé (`steam -shutdown` : il écrit ses réglages en
@@ -491,6 +518,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(default_compat_tool(&root).as_deref(), Some("proton-cachyos-slr"));
+        assert_eq!(compat_tool(&root, "1091500"), None);
+        // Seul Cyberpunk 2077 a été lancé (LastPlayed du compte).
+        let recent: Vec<String> = recently_played(&root).into_iter().map(|g| g.name).collect();
+        assert_eq!(recent, ["Cyberpunk 2077"]);
     }
 
     #[test]
