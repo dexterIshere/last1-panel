@@ -171,7 +171,7 @@ mod tests {
             red: Channel { brightness: 52.0, contrast: 47.0, gamma: 1.47 },
             green: Channel { brightness: 52.0, contrast: 47.0, gamma: 1.47 },
             blue: Channel { brightness: 62.0, contrast: 72.0, gamma: 1.65 },
-            all_channels: None,
+            ..Default::default()
         };
         // Écran neutre : la table est le profil.
         let table = entries(&cube(&guide, 50.0, &ColorAdjust::default(), 50.0));

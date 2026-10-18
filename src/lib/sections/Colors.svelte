@@ -3,7 +3,7 @@
 <script lang="ts">
   import { api, errorMessage } from "$lib/api/ipc";
   import type { Channel, ColorAdjust, ColorProfile, ColorState, Game, GamesInfo, Output } from "$lib/api/types";
-  import { CHANNELS, allChannel, neutralAdjust, ownChannels, sameChannel, sameChannels } from "$lib/color";
+  import { CHANNELS, type ChannelName, DEFAULT_CHANNEL, neutralAdjust, ownChannels, resolve, sameChannels, sliders } from "$lib/color";
   import CurveGraph from "$lib/components/colors/CurveGraph.svelte";
   import Preview from "$lib/components/colors/Preview.svelte";
   import SectionHeader from "$lib/components/layout/SectionHeader.svelte";
@@ -45,16 +45,16 @@
   let steamBusy = $state(false);
 
   const live = $derived(app.system?.features?.liveColor ?? false);
-  /** Valeurs de « Tous », et les canaux réglés à part, qu'il ne change pas. */
-  const all = $derived(allChannel(adjust));
-  const own = $derived(ownChannels(adjust));
-  const editing = $derived<Channel>(channel === "all" ? all : adjust[channel]);
+  /** Curseurs de « Tous » et de chaque canal, indépendants. */
+  const layers = $derived(sliders(adjust));
+  const own = $derived(ownChannels(layers));
+  const editing = $derived<Channel>(channel === "all" ? layers.all : layers.own[channel]);
   const CHANNEL_NAMES = $derived({
     red: t("le rouge", "red"),
     green: t("le vert", "green"),
     blue: t("le bleu", "blue"),
   });
-  const names = (list: readonly (typeof CHANNELS)[number][]) => {
+  const names = (list: readonly ChannelName[]) => {
     const words = list.map((c) => CHANNEL_NAMES[c]);
     const text = words.length > 1 ? `${words.slice(0, -1).join(", ")} ${t("et", "and")} ${words[words.length - 1]}` : (words[0] ?? "");
     return text.charAt(0).toUpperCase() + text.slice(1);
@@ -166,27 +166,22 @@
     loadOutput(selected);
   });
 
-  /** Comme le panneau NVIDIA : « Tous » règle les canaux qui le suivent ;
-   * un canal réglé à part garde ses valeurs, et « Tous » les siennes. */
+  /** Comme le panneau NVIDIA : « Tous » et chaque canal ont leurs propres
+   * curseurs, aucun ne déplace l'autre. Un curseur de canal à sa valeur par
+   * défaut suit « Tous » ; ailleurs, il le remplace pour ce canal. */
   function update(key: keyof Channel, value: number) {
-    const current = allChannel(adjust);
-    if (channel === "all") {
-      const followers = CHANNELS.filter((c) => sameChannel(adjust[c], current));
-      const next = { ...current, [key]: value };
-      adjust.all = next;
-      for (const target of followers) adjust[target] = { ...next };
-    } else {
-      adjust.all = current;
-      adjust[channel][key] = value;
-    }
+    const next = sliders(adjust);
+    if (channel === "all") next.all[key] = value;
+    else next.own[channel][key] = value;
+    adjust = resolve(next);
     changed();
   }
 
-  /** Ces canaux reprennent les valeurs de « Tous », et les suivent. */
-  function follow(targets: readonly (typeof CHANNELS)[number][]) {
-    const current = allChannel(adjust);
-    adjust.all = current;
-    for (const target of targets) adjust[target] = { ...current };
+  /** Ces canaux reviennent à « Tous » (curseurs propres remis par défaut). */
+  function follow(targets: readonly ChannelName[]) {
+    const next = sliders(adjust);
+    for (const target of targets) next.own[target] = { ...DEFAULT_CHANNEL };
+    adjust = resolve(next);
     changed();
   }
 
@@ -230,9 +225,10 @@
     CHANNELS.every(
       (c) => near(a[c].brightness, b[c].brightness, 0.05) && near(a[c].contrast, b[c].contrast, 0.05) && near(a[c].gamma, b[c].gamma, 0.0005),
     );
-  /** Profil aux réglages affichés (vibrance comprise, si elle se règle ici). */
+  /** Profil que l'écran a déjà : réglages en direct sous Plasma, appliqués
+   * sous Hyprland (vibrance comprise, si elle se règle ici). */
   const isCurrent = (p: ColorProfile) =>
-    sameColors(p.color, adjust) && (!!info?.vibranceUnavailable || near(p.vibrance, vibrance, 0.5));
+    !!info && sameColors(p.color, live ? adjust : info.adjust) && (!!info.vibranceUnavailable || near(p.vibrance, vibrance, 0.5));
 
   function summary(p: ColorProfile): string {
     const c = p.color.red;
@@ -370,38 +366,29 @@
       {#if channel === "all" && own.length > 0}
         <div class="linked">
           <p class="field__hint">
-            {#if own.length === 3}
-              {t("Rouge, vert et bleu ont chacun leur réglage : « Tous » ne les change pas.", "Red, green and blue each have their own setting: “All” does not change them.")}
-            {:else}
-              {t(
-                `${names(own)} ${own.length > 1 ? "ont leur" : "a son"} propre réglage, que « Tous » ne change pas.`,
-                `${names(own)} ${own.length > 1 ? "have their" : "has its"} own setting, which “All” does not change.`,
-              )}
-            {/if}
-          </p>
-          <button class="btn btn--ghost" onclick={() => follow(own)} disabled={!!info?.colorUnavailable}>
-            <Link2 size={16} />{t("Remettre sur « Tous »", "Back to “All”")}
-          </button>
-        </div>
-      {:else if channel !== "all" && own.includes(channel)}
-        <div class="linked">
-          <p class="field__hint">
             {t(
-              `Réglage propre au ${CHANNEL_NAMES[channel].replace(/^le /, "")} : « Tous » ne le change plus.`,
-              `${names([channel])} has its own setting: “All” no longer changes it.`,
+              `${names(own)} ${own.length > 1 ? "ont aussi leurs" : "a aussi ses"} propres réglages (onglet${own.length > 1 ? "s" : ""} ${own.map((c) => names([c]).replace(/^Le /, "")).join(", ")}) : ils remplacent « Tous » pour ${own.length > 1 ? "ces canaux" : "ce canal"}.`,
+              `${names(own)} also ${own.length > 1 ? "have their" : "has its"} own settings (${own.map((c) => names([c])).join(", ")} tab${own.length > 1 ? "s" : ""}): they replace “All” for ${own.length > 1 ? "these channels" : "this channel"}.`,
             )}
           </p>
-          <button class="btn btn--ghost" onclick={() => follow([channel as (typeof CHANNELS)[number]])} disabled={!!info?.colorUnavailable}>
-            <Link2 size={16} />{t("Suivre « Tous »", "Follow “All”")}
+          <button class="btn btn--ghost" onclick={() => follow(own)} disabled={!!info?.colorUnavailable}>
+            <Link2 size={16} />{t("Tout remettre sur « Tous »", "Put all back on “All”")}
           </button>
         </div>
       {:else if channel !== "all"}
-        <p class="field__hint">
-          {t(
-            "Ce canal suit « Tous » tant que vous ne le réglez pas ici. Seul, il renforce ou éteint sa couleur dans toute l'image (un contraste fort sur le bleu seul jaunit les ombres).",
-            "This channel follows “All” until you set it here. On its own, it strengthens or fades its color across the whole picture (high contrast on blue alone turns shadows yellow).",
-          )}
-        </p>
+        <div class="linked">
+          <p class="field__hint">
+            {t(
+              `Réglages du ${CHANNEL_NAMES[channel].replace(/^le /, "")} seul, en plus de « Tous » : un curseur laissé à 50 % (gamma 1,00) suit « Tous ».`,
+              `${names([channel])} only, on top of “All”: a slider left at 50% (gamma 1.00) follows “All”.`,
+            )}
+          </p>
+          {#if own.includes(channel)}
+            <button class="btn btn--ghost" onclick={() => follow([channel as ChannelName])} disabled={!!info?.colorUnavailable}>
+              <Link2 size={16} />{t("Suivre « Tous »", "Follow “All”")}
+            </button>
+          {/if}
+        </div>
       {/if}
       <Slider label={t("Luminosité", "Brightness")} value={editing.brightness} min={0} max={100} defaultValue={50} format={percent} disabled={!!info?.colorUnavailable} oninput={(v) => update("brightness", v)} />
       <Slider label={t("Contraste", "Contrast")} value={editing.contrast} min={0} max={100} defaultValue={50} format={percent} disabled={!!info?.colorUnavailable} oninput={(v) => update("contrast", v)} />
@@ -507,13 +494,13 @@
               </div>
               {#if current}<span class="badge badge--success">{t("Sur l'écran", "On screen")}</span>{/if}
               <div class="profile__actions">
-                <button class="btn" onclick={() => applyProfile(profile)} disabled={profileBusy || current || !!info?.colorUnavailable}>
+                <button class="btn" onclick={() => applyProfile(profile)} disabled={profileBusy || !!info?.colorUnavailable}>
                   {t("Appliquer", "Apply")}
                 </button>
                 <button
                   class="btn btn--ghost"
                   onclick={() => saveProfile(profile)}
-                  disabled={profileBusy || current}
+                  disabled={profileBusy}
                   title={t("Remplacer par les réglages affichés", "Replace with the settings shown")}
                   aria-label={t(`Remplacer ${profile.name} par les réglages affichés`, `Replace ${profile.name} with the settings shown`)}
                 >

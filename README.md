@@ -66,9 +66,10 @@ ses couleurs. L'option de lancement Steam de Last1 Panel est mise d'office ;
 Steam ouvert, un bouton le ferme, la met et le rouvre. Jeux par Proton et jeux
 Vulkan ; la touche Arrêt défil coupe ou remet le profil en jeu.
 
-Comme dans le panneau NVIDIA, « Tous » et chaque canal gardent leurs valeurs :
-un canal réglé à part (le bleu d'un guide, par exemple) n'est plus touché par
-« Tous », jusqu'à « Suivre « Tous » ».
+Comme dans le panneau NVIDIA, « Tous », rouge, vert et bleu ont chacun leurs
+curseurs, et aucun ne déplace les autres. Un curseur de canal laissé à sa
+valeur par défaut (50 %, gamma 1,00) suit « Tous » ; ailleurs, il le remplace
+pour ce canal (le bleu d'un guide, par exemple).
 
 L'icône Last1 Panel près de l'horloge (Plasma, Waybar sous Hyprland) met un
 profil sur l'écran au clic droit et ouvre la fenêtre au clic gauche ; elle se

@@ -52,10 +52,18 @@ export interface Channel {
   gamma: number;
 }
 
+/** Courbes rouge, verte et bleue appliquées à l'écran. */
 export interface ColorAdjust {
-  /** Valeurs de « Tous » : un canal aux mêmes valeurs les suit, un canal
-   * réglé à part garde les siennes. */
+  red: Channel;
+  green: Channel;
+  blue: Channel;
+  /** Curseurs de « Tous » (interface seulement). */
   all?: Channel;
+  /** Curseurs propres à chaque canal : à leur valeur par défaut, « Tous » s'applique. */
+  own?: OwnChannels;
+}
+
+export interface OwnChannels {
   red: Channel;
   green: Channel;
   blue: Channel;
