@@ -10,8 +10,9 @@
 //!                                            icône près de l'horloge ;
 //!                                            AppImage tenue à jour
 //!   last1-panel-cli update                   AppImage mise à jour maintenant
-//!   last1-panel-cli diagnostic               performances en jeu : ce qui
-//!                                            freine ce PC (rapport à copier)
+//!   last1-panel-cli diagnostic [--json]      performances en jeu : ce qui
+//!                                            freine ce PC (rapport à copier,
+//!                                            ou JSON pour go-to-linux)
 
 use last1_panel_core::error::CoreResult;
 use last1_panel_core::exec::SystemExec;
@@ -37,15 +38,21 @@ fn main() -> ExitCode {
         Some("watch") => watch(),
         Some("update") => update_now(),
         Some("diagnostic") => {
-            print!("{}", Panel::system().performance_report().text);
+            let report = Panel::system().performance_report();
+            // --json : pour go-to-linux, qui l'envoie à last1.fun.
+            if args.get(1).is_some_and(|a| a == "--json") {
+                println!("{}", serde_json::to_string(&report).expect("rapport sérialisable"));
+            } else {
+                print!("{}", report.text);
+            }
             ExitCode::SUCCESS
         }
         _ => {
             eprintln!(
                 "{}",
                 t(
-                    "Utilisation : last1-panel-cli run <commande du jeu…> | apply [--delay secondes] | watch | update | diagnostic",
-                    "Usage: last1-panel-cli run <game command…> | apply [--delay seconds] | watch | update | diagnostic",
+                    "Utilisation : last1-panel-cli run <commande du jeu…> | apply [--delay secondes] | watch | update | diagnostic [--json]",
+                    "Usage: last1-panel-cli run <game command…> | apply [--delay seconds] | watch | update | diagnostic [--json]",
                 )
             );
             ExitCode::from(2)

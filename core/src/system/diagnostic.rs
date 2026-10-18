@@ -70,6 +70,20 @@ pub struct Sources<'a> {
     pub recent_games: Vec<String>,
 }
 
+/// Variable posée pour toutes les sessions dans /etc/environment (pam_env) :
+/// celle dont Steam hérite, même si ce processus vient d'un service du
+/// système (go-to-linux) qui ne l'a pas.
+pub fn etc_environment(name: &str) -> Option<String> {
+    environment_value(&fs::read_to_string("/etc/environment").ok()?, name)
+}
+
+fn environment_value(text: &str, name: &str) -> Option<String> {
+    text.lines().rev().find_map(|line| {
+        let (key, value) = line.trim().strip_prefix("export ").unwrap_or(line.trim()).split_once('=')?;
+        (key.trim() == name).then(|| value.trim().trim_matches('"').to_string()).filter(|v| !v.is_empty())
+    })
+}
+
 fn read(path: &Path) -> Option<String> {
     fs::read_to_string(path).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
@@ -588,6 +602,14 @@ mod tests {
         assert_eq!(power(&FakeExec::new().on("powerprofilesctl", "balanced\n")), Some(Level::Warning));
         // Rien de lu (machine virtuelle) : pas d'avis.
         assert_eq!(power(&FakeExec::new().without("powerprofilesctl")), None);
+    }
+
+    #[test]
+    fn reads_etc_environment() {
+        let text = "# go-to-linux\n__GL_SHADER_DISK_CACHE_SIZE=12000000000\nexport EDITOR=\"nano\"\n#MESA_SHADER_CACHE_MAX_SIZE=1G\n";
+        assert_eq!(environment_value(text, "__GL_SHADER_DISK_CACHE_SIZE").as_deref(), Some("12000000000"));
+        assert_eq!(environment_value(text, "EDITOR").as_deref(), Some("nano"));
+        assert_eq!(environment_value(text, "MESA_SHADER_CACHE_MAX_SIZE"), None);
     }
 
     #[test]

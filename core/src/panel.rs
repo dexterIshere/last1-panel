@@ -332,7 +332,7 @@ impl Panel {
             dev: Path::new("/dev"),
             proc_dir: Path::new("/proc"),
             exec: self.exec.as_ref(),
-            env: &|name| std::env::var(name).ok(),
+            env: &|name| std::env::var(name).ok().or_else(|| crate::system::diagnostic::etc_environment(name)),
             settings: &self.settings(),
             gpus: &self.gpus(),
             desktop: self.desktop,
