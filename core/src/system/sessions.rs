@@ -52,6 +52,28 @@ pub fn recent(dir: &Path, count: usize) -> Vec<GameSession> {
         .collect()
 }
 
+/// Garde les `keep` derniers journaux (et leurs résumés) : MangoHud en écrit
+/// un par partie, quelques Mo par heure de jeu.
+pub fn prune(dir: &Path, keep: usize) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    let mut logs: Vec<_> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension().is_some_and(|ext| ext == "csv")
+                && !path.file_name().is_some_and(|n| n.to_string_lossy().ends_with("_summary.csv"))
+        })
+        .collect();
+    logs.sort_by_key(|path| std::cmp::Reverse(date_of(path).unwrap_or_default()));
+    for old in logs.iter().skip(keep) {
+        let _ = fs::remove_file(old);
+        let _ = fs::remove_file(old.with_file_name(format!(
+            "{}_summary.csv",
+            old.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+        )));
+    }
+}
+
 fn date_of(path: &Path) -> Option<String> {
     let stem = path.file_stem()?.to_string_lossy().into_owned();
     // « Jeu_2026-10-18_21-04-33 » : les 19 derniers caractères.
@@ -172,6 +194,12 @@ mod tests {
         assert_eq!(dates, ["2026-10-18 20:00", "2026-10-17 20:00"]);
         assert!(sessions.iter().all(|s| s.limit == "gpu"));
         assert!(recent(&dir.path().join("absent"), 5).is_empty());
+
+        // Les plus anciens journaux partent, avec leur résumé.
+        prune(dir.path(), 2);
+        assert!(!dir.path().join("Game.exe_2026-10-17_20-00-00.csv").exists());
+        assert!(dir.path().join("Game.exe_2026-10-18_20-00-00.csv").exists());
+        assert!(dir.path().join("Game.exe_2026-10-18_20-00-00_summary.csv").exists());
     }
 
     #[test]

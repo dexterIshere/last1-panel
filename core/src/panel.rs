@@ -339,6 +339,12 @@ impl Panel {
             default_proton,
             recent_games,
             sessions: crate::system::sessions::recent(&crate::paths::game_logs_dir(), 10),
+            mangohud: crate::exec::which("mangohud").is_some(),
+            wrapped_games: steam
+                .as_deref()
+                .map(steam::installed_games)
+                .filter(|games| !games.is_empty())
+                .map(|games| (games.iter().filter(|game| game.wrapped).count(), games.len())),
         })
     }
 

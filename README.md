@@ -96,6 +96,13 @@ jeu. Elle ne change rien au système : go-to-linux pose ces optimisations dès
 l'installation de CachyOS (« Jeux et performances »). « Copier le rapport »
 donne le tout en texte, comme `last1-panel-cli diagnostic`.
 
+Chaque jeu lancé par Last1 Panel est mesuré par MangoHud, caché : images par
+seconde (moyenne et 1 % les plus lentes), charge du processeur et de la carte,
+et ce qui limite le jeu. Les 30 dernières parties restent dans
+`~/.local/share/last1-panel/parties` et la page en résume les dernières. Si
+MangoHud manque, ou si des jeux ne passent pas par Last1 Panel, la page le
+propose en un clic.
+
 ## Construire
 
 Il faut Rust (1.90 ou plus récent), [Bun](https://bun.sh) et les bibliothèques

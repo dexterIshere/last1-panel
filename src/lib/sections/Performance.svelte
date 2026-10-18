@@ -50,7 +50,12 @@
   }
 
   const toFix = $derived(report?.checks.filter((c) => c.level === "problem" || c.level === "warning").length ?? 0);
-  const fixLabel = (kind: PerfFix) => ({ "low-latency": t("Rendre la latence aux jeux", "Give latency back to games") })[kind];
+  const fixLabel = (kind: PerfFix) =>
+    ({
+      "low-latency": t("Rendre la latence aux jeux", "Give latency back to games"),
+      "install-mango-hud": t("Installer MangoHud", "Install MangoHud"),
+      "wrap-games": t("Activer pour tous les jeux", "Turn on for all games"),
+    })[kind];
   const icon = (check: PerfCheck) => ({ problem: CircleAlert, warning: TriangleAlert, info: Info, ok: Check })[check.level];
 </script>
 

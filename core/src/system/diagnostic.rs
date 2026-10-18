@@ -31,6 +31,11 @@ pub enum Level {
 pub enum Fix {
     /// Faible latence rendue aux jeux (« Réglage du jeu »), partout.
     LowLatency,
+    /// MangoHud installé (mot de passe), pour mesurer les parties.
+    InstallMangoHud,
+    /// Option de lancement de Last1 Panel pour tous les jeux Steam (Steam
+    /// fermé le temps de l'écrire, puis rouvert).
+    WrapGames,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -73,6 +78,10 @@ pub struct Sources<'a> {
     pub recent_games: Vec<String>,
     /// Dernières parties mesurées (journaux de MangoHud, system/sessions.rs).
     pub sessions: Vec<GameSession>,
+    /// MangoHud installé (mesure des parties).
+    pub mangohud: bool,
+    /// Jeux Steam installés : combien passent par Last1 Panel, sur combien.
+    pub wrapped_games: Option<(usize, usize)>,
 }
 
 /// Variable posée pour toutes les sessions dans /etc/environment (pam_env) :
@@ -344,6 +353,39 @@ pub fn run(src: &Sources) -> Report {
         }
     }
 
+    // Mesure des parties : MangoHud, dans les jeux lancés par Last1 Panel.
+    checks.push(match src.wrapped_games {
+        _ if !src.mangohud => Check {
+            id: "measure",
+            level: Level::Warning,
+            title: t("Parties non mesurées : MangoHud absent", "Games not measured: MangoHud missing"),
+            detail: t(
+                "MangoHud mesure les images par seconde de chaque partie, sans rien afficher : il dit si le jeu est limité par le processeur ou par la carte.",
+                "MangoHud measures each game's frame rate, without showing anything: it tells whether the game is limited by the CPU or the graphics card.",
+            ),
+            fix: Some(Fix::InstallMangoHud),
+        },
+        Some((wrapped, total)) if wrapped < total => Check {
+            id: "measure",
+            level: if wrapped == 0 { Level::Warning } else { Level::Info },
+            title: t(
+                &format!("{} jeux sur {total} passent par Last1 Panel", wrapped),
+                &format!("{wrapped} of {total} games go through Last1 Panel"),
+            ),
+            detail: t(
+                "Les autres ne sont ni réglés ni mesurés : son option de lancement Steam leur manque.",
+                "The others are neither set nor measured: they lack its Steam launch option.",
+            ),
+            fix: Some(Fix::WrapGames),
+        },
+        _ => check(
+            "measure",
+            Level::Ok,
+            t("Parties mesurées", "Games measured"),
+            t("MangoHud enregistre chaque partie lancée par Last1 Panel, sans rien afficher.", "MangoHud records each game launched by Last1 Panel, without showing anything."),
+        ),
+    });
+
     // Faible latence forcée par Last1 Panel : une seule image d'avance.
     let games = &src.settings.games;
     if games.global.low_latency != LowLatency::App || games.per_game.values().any(|g| g.low_latency != LowLatency::App)
@@ -555,6 +597,8 @@ mod tests {
                 gpu_clock: 2610.0,
                 limit: "cpu",
             }],
+            mangohud: false,
+            wrapped_games: Some((0, 3)),
         });
         let ids =
             |level: Level| -> Vec<&str> { report.checks.iter().filter(|c| c.level == level).map(|c| c.id).collect() };
@@ -568,6 +612,7 @@ mod tests {
                 "shader-cache",
                 "rebar",
                 "driver",
+                "measure",
                 "low-latency",
                 "swap",
                 "shader-precache"
@@ -575,7 +620,7 @@ mod tests {
         );
         assert_eq!(ids(Level::Info), ["scheduler"]);
         let fixes: Vec<Fix> = report.checks.iter().filter_map(|c| c.fix).collect();
-        assert_eq!(fixes, [Fix::LowLatency]);
+        assert_eq!(fixes, [Fix::InstallMangoHud, Fix::LowLatency]);
         assert!(report.text.contains("AMD Ryzen 9 7950X3D") && report.text.contains("balanced"));
         assert!(
             report.text.contains("proton-cachyos-slr") && report.text.contains("lavd") && report.text.contains("[!!]")
@@ -609,6 +654,8 @@ mod tests {
             default_proton: None,
             recent_games: Vec::new(),
             sessions: Vec::new(),
+            mangohud: true,
+            wrapped_games: Some((1, 1)),
         });
         assert!(report.checks.iter().all(|c| c.level == Level::Ok), "{:#?}", report.checks);
         assert!(report.checks.iter().any(|c| c.id == "rebar" && c.detail.contains("16384")));
@@ -630,6 +677,8 @@ mod tests {
                 default_proton: None,
                 recent_games: Vec::new(),
                 sessions: Vec::new(),
+                mangohud: true,
+                wrapped_games: Some((1, 1)),
             })
             .checks
             .into_iter()

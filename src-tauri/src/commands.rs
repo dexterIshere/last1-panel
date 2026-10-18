@@ -331,6 +331,25 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fix: Fix) -> Result<(
     let panel = panel.inner().clone();
     blocking(move || match fix {
         Fix::LowLatency => panel.reset_low_latency(),
+        Fix::InstallMangoHud => {
+            if which("pacman").is_none() {
+                return Err(CoreError::message(t(
+                    "Installez MangoHud avec le gestionnaire de paquets du système.",
+                    "Install MangoHud with the system's package manager.",
+                )));
+            }
+            // lib32-mangohud : jeux 32 bits ; sans le dépôt multilib, MangoHud seul.
+            let script =
+                "pacman -S --needed --noconfirm mangohud lib32-mangohud || pacman -S --needed --noconfirm mangohud";
+            let exec = SystemExec { timeout: Duration::from_secs(1800), ..SystemExec::default() };
+            exec.run_ok("pkexec", &["/bin/sh".into(), "-c".into(), script.into()]).map(|_| ())
+        }
+        Fix::WrapGames => {
+            let root = steam::find_root(&last1_panel_core::paths::home_dir())
+                .ok_or_else(|| CoreError::message(t("Steam n'est pas installé.", "Steam is not installed.")))?;
+            let ids: Vec<u32> = steam::installed_games(&root).iter().map(|game| game.app_id).collect();
+            wrap_closing_steam(&ids).map(|_| ())
+        }
     })
     .await
 }
@@ -376,27 +395,28 @@ pub async fn link_game_color(app_id: u32, profile: Option<String>) -> Result<Gam
 /// Steam rouvert, comme avant.
 #[tauri::command]
 pub async fn close_steam_and_wrap(app_ids: Vec<u32>) -> Result<usize> {
-    blocking(move || {
-        let root = steam::find_root(&last1_panel_core::paths::home_dir())
-            .ok_or_else(|| CoreError::message(t("Steam n'est pas installé.", "Steam is not installed.")))?;
-        let proc_dir = Path::new("/proc");
-        let was_running = steam::is_running(proc_dir);
-        if was_running {
-            let _ = steam_command(&["-shutdown"]).spawn().map(|mut child| std::thread::spawn(move || child.wait()));
-            if !steam::wait_closed(proc_dir, Duration::from_secs(60)) {
-                return Err(CoreError::message(t(
-                    "Steam ne s'est pas fermé : quittez-le (menu Steam > Quitter), puis réessayez.",
-                    "Steam did not close: quit it (Steam menu > Exit), then try again.",
-                )));
-            }
+    blocking(move || wrap_closing_steam(&app_ids)).await
+}
+
+fn wrap_closing_steam(app_ids: &[u32]) -> last1_panel_core::error::CoreResult<usize> {
+    let root = steam::find_root(&last1_panel_core::paths::home_dir())
+        .ok_or_else(|| CoreError::message(t("Steam n'est pas installé.", "Steam is not installed.")))?;
+    let proc_dir = Path::new("/proc");
+    let was_running = steam::is_running(proc_dir);
+    if was_running {
+        let _ = steam_command(&["-shutdown"]).spawn().map(|mut child| std::thread::spawn(move || child.wait()));
+        if !steam::wait_closed(proc_dir, Duration::from_secs(60)) {
+            return Err(CoreError::message(t(
+                "Steam ne s'est pas fermé : quittez-le (menu Steam > Quitter), puis réessayez.",
+                "Steam did not close: quit it (Steam menu > Exit), then try again.",
+            )));
         }
-        let changed = steam::set_wrapped(&root, proc_dir, &app_ids, true)?;
-        if was_running && let Ok(mut child) = steam_command(&[]).spawn() {
-            std::thread::spawn(move || child.wait());
-        }
-        Ok(changed)
-    })
-    .await
+    }
+    let changed = steam::set_wrapped(&root, proc_dir, app_ids, true)?;
+    if was_running && let Ok(mut child) = steam_command(&[]).spawn() {
+        std::thread::spawn(move || child.wait());
+    }
+    Ok(changed)
 }
 
 /// Steam lancé hors de la fenêtre (son propre groupe de processus) et sans

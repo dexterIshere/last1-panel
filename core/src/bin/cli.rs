@@ -83,6 +83,7 @@ fn run(command: &[String]) -> ExitCode {
             .filter(|tool| last1_panel_core::exec::which(tool).is_some())
             .map(|tool| tool.to_string())
             .collect(),
+        logs: game_logs(),
     };
     let mut plan = launch::plan(&profile, &context);
     // Profil de couleurs du jeu, dans sa seule fenêtre (vkBasalt) ; en cas
@@ -105,6 +106,14 @@ fn run(command: &[String]) -> ExitCode {
     let error = Command::new(program).args(rest).envs(env.iter().map(|(k, v)| (k, v))).exec();
     eprintln!("last1-panel-cli : {program} : {error}");
     ExitCode::from(127)
+}
+
+/// Dossier des mesures des parties, créé, les 30 derniers journaux gardés.
+fn game_logs() -> Option<String> {
+    let dir = last1_panel_core::paths::game_logs_dir();
+    std::fs::create_dir_all(&dir).ok()?;
+    last1_panel_core::system::sessions::prune(&dir, 30);
+    dir.to_str().map(str::to_string)
 }
 
 /// Dernier lancement noté dans ~/.cache/last1-panel/last-launch.txt (pour

@@ -23,6 +23,9 @@ pub struct Context {
     pub amd: bool,
     /// Outils installés : game-performance, gamemoderun, dlss-swapper, mangohud.
     pub tools: Vec<String>,
+    /// Dossier où MangoHud enregistre chaque partie (images par seconde,
+    /// charges), lu par le diagnostic des performances. Absent : pas de mesure.
+    pub logs: Option<String>,
 }
 
 impl Context {
@@ -185,7 +188,19 @@ pub fn plan(profile: &GameProfile, context: &Context) -> Plan {
         }
     }
 
-    // MangoHud : affiché, ou caché mais limiteur d'images d'un jeu natif.
+    // Mesure de la partie par MangoHud, caché s'il n'est pas affiché : un
+    // fichier par partie dans `logs` (system/sessions.rs). Un chemin avec une
+    // virgule casserait MANGOHUD_CONFIG : pas de mesure alors.
+    if let Some(dir) = context.logs.as_deref().filter(|dir| context.has("mangohud") && !dir.contains(',')) {
+        plan.mangohud.extend([
+            "autostart_log=1".to_string(),
+            "log_interval=100".to_string(),
+            format!("output_folder={dir}"),
+        ]);
+    }
+
+    // MangoHud : affiché, ou caché mais limiteur d'images d'un jeu natif, ou
+    // mesure de la partie.
     if overlay || !plan.mangohud.is_empty() {
         plan.wrappers.push("mangohud".into());
         if overlay && !plan.mangohud.is_empty() {
@@ -216,7 +231,7 @@ mod tests {
     use super::*;
 
     fn ctx(proton: bool, nvidia: bool, tools: &[&str]) -> Context {
-        Context { proton, nvidia, amd: !nvidia, tools: tools.iter().map(|t| t.to_string()).collect() }
+        Context { proton, nvidia, amd: !nvidia, tools: tools.iter().map(|t| t.to_string()).collect(), logs: None }
     }
 
     fn env(plan: &Plan) -> Vec<(String, String)> {
@@ -304,6 +319,25 @@ mod tests {
 
         // MangoHud absent : pas d'affichage, et rien ne casse.
         assert!(plan(&shown, &ctx(true, true, &[])).wrappers.is_empty());
+    }
+
+    #[test]
+    fn every_game_is_measured_by_hidden_mangohud() {
+        let mut context = ctx(true, true, &["mangohud"]);
+        context.logs = Some("/home/j/.local/share/last1-panel/parties".into());
+        let plan = plan(&GameProfile::default(), &context);
+        assert_eq!(plan.wrappers, ["mangohud"]);
+        assert_eq!(
+            get(&env(&plan), "MANGOHUD_CONFIG").as_deref(),
+            Some("autostart_log=1,log_interval=100,output_folder=/home/j/.local/share/last1-panel/parties,no_display")
+        );
+        // Affiché : la configuration de l'utilisateur, plus la mesure.
+        let shown = GameProfile { overlay: Some(true), ..Default::default() };
+        let vars = env(&super::plan(&shown, &context));
+        assert!(get(&vars, "MANGOHUD_CONFIG").unwrap().starts_with("read_cfg,autostart_log=1"));
+        // Sans MangoHud : rien.
+        context.tools.clear();
+        assert_eq!(super::plan(&GameProfile::default(), &context), Plan::default());
     }
 
     #[test]
