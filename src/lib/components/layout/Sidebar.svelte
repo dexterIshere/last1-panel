@@ -5,7 +5,7 @@
   import { api, errorMessage } from "$lib/api/ipc";
   import { i18n, t, type Lang } from "$lib/i18n.svelte";
   import { app, type Section } from "$lib/state/app.svelte";
-  import { Cpu, Gamepad2, Monitor, Palette } from "@lucide/svelte";
+  import { Cpu, Gamepad2, Gauge, Monitor, Palette } from "@lucide/svelte";
 
   const LANGS: Lang[] = ["fr", "en"];
 
@@ -14,6 +14,7 @@
     { id: "display", title: t("Affichage", "Display"), detail: t("Définition, fréquence, G-SYNC", "Resolution, refresh, G-SYNC"), icon: Monitor },
     { id: "gpu", title: t("Carte graphique", "Graphics card"), detail: t("Puissance, ventilateurs", "Power, fans"), icon: Cpu },
     { id: "games", title: t("Jeux", "Games"), detail: t("Réglages 3D par jeu", "Per-game 3D settings"), icon: Gamepad2 },
+    { id: "perf", title: t("Performances", "Performance"), detail: t("Diagnostic en jeu", "In-game diagnostic"), icon: Gauge },
   ]);
 
   let updating = $state(false);

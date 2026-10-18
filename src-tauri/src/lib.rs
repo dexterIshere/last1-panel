@@ -70,6 +70,8 @@ pub fn run() {
             commands::set_tray,
             commands::link_game_color,
             commands::close_steam_and_wrap,
+            commands::performance_report,
+            commands::performance_fix,
             commands::update_available,
             commands::install_update,
         ])

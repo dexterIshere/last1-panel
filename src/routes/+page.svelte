@@ -5,6 +5,7 @@
   import Display from "$lib/sections/Display.svelte";
   import Games from "$lib/sections/Games.svelte";
   import GpuTuning from "$lib/sections/Gpu.svelte";
+  import Performance from "$lib/sections/Performance.svelte";
   import { t } from "$lib/i18n.svelte";
   import { app } from "$lib/state/app.svelte";
   import { isTauri } from "@tauri-apps/api/core";
@@ -38,6 +39,8 @@
           <Display />
         {:else if app.section === "gpu"}
           <GpuTuning />
+        {:else if app.section === "perf"}
+          <Performance />
         {:else}
           <Games />
         {/if}

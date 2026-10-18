@@ -8,6 +8,8 @@ import type {
   ColorProfile,
   ColorProfiles,
   GameLink,
+  PerfFix,
+  PerfReport,
   ColorState,
   GamesInfo,
   GamesSettings,
@@ -52,6 +54,8 @@ export const api = {
   setTray: (shown: boolean) => invoke<void>("set_tray", { shown }),
   /** Profil de couleurs d'un jeu (null : plus de profil), option de lancement mise si elle manque. */
   linkGameColor: (appId: number, profile: string | null) => invoke<GameLink>("link_game_color", { appId, profile }),
+  performanceReport: () => invoke<PerfReport>("performance_report"),
+  performanceFix: (fix: PerfFix) => invoke<void>("performance_fix", { fix }),
   /** Steam fermé, option de lancement mise pour ces jeux, Steam rouvert. */
   closeSteamAndWrap: (appIds: number[]) => invoke<number>("close_steam_and_wrap", { appIds }),
   saveColorProfile: (id: string | null, name: string, color: ColorAdjust, vibrance: number) =>

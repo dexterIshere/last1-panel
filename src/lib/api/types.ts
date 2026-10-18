@@ -200,6 +200,26 @@ export interface ColorProfile {
   vibrance: number;
 }
 
+/** Diagnostic des performances en jeu (core/src/system/diagnostic.rs). */
+export type PerfLevel = "problem" | "warning" | "info" | "ok";
+export type PerfFix = "low-latency";
+
+export interface PerfCheck {
+  id: string;
+  level: PerfLevel;
+  title: string;
+  detail: string;
+  /** Correction que Last1 Panel fait lui-même (ses réglages). */
+  fix: PerfFix | null;
+}
+
+export interface PerfReport {
+  checks: PerfCheck[];
+  facts: [string, string][];
+  /** Rapport à copier. */
+  text: string;
+}
+
 /** Lien d'un jeu à un profil de couleurs. */
 export interface GameLink {
   /** L'option de lancement de Last1 Panel manque et Steam est ouvert. */

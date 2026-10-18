@@ -10,6 +10,8 @@
 //!                                            icône près de l'horloge ;
 //!                                            AppImage tenue à jour
 //!   last1-panel-cli update                   AppImage mise à jour maintenant
+//!   last1-panel-cli diagnostic               performances en jeu : ce qui
+//!                                            freine ce PC (rapport à copier)
 
 use last1_panel_core::error::CoreResult;
 use last1_panel_core::exec::SystemExec;
@@ -34,12 +36,16 @@ fn main() -> ExitCode {
         Some("apply") => apply(&args[1..]),
         Some("watch") => watch(),
         Some("update") => update_now(),
+        Some("diagnostic") => {
+            print!("{}", Panel::system().performance_report().text);
+            ExitCode::SUCCESS
+        }
         _ => {
             eprintln!(
                 "{}",
                 t(
-                    "Utilisation : last1-panel-cli run <commande du jeu…> | apply [--delay secondes] | watch | update",
-                    "Usage: last1-panel-cli run <game command…> | apply [--delay seconds] | watch | update",
+                    "Utilisation : last1-panel-cli run <commande du jeu…> | apply [--delay secondes] | watch | update | diagnostic",
+                    "Usage: last1-panel-cli run <game command…> | apply [--delay seconds] | watch | update | diagnostic",
                 )
             );
             ExitCode::from(2)

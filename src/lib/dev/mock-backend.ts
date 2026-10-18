@@ -7,7 +7,7 @@
 //   ?lact=arrete          service LACT installé mais arrêté
 //   ?lact=absent          LACT pas installé
 //   ?steam=ouvert         Steam lancé (options de lancement bloquées)
-//   ?page=display|gpu|games   page affichée au démarrage
+//   ?page=display|gpu|games|perf   page affichée au démarrage
 //   ?lang=en              système en anglais
 //   ?maj=1                version plus récente sur last1.fun
 
@@ -33,7 +33,7 @@ export function installMockBackend(): void {
   let lactRunning = !["arrete", "absent"].includes(params.get("lact") ?? "");
   const steamRunning = params.get("steam") === "ouvert";
   const page = params.get("page");
-  if (page && ["colors", "display", "gpu", "games"].includes(page)) app.section = page as Section;
+  if (page && ["colors", "display", "gpu", "games", "perf"].includes(page)) app.section = page as Section;
 
   const system: SystemInfo = {
     version: "0.1.0",
@@ -111,6 +111,7 @@ export function installMockBackend(): void {
   });
   const guide = (b: number, c: number, g: number) => ({ brightness: b, contrast: c, gamma: g });
   let tray = true;
+  let lowLatencyForced = true;
   let colorProfiles: ColorProfile[] = [
     { id: "p1", name: "Arc Raiders", color: { red: guide(52, 47, 1.47), green: guide(52, 47, 1.47), blue: guide(62, 72, 1.65) }, vibrance: 50 },
   ];
@@ -285,6 +286,36 @@ export function installMockBackend(): void {
     save_game_settings: async (args) => {
       await wait(200);
       gameSettings = args.settings as GamesSettings;
+    },
+    performance_report: async () => {
+      await wait(400);
+      const checks = [
+        { id: "x3d", level: "problem", title: "Les jeux tournent sans la 3D V-Cache", detail: "Processeur X3D en mode « frequency » : les jeux partent sur le bloc sans 3D V-Cache, beaucoup d'images en moins quand le processeur limite. go-to-linux le met en mode « cache » à chaque démarrage.", fix: null },
+        ...(lowLatencyForced
+          ? [{ id: "low-latency", level: "warning", title: "Mode de faible latence forcé (Last1 Panel)", detail: "Une seule image préparée d'avance : quand le processeur et la carte prennent chacun autant de temps (jeux Unreal Engine 5), ils s'attendent l'un l'autre et les images par seconde chutent.", fix: "low-latency" }]
+          : []),
+        { id: "rebar", level: "warning", title: "Resizable BAR désactivé", detail: "Le processeur ne voit la mémoire de la carte que par une fenêtre de 256 Mo, ce qui freine les jeux DirectX 12 (VKD3D-Proton). À activer dans le BIOS : Resizable BAR et Above 4G Decoding.", fix: null },
+        { id: "scheduler", level: "info", title: "Ordonnanceur lavd actif", detail: "Il change la façon dont les cœurs sont partagés : en cas de chutes d'images par seconde, comparez sans lui (sudo systemctl stop scx_loader, puis start pour le remettre).", fix: null },
+        { id: "power", level: "ok", title: "Mode performance", detail: "Processeur à pleine vitesse.", fix: null },
+        { id: "ntsync", level: "ok", title: "NTSync", detail: "Disponible pour Proton.", fix: null },
+        { id: "shader-cache", level: "ok", title: "Cache des shaders agrandi", detail: "__GL_SHADER_DISK_CACHE_SIZE=12000000000", fix: null },
+      ];
+      const facts: [string, string][] = [
+        ["Processeur", "AMD Ryzen 9 7950X3D 16-Core Processor"],
+        ["Fréquence du processeur", "amd-pstate-epp / powersave / performance"],
+        ["Profil d'énergie", "performance"],
+        ["Ordonnanceur", "lavd"],
+        ["Noyau", "6.17.2-2-cachyos"],
+        ["Carte card1", "GeForce RTX 4070 (nvidia 595.58.03)"],
+        ["Proton par défaut (Steam)", "proton-cachyos-slr"],
+        ["Mémoire", "32 Go"],
+      ];
+      const text = ["Last1 Panel — diagnostic des performances", "", ...facts.map(([n, v]) => `${n} : ${v}`), "", ...checks.map((c) => `[${c.level}] ${c.title} — ${c.detail}`)].join("\n");
+      return { checks, facts, text };
+    },
+    performance_fix: async () => {
+      await wait(200);
+      lowLatencyForced = false;
     },
     link_game_color: async (args) => {
       await wait(200);

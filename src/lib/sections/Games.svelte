@@ -269,7 +269,7 @@
             <option value="on">{t("Activé", "On")}</option>
             {#if nvidia}<option value="ultra">{t("Ultra (avec NVIDIA Reflex)", "Ultra (with NVIDIA Reflex)")}</option>{/if}
           </select>
-          <span class="field__hint">{t("Une seule image préparée d'avance.", "Only one frame prepared ahead.")}</span>
+          <span class="field__hint">{t("Une seule image préparée d'avance : moins de latence, mais moins d'images par seconde quand le processeur limite. Inutile pour les jeux avec NVIDIA Reflex.", "Only one frame prepared ahead: less latency, but fewer frames when the CPU is the limit. Not needed for games with NVIDIA Reflex.")}</span>
         </label>
 
         <label class="field">

@@ -4,7 +4,7 @@ import { api, errorMessage } from "$lib/api/ipc";
 import type { SystemInfo } from "$lib/api/types";
 import { i18n, saveLang, savedLang, type Lang } from "$lib/i18n.svelte";
 
-export type Section = "colors" | "display" | "gpu" | "games";
+export type Section = "colors" | "display" | "gpu" | "games" | "perf";
 
 class App {
   system = $state<SystemInfo | null>(null);

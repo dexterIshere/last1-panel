@@ -85,6 +85,17 @@ L'icône Last1 Panel près de l'horloge (Plasma, Waybar sous Hyprland) met un
 profil sur l'écran au clic droit et ouvre la fenêtre au clic gauche ; elle se
 masque depuis son menu et revient par **Couleurs**.
 
+## Performances en jeu
+
+La page **Performances** dit ce qui fait perdre des images par seconde sur le
+PC par rapport à Windows : processeur en mode économie, Ryzen X3D sans sa 3D
+V-Cache, carte graphique mal branchée (x4 au lieu de x16), Resizable BAR
+désactivé, pilote ancien, NTSync absent, cache des shaders trop petit,
+faible latence forcée, mémoire pleine, shaders compilés par Steam pendant le
+jeu. Elle ne change rien au système : go-to-linux pose ces optimisations dès
+l'installation de CachyOS (« Jeux et performances »). « Copier le rapport »
+donne le tout en texte, comme `last1-panel-cli diagnostic`.
+
 ## Construire
 
 Il faut Rust (1.90 ou plus récent), [Bun](https://bun.sh) et les bibliothèques

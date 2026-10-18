@@ -305,6 +305,34 @@ impl Panel {
         self.update(|settings| settings.outputs.entry(output.to_string()).or_default().vibrance = Some(percent))
     }
 
+    /// Diagnostic des performances en jeu (system/diagnostic.rs), avec les
+    /// variables de la session dont Steam et ses jeux héritent.
+    pub fn performance_report(&self) -> crate::system::diagnostic::Report {
+        let steam = crate::games::steam::find_root(&crate::paths::home_dir());
+        crate::system::diagnostic::run(&crate::system::diagnostic::Sources {
+            sys: &self.sys.sys,
+            dev: Path::new("/dev"),
+            proc_dir: Path::new("/proc"),
+            exec: self.exec.as_ref(),
+            env: &|name| std::env::var(name).ok(),
+            settings: &self.settings(),
+            gpus: &self.gpus(),
+            desktop: self.desktop,
+            default_proton: steam.as_deref().and_then(crate::games::steam::default_compat_tool),
+        })
+    }
+
+    /// Faible latence rendue aux jeux, partout (correction du diagnostic).
+    pub fn reset_low_latency(&self) -> CoreResult<()> {
+        self.update(|settings| {
+            settings.games.global.low_latency = crate::games::profile::LowLatency::App;
+            for game in settings.games.per_game.values_mut() {
+                game.low_latency = crate::games::profile::LowLatency::App;
+            }
+            settings.games.per_game.retain(|_, game| *game != crate::games::profile::GameProfile::default());
+        })
+    }
+
     /// Couleurs d'un profil (ou valeurs par défaut) sur un écran : courbes,
     /// puis vibrance sur un écran d'une carte NVIDIA (ailleurs, sans elle).
     /// Ce qui est déjà en place n'est pas refait : l'écran ne clignote pas.

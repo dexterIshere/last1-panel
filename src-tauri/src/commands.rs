@@ -13,6 +13,7 @@ use last1_panel_core::i18n::{self, t};
 use last1_panel_core::panel::{ColorState, Panel};
 use last1_panel_core::settings::{ColorProfile, GamesSettings, Settings};
 use last1_panel_core::system::desktop::Desktop;
+use last1_panel_core::system::diagnostic::{Fix, Report};
 use last1_panel_core::system::gpu::{Gpu, Vendor};
 use last1_panel_core::tuning::lact::{self, ClockRanges, Device, Lact, OffsetRange, Stats, Tuning};
 use last1_panel_core::update;
@@ -313,6 +314,23 @@ pub async fn apply_color_profile(panel: State<'_, Arc<Panel>>, output: String, i
             }
         };
         panel.apply_colors(&output, &color, vibrance)
+    })
+    .await
+}
+
+/// Diagnostic des performances en jeu.
+#[tauri::command]
+pub async fn performance_report(panel: State<'_, Arc<Panel>>) -> Result<Report> {
+    let panel = panel.inner().clone();
+    blocking(move || Ok(panel.performance_report())).await
+}
+
+/// Correction proposée par le diagnostic (réglages de Last1 Panel seulement).
+#[tauri::command]
+pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fix: Fix) -> Result<()> {
+    let panel = panel.inner().clone();
+    blocking(move || match fix {
+        Fix::LowLatency => panel.reset_low_latency(),
     })
     .await
 }

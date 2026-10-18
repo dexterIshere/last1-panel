@@ -255,6 +255,15 @@ pub fn is_running(proc_dir: &Path) -> bool {
     })
 }
 
+/// Outil de compatibilité de Steam pour tous les jeux sans réglage propre
+/// (Paramètres > Compatibilité) : « proton_experimental », « proton-cachyos… ».
+pub fn default_compat_tool(root: &Path) -> Option<String> {
+    let text = fs::read_to_string(root.join("config/config.vdf")).ok()?;
+    let file = vdf::parse(&text).ok()?;
+    let mapping = file.path(&["InstallConfigStore", "Software", "Valve", "Steam", "CompatToolMapping", "0"])?;
+    mapping.text("name").filter(|name| !name.is_empty()).map(str::to_string)
+}
+
 /// Attend que Steam soit fermé (`steam -shutdown` : il écrit ses réglages en
 /// partant), au plus `wait`. Vrai s'il l'est.
 pub fn wait_closed(proc_dir: &Path, wait: Duration) -> bool {
@@ -468,6 +477,20 @@ mod tests {
         let cyberpunk = games.iter().find(|game| game.app_id == 1091500).unwrap();
         assert_eq!(cyberpunk.launch_options, "PROTON_LOG=1 %command% -dx12");
         assert!(!cyberpunk.wrapped);
+    }
+
+    #[test]
+    fn reads_the_default_proton() {
+        let home = steam();
+        let root = find_root(home.path()).unwrap();
+        assert_eq!(default_compat_tool(&root), None);
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::write(
+            root.join("config/config.vdf"),
+            "\"InstallConfigStore\"\n{\n\t\"Software\"\n\t{\n\t\t\"valve\"\n\t\t{\n\t\t\t\"Steam\"\n\t\t\t{\n\t\t\t\t\"CompatToolMapping\"\n\t\t\t\t{\n\t\t\t\t\t\"0\"\n\t\t\t\t\t{\n\t\t\t\t\t\t\"name\"\t\t\"proton-cachyos-slr\"\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n}\n",
+        )
+        .unwrap();
+        assert_eq!(default_compat_tool(&root).as_deref(), Some("proton-cachyos-slr"));
     }
 
     #[test]
