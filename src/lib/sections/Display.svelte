@@ -132,11 +132,14 @@
       right: t("Portrait retourné", "Portrait (flipped)"),
     })[r];
 
+  // Les deux choix du panneau NVIDIA : « plein écran » et « fenêtré et plein
+  // écran ». Sous Wayland, il n'y a plus de plein écran exclusif : un jeu en
+  // plein écran fenêtré (sans bordure) est un plein écran pour KWin et Hyprland.
   const vrrLabel = (v: Vrr) =>
     ({
-      never: t("Désactivée", "Off"),
-      fullscreen: t("Jeux en plein écran", "Fullscreen games"),
-      always: t("Toujours", "Always"),
+      never: t("Désactivé", "Off"),
+      fullscreen: t("Plein écran et sans bordure", "Fullscreen and borderless"),
+      always: t("Fenêtré et plein écran", "Windowed and fullscreen"),
     })[v];
 </script>
 
@@ -217,7 +220,11 @@
             <select bind:value={draft.vrr} disabled={!draft.enabled}>
               {#each ["never", "fullscreen", "always"] as Vrr[] as vrr (vrr)}<option value={vrr}>{vrrLabel(vrr)}</option>{/each}
             </select>
-            <span class="field__hint">{t("Fréquence variable : plus de déchirure d'image sans la latence de la V-Sync.", "Variable refresh: no tearing without V-Sync's latency.")}</span>
+            <span class="field__hint">
+              {draft.vrr === "always"
+                ? t("Aussi pour les jeux en fenêtre. Sur certains écrans, le bureau peut scintiller.", "Also for games in a window. On some screens, the desktop may flicker.")
+                : t("Jeux en plein écran ou en plein écran fenêtré (sans bordure) : plus de déchirure d'image sans la latence de la V-Sync.", "Games in fullscreen or borderless windowed: no tearing without V-Sync's latency.")}
+            </span>
           </label>
         {/if}
 
