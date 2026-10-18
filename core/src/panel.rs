@@ -338,6 +338,7 @@ impl Panel {
             desktop: self.desktop,
             default_proton,
             recent_games,
+            sessions: crate::system::sessions::recent(&crate::paths::game_logs_dir(), 10),
         })
     }
 

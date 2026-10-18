@@ -4,3 +4,4 @@ pub mod desktop;
 pub mod diagnostic;
 pub mod edid;
 pub mod gpu;
+pub mod sessions;

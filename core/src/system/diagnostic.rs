@@ -11,6 +11,7 @@ use crate::i18n::t;
 use crate::settings::Settings;
 use crate::system::desktop::Desktop;
 use crate::system::gpu::{Gpu, Vendor};
+use crate::system::sessions::GameSession;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -49,6 +50,8 @@ pub struct Report {
     pub checks: Vec<Check>,
     /// Ce qui a été lu (processeur, carte, pilote, noyau…).
     pub facts: Vec<(String, String)>,
+    /// Dernières parties mesurées par MangoHud (images par seconde, limite).
+    pub sessions: Vec<GameSession>,
     /// Le tout en texte, à copier pour l'aide.
     pub text: String,
 }
@@ -68,6 +71,8 @@ pub struct Sources<'a> {
     pub default_proton: Option<String>,
     /// Derniers jeux lancés et leur Proton (« ARC Raiders (proton_experimental) »).
     pub recent_games: Vec<String>,
+    /// Dernières parties mesurées (journaux de MangoHud, system/sessions.rs).
+    pub sessions: Vec<GameSession>,
 }
 
 /// Variable posée pour toutes les sessions dans /etc/environment (pam_env) :
@@ -397,11 +402,12 @@ pub fn run(src: &Sources) -> Report {
     }
 
     checks.sort_by_key(|check| check.level);
-    let text = text(&facts, &checks);
-    Report { checks, facts, text }
+    let sessions = src.sessions.clone();
+    let text = text(&facts, &checks, &sessions);
+    Report { checks, facts, sessions, text }
 }
 
-fn text(facts: &[(String, String)], checks: &[Check]) -> String {
+fn text(facts: &[(String, String)], checks: &[Check], sessions: &[GameSession]) -> String {
     let mut text = t("Last1 Panel — diagnostic des performances\n\n", "Last1 Panel — performance diagnostic\n\n");
     for (name, value) in facts {
         text.push_str(&format!("{name} : {value}\n"));
@@ -415,6 +421,29 @@ fn text(facts: &[(String, String)], checks: &[Check]) -> String {
             Level::Ok => "[ok]",
         };
         text.push_str(&format!("{mark} {} — {}\n", check.title, check.detail));
+    }
+    if !sessions.is_empty() {
+        text.push_str(&t("\nDernières parties (MangoHud)\n", "\nLast games (MangoHud)\n"));
+        for s in sessions {
+            let limit = match s.limit {
+                "gpu" => t("limité par la carte graphique", "limited by the graphics card"),
+                "cpu" => t("limité par le processeur", "limited by the CPU"),
+                _ => "?".into(),
+            };
+            text.push_str(&format!(
+                "{} — {}, {} min : {} i/s (1 % : {}), {} {} %, {} {} % à {} MHz → {limit}\n",
+                s.program,
+                s.started,
+                s.minutes,
+                s.fps_average,
+                s.fps_one_percent_low,
+                t("processeur", "CPU"),
+                s.cpu_load,
+                t("carte", "GPU"),
+                s.gpu_load,
+                s.gpu_clock
+            ));
+        }
     }
     text
 }
@@ -515,6 +544,17 @@ mod tests {
             desktop: Desktop::Hyprland,
             default_proton: Some("proton-cachyos-slr".into()),
             recent_games: vec!["ARC Raiders (proton_experimental)".into()],
+            sessions: vec![GameSession {
+                program: "PioneerGame.exe".into(),
+                started: "2026-10-18 21:04".into(),
+                minutes: 32.0,
+                fps_average: 58.0,
+                fps_one_percent_low: 31.0,
+                cpu_load: 45.0,
+                gpu_load: 60.0,
+                gpu_clock: 2610.0,
+                limit: "cpu",
+            }],
         });
         let ids =
             |level: Level| -> Vec<&str> { report.checks.iter().filter(|c| c.level == level).map(|c| c.id).collect() };
@@ -568,6 +608,7 @@ mod tests {
             desktop: Desktop::Plasma,
             default_proton: None,
             recent_games: Vec::new(),
+            sessions: Vec::new(),
         });
         assert!(report.checks.iter().all(|c| c.level == Level::Ok), "{:#?}", report.checks);
         assert!(report.checks.iter().any(|c| c.id == "rebar" && c.detail.contains("16384")));
@@ -588,6 +629,7 @@ mod tests {
                 desktop: Desktop::Plasma,
                 default_proton: None,
                 recent_games: Vec::new(),
+                sessions: Vec::new(),
             })
             .checks
             .into_iter()

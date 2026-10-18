@@ -32,6 +32,13 @@ pub fn cache_dir() -> PathBuf {
     xdg("XDG_CACHE_HOME", ".cache").join("last1-panel")
 }
 
+/// ~/.local/share/last1-panel/parties : journaux de MangoHud (un CSV par
+/// partie), lus par le diagnostic des performances. go-to-linux y fait
+/// écrire MangoHud ; ailleurs, `output_folder` de MangoHud à régler ici.
+pub fn game_logs_dir() -> PathBuf {
+    xdg("XDG_DATA_HOME", ".local/share").join("last1-panel/parties")
+}
+
 /// Couche Vulkan des couleurs des jeux (vkBasalt livré avec Last1 Panel) :
 /// manifeste du paquet, ou celui posé par l'AppImage.
 pub const COLOR_LAYER: &str = "last1-panel-color.json";

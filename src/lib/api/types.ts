@@ -213,9 +213,24 @@ export interface PerfCheck {
   fix: PerfFix | null;
 }
 
+/** Partie mesurée par MangoHud (core/src/system/sessions.rs). */
+export interface GameSession {
+  program: string;
+  started: string;
+  minutes: number;
+  fpsAverage: number;
+  /** Images par seconde du 1 % des images les plus lentes. */
+  fpsOnePercentLow: number;
+  cpuLoad: number;
+  gpuLoad: number;
+  gpuClock: number;
+  limit: "gpu" | "cpu" | "?";
+}
+
 export interface PerfReport {
   checks: PerfCheck[];
   facts: [string, string][];
+  sessions: GameSession[];
   /** Rapport à copier. */
   text: string;
 }

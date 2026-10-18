@@ -98,6 +98,36 @@
       </ul>
     </section>
 
+    {#if report.sessions.length > 0}
+      <section class="panel card sessions">
+        <h2>{t("Dernières parties", "Last games")}</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>{t("Jeu", "Game")}</th>
+              <th>{t("Images/s", "FPS")}</th>
+              <th>1 %</th>
+              <th>{t("Processeur", "CPU")}</th>
+              <th>{t("Carte", "GPU")}</th>
+              <th>{t("Limite", "Limit")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each report.sessions as session (session.program + session.started)}
+              <tr>
+                <td><strong>{session.program}</strong><span class="field__hint">{session.started} · {session.minutes} min</span></td>
+                <td class="mono">{session.fpsAverage}</td>
+                <td class="mono">{session.fpsOnePercentLow}</td>
+                <td class="mono">{session.cpuLoad} %</td>
+                <td class="mono">{session.gpuLoad} %</td>
+                <td>{session.limit === "gpu" ? t("Carte graphique", "Graphics card") : session.limit === "cpu" ? t("Processeur", "CPU") : "?"}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </section>
+    {/if}
+
     <aside class="panel card facts">
       <h2>{t("Ce PC", "This PC")}</h2>
       <dl>
@@ -184,7 +214,38 @@
     min-width: 0;
   }
 
+  .sessions {
+    grid-column: 1;
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    margin-top: var(--space-3);
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+  }
+
+  th,
+  td {
+    padding: var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  td strong {
+    display: block;
+  }
+
+  th {
+    color: var(--color-text-muted);
+    font-weight: 600;
+  }
+
   .facts {
+    grid-row: 1 / span 2;
+    grid-column: 2;
     display: grid;
     gap: var(--space-3);
   }
@@ -213,6 +274,11 @@
   @media (max-width: 70rem) {
     .layout {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    .facts {
+      grid-row: auto;
+      grid-column: auto;
     }
   }
 </style>

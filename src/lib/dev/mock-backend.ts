@@ -311,8 +311,12 @@ export function installMockBackend(): void {
         ["Derniers jeux lancés", "ARC Raiders (proton-cachyos-slr), Cyberpunk 2077 (proton-cachyos-slr)"],
         ["Mémoire", "32 Go"],
       ];
+      const sessions = [
+        { program: "PioneerGame.exe", started: "2026-10-18 21:04", minutes: 32, fpsAverage: 58, fpsOnePercentLow: 31, cpuLoad: 45, gpuLoad: 60, gpuClock: 2610, limit: "cpu" },
+        { program: "Cyberpunk2077.exe", started: "2026-10-17 20:12", minutes: 75, fpsAverage: 96, fpsOnePercentLow: 71, cpuLoad: 38, gpuLoad: 98, gpuClock: 2745, limit: "gpu" },
+      ];
       const text = ["Last1 Panel — diagnostic des performances", "", ...facts.map(([n, v]) => `${n} : ${v}`), "", ...checks.map((c) => `[${c.level}] ${c.title} — ${c.detail}`)].join("\n");
-      return { checks, facts, text };
+      return { checks, facts, sessions, text };
     },
     performance_fix: async () => {
       await wait(200);
