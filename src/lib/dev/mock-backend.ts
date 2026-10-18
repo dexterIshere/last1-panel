@@ -295,7 +295,7 @@ export function installMockBackend(): void {
           ? [{ id: "low-latency", level: "warning", title: "Mode de faible latence forcé (Last1 Panel)", detail: "Une seule image préparée d'avance : quand le processeur et la carte prennent chacun autant de temps (jeux Unreal Engine 5), ils s'attendent l'un l'autre et les images par seconde chutent.", fix: "low-latency" }]
           : []),
         { id: "rebar", level: "warning", title: "Resizable BAR désactivé", detail: "Le processeur ne voit la mémoire de la carte que par une fenêtre de 256 Mo, ce qui freine les jeux DirectX 12 (VKD3D-Proton). À activer dans le BIOS : Resizable BAR et Above 4G Decoding.", fix: null },
-        { id: "scheduler", level: "info", title: "Ordonnanceur lavd actif", detail: "Il change la façon dont les cœurs sont partagés : en cas de chutes d'images par seconde, comparez sans lui (go-to-linux > Jeux et performances > Ordonnanceur de jeu, ou sudo systemctl stop scx_loader).", fix: null },
+        { id: "scheduler", level: "info", title: "Ordonnanceur lavd actif", detail: "Conçu pour le Steam Deck : sur un PC fixe, aucun gain d'images par seconde prouvé, et des chutes rapportées. go-to-linux garde l'ordonnanceur de CachyOS sur un PC fixe et arrête celui-ci à sa mise à jour, sauf s'il a été choisi.", fix: null },
         { id: "power", level: "ok", title: "Mode performance", detail: "Processeur à pleine vitesse.", fix: null },
         { id: "ntsync", level: "ok", title: "NTSync", detail: "Disponible pour Proton.", fix: null },
         { id: "shader-cache", level: "ok", title: "Cache des shaders agrandi", detail: "__GL_SHADER_DISK_CACHE_SIZE=12000000000", fix: null },

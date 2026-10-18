@@ -226,8 +226,8 @@ pub fn run(src: &Sources) -> Report {
             Level::Info,
             t(&format!("Ordonnanceur {name} actif"), &format!("{name} scheduler active")),
             t(
-                "Il change la façon dont les cœurs sont partagés : en cas de chutes d'images par seconde, comparez sans lui (go-to-linux > Jeux et performances > Ordonnanceur de jeu, ou sudo systemctl stop scx_loader).",
-                "It changes how cores are shared: if the frame rate drops, compare without it (go-to-linux > Games and performance > Game scheduler, or sudo systemctl stop scx_loader).",
+                "Conçu pour le Steam Deck : sur un PC fixe, aucun gain d'images par seconde prouvé, et des chutes rapportées. go-to-linux garde l'ordonnanceur de CachyOS sur un PC fixe et arrête celui-ci à sa mise à jour, sauf s'il a été choisi.",
+                "Designed for the Steam Deck: on a desktop PC, no proven frame rate gain, and drops reported. go-to-linux keeps CachyOS's scheduler on desktop PCs and stops this one at its update, unless it was picked.",
             ),
         ));
     }
