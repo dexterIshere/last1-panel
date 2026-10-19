@@ -263,6 +263,14 @@ fn watch() -> ExitCode {
 /// Mises à jour des paquets (system/packages.rs) : `checkupdates` cinq
 /// minutes après la connexion, puis toutes les 6 h ; le diagnostic dit alors
 /// tout de suite si le pilote graphique a une version plus récente.
+/// Attend la fin de la partie en cours : les tâches de fond qui lisent le
+/// disque ou le réseau ne tombent jamais pendant un jeu.
+fn wait_for_no_game() {
+    while last1_panel_core::games::steam::game_running(std::path::Path::new("/proc")) {
+        std::thread::sleep(Duration::from_secs(60));
+    }
+}
+
 fn watch_updates() {
     if last1_panel_core::exec::which("checkupdates").is_none() {
         return;
@@ -270,6 +278,7 @@ fn watch_updates() {
     std::thread::sleep(Duration::from_secs(300));
     let cache = last1_panel_core::paths::cache_dir().join("updates.txt");
     loop {
+        wait_for_no_game();
         let exec = SystemExec { timeout: Duration::from_secs(300), ..SystemExec::default() };
         last1_panel_core::system::packages::refresh(&exec, &cache);
         std::thread::sleep(Duration::from_secs(6 * 3600));
@@ -403,6 +412,7 @@ fn share_reports() {
     let read = |path: &str| std::fs::read_to_string(path).unwrap_or_default().trim().to_string();
     loop {
         if Settings::load().share_reports == Some(true) && !std::path::Path::new("/var/lib/gtl").exists() {
+            wait_for_no_game();
             let report = Panel::system().performance_report();
             let mut state = sharing::State::load(&state_path);
             let now = update::now();

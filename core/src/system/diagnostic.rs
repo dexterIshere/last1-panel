@@ -191,6 +191,11 @@ struct SlotLink {
 /// avec l'emplacement est en haut de ce commutateur (même fabricant que la
 /// puce), pas celle de la puce, interne à la carte.
 fn slot_link(device: &Path, vendor_id: u32) -> Option<SlotLink> {
+    // Carte en veille (portable, puce intégrée à l'écran) : sa liaison est
+    // coupée, la lire ne donnerait rien de vrai.
+    if read(&device.join("power/runtime_status")).as_deref() == Some("suspended") {
+        return None;
+    }
     let is_pci = |path: &Path| {
         path.file_name().and_then(|name| name.to_str()).is_some_and(|name| {
             name.len() == 12 && name.as_bytes()[4] == b':' && name.as_bytes()[7] == b':' && name.as_bytes()[10] == b'.'
@@ -198,7 +203,10 @@ fn slot_link(device: &Path, vendor_id: u32) -> Option<SlotLink> {
     };
     let vendor =
         |path: &Path| read(&path.join("vendor")).and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok());
-    let width = |path: &Path, name: &str| read(&path.join(name)).and_then(|v| v.parse::<u32>().ok());
+    // Largeurs possibles en PCI Express ; une carte éteinte répond 63.
+    let width = |path: &Path, name: &str| {
+        read(&path.join(name)).and_then(|v| v.parse::<u32>().ok()).filter(|w| [1, 2, 4, 8, 12, 16, 32].contains(w))
+    };
     let mut top = fs::canonicalize(device).unwrap_or_else(|_| device.to_path_buf());
     while let Some(parent) = top.parent().filter(|p| is_pci(p) && vendor(p) == Some(vendor_id)) {
         top = parent.to_path_buf();
@@ -1706,6 +1714,12 @@ mod tests {
         assert_eq!(slot_link(&link, 0x1002), Some(SlotLink { current: 8, card: 16, slot: Some(8) }));
         // GeForce, sans commutateur : sa propre liaison.
         assert_eq!(slot_link(&gpu, 0x10de), Some(SlotLink { current: 16, card: 16, slot: Some(16) }));
+        // En veille, ou éteinte (elle répond 63) : rien.
+        write(gpu.join("current_link_width"), "63\n");
+        assert_eq!(slot_link(&gpu, 0x10de), None);
+        write(gpu.join("current_link_width"), "16\n");
+        write(gpu.join("power/runtime_status"), "suspended\n");
+        assert_eq!(slot_link(&gpu, 0x10de), None);
     }
 
     #[test]
