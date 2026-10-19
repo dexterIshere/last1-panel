@@ -11,6 +11,7 @@ use crate::i18n::t;
 use crate::settings::Settings;
 use crate::system::desktop::Desktop;
 use crate::system::gpu::{Gpu, Vendor};
+use crate::system::packages;
 use crate::system::sessions::GameSession;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -48,8 +49,13 @@ pub enum Fix {
     Scheduler,
     /// Mémoire compressée (zram-generator, comme CachyOS).
     Zram,
-    /// Redémarrage du PC (cache des shaders posé pour la prochaine connexion).
+    /// Redémarrage du PC (cache des shaders posé pour la prochaine connexion,
+    /// nouveau pilote installé).
     Restart,
+    /// Pilotes Vulkan installés (64 et 32 bits).
+    VulkanDriver,
+    /// Système mis à jour (pilote graphique compris) : `pacman -Syu`.
+    SystemUpdate,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -105,6 +111,10 @@ pub struct Sources<'a> {
     pub go_to_linux: bool,
     /// zram-generator installé, ou installable (pacman).
     pub can_zram: bool,
+    /// pacman (Arch, CachyOS) : pilotes vérifiés par rapport aux dépôts.
+    pub pacman: bool,
+    /// Paquets qui ont une version plus récente (system/packages.rs).
+    pub updates: Vec<String>,
 }
 
 /// Variable posée pour toutes les sessions dans /etc/environment (pam_env) :
@@ -455,7 +465,12 @@ pub fn run(src: &Sources) -> Report {
                 check("rebar", Level::Ok, "Resizable BAR".into(), t(&format!("Actif ({mib} Mo)."), &format!("On ({mib} MB).")))
             });
         }
+        // Sans pacman, on ne sait pas ce que proposent les dépôts : une
+        // GeForce RTX sous la branche 590 (les GTX 10 et plus anciennes
+        // restent normalement sur la 580).
         if gpu.vendor == Vendor::Nvidia
+            && !src.pacman
+            && gpu.name.as_deref().is_some_and(|name| name.contains("RTX"))
             && let Some(version) = &gpu.driver_version
             && version.split('.').next().and_then(|m| m.parse::<u32>().ok()).is_some_and(|major| major < 590)
         {
@@ -468,6 +483,85 @@ pub fn run(src: &Sources) -> Report {
                     "Drivers 590 and newer improve DirectX 12 games under Proton: update the system.",
                 ),
             ));
+        }
+    }
+
+    // Pilotes, d'après pacman : ceux de Vulkan (sans eux, les jeux Proton ne
+    // démarrent pas, ou pas en 32 bits), une version plus récente dans les
+    // dépôts, et un pilote NVIDIA installé mais pas encore chargé.
+    if src.pacman {
+        let missing = packages::missing(src.exec, &packages::vulkan_packages(src.gpus));
+        if !missing.is_empty() {
+            let only_32 = missing.iter().all(|name| name.starts_with("lib32-"));
+            checks.push(Check {
+                fix: Some(Fix::VulkanDriver),
+                ..check(
+                    "vulkan",
+                    if only_32 { Level::Warning } else { Level::Problem },
+                    if only_32 {
+                        t("Pilote Vulkan 32 bits absent", "32-bit Vulkan driver missing")
+                    } else {
+                        t("Pilote Vulkan absent", "Vulkan driver missing")
+                    },
+                    if only_32 {
+                        t(
+                            &format!(
+                                "Les jeux 32 bits (et une partie de Steam) ne démarrent pas sans lui ({}).",
+                                missing.join(", ")
+                            ),
+                            &format!(
+                                "32-bit games (and part of Steam) don't start without it ({}).",
+                                missing.join(", ")
+                            ),
+                        )
+                    } else {
+                        t(
+                            &format!(
+                                "Proton traduit DirectX en Vulkan : sans lui, les jeux Windows ne démarrent pas ({}).",
+                                missing.join(", ")
+                            ),
+                            &format!(
+                                "Proton translates DirectX to Vulkan: without it, Windows games don't start ({}).",
+                                missing.join(", ")
+                            ),
+                        )
+                    },
+                )
+            });
+        }
+        let driver_updates: Vec<&str> =
+            src.updates.iter().map(String::as_str).filter(|name| packages::is_driver(name)).collect();
+        if !driver_updates.is_empty() {
+            checks.push(Check {
+                fix: Some(Fix::SystemUpdate),
+                ..check(
+                    "driver-update",
+                    Level::Warning,
+                    t("Pilote graphique pas à jour", "Graphics driver not up to date"),
+                    t(
+                        &format!("Une version plus récente est dans les dépôts ({}). Elle s'installe avec le reste du système, comme le veut Arch (jamais à moitié).", driver_updates.join(", ")),
+                        &format!("A newer version is in the repositories ({}). It installs with the rest of the system, as Arch requires (never halfway).", driver_updates.join(", ")),
+                    ),
+                )
+            });
+        }
+        if let Some(running) =
+            src.gpus.iter().find(|g| g.vendor == Vendor::Nvidia).and_then(|g| g.driver_version.clone())
+            && let Some(installed) = packages::installed_version(src.exec, "nvidia-utils")
+            && installed != running
+        {
+            checks.push(Check {
+                fix: Some(Fix::Restart),
+                ..check(
+                    "driver-restart",
+                    Level::Info,
+                    t(&format!("Pilote NVIDIA {installed} installé"), &format!("NVIDIA driver {installed} installed")),
+                    t(
+                        &format!("Le PC utilise encore le {running} : il prendra le nouveau au redémarrage."),
+                        &format!("The PC still uses {running}: it will load the new one when it restarts."),
+                    ),
+                )
+            });
         }
     }
 
@@ -747,6 +841,8 @@ mod tests {
             wrapped_games: Some((0, 3)),
             go_to_linux: true,
             can_zram: true,
+            pacman: false,
+            updates: Vec::new(),
         });
         let ids =
             |level: Level| -> Vec<&str> { report.checks.iter().filter(|c| c.level == level).map(|c| c.id).collect() };
@@ -819,6 +915,8 @@ mod tests {
             wrapped_games: Some((1, 1)),
             go_to_linux: true,
             can_zram: true,
+            pacman: false,
+            updates: Vec::new(),
         });
         assert!(report.checks.iter().all(|c| c.level == Level::Ok), "{:#?}", report.checks);
         assert!(report.checks.iter().any(|c| c.id == "rebar" && c.detail.contains("16384")));
@@ -858,6 +956,8 @@ mod tests {
                 wrapped_games: Some((1, 1)),
                 go_to_linux: false,
                 can_zram: true,
+                pacman: false,
+                updates: Vec::new(),
             })
         };
         let arch = report(None);
@@ -909,6 +1009,50 @@ mod tests {
     }
 
     #[test]
+    fn drivers_are_checked_against_the_repositories() {
+        use crate::exec::Output;
+        let pc = pc();
+        let out = |status: i32, stdout: &str| Output { status, stdout: stdout.into(), ..Default::default() };
+        let exec = FakeExec::new()
+            .without("powerprofilesctl")
+            .on_args("pacman", &["-T", "nvidia-utils", "lib32-nvidia-utils"], out(127, "lib32-nvidia-utils\n"))
+            .on_args("pacman", &["-Q", "nvidia-utils"], out(0, "nvidia-utils 600.10-1\n"));
+        let report = run(&Sources {
+            sys: &pc.sys,
+            dev: &pc.dev,
+            proc_dir: &pc.proc_dir,
+            exec: &exec,
+            env: &|_| None,
+            next_login_env: &|_| None,
+            settings: &Settings::default(),
+            // Pilote 580 chargé : avec pacman, plus de seuil fixe (une GTX 10
+            // reste à bon droit sur la branche 580).
+            gpus: &[gpu("580.95.05")],
+            desktop: Desktop::Hyprland,
+            default_proton: None,
+            recent_games: Vec::new(),
+            sessions: Vec::new(),
+            mangohud: true,
+            wrapped_games: Some((1, 1)),
+            go_to_linux: false,
+            can_zram: true,
+            pacman: true,
+            updates: vec!["firefox".into(), "nvidia-utils".into(), "lib32-nvidia-utils".into()],
+        });
+        let find = |id: &str| report.checks.iter().find(|c| c.id == id);
+        assert!(find("driver").is_none());
+        let vulkan = find("vulkan").unwrap();
+        assert_eq!((vulkan.level, vulkan.fix), (Level::Warning, Some(Fix::VulkanDriver)));
+        assert!(vulkan.detail.contains("lib32-nvidia-utils"));
+        let update = find("driver-update").unwrap();
+        assert_eq!((update.level, update.fix), (Level::Warning, Some(Fix::SystemUpdate)));
+        assert!(update.detail.contains("nvidia-utils, lib32-nvidia-utils") && !update.detail.contains("firefox"));
+        // 600.10 installé, 580.95.05 chargé : redémarrer.
+        let restart = find("driver-restart").unwrap();
+        assert_eq!((restart.level, restart.fix), (Level::Info, Some(Fix::Restart)));
+    }
+
+    #[test]
     fn game_time_performance_counts() {
         let pc = pc();
         let power = |exec: &FakeExec| {
@@ -929,6 +1073,8 @@ mod tests {
                 wrapped_games: Some((1, 1)),
                 go_to_linux: true,
                 can_zram: true,
+                pacman: false,
+                updates: Vec::new(),
             })
             .checks
             .into_iter()

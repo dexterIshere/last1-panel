@@ -394,9 +394,12 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
     let panel = panel.inner().clone();
     blocking(move || {
         let power_profiles = which("powerprofilesctl").is_some();
-        let script = repair::root_script(&fixes, Path::new("/etc"), power_profiles, which("pacman").is_some())?;
+        let vulkan = last1_panel_core::system::packages::vulkan_packages(&panel.gpus());
+        let script =
+            repair::root_script(&fixes, Path::new("/etc"), power_profiles, which("pacman").is_some(), &vulkan)?;
         if let Some(script) = script {
-            let exec = SystemExec { timeout: Duration::from_secs(1800), ..SystemExec::default() };
+            // Une mise à jour du système peut être longue.
+            let exec = SystemExec { timeout: Duration::from_secs(3 * 3600), ..SystemExec::default() };
             let output = exec.run("pkexec", &["/bin/sh".into(), "-c".into(), script])?;
             if repair::refused(output.status) {
                 return Err(CoreError::message(if output.stderr.contains("authentication agent") {
@@ -433,6 +436,16 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
             SystemExec::default().run_ok("systemctl", &["reboot".into()])?;
         }
         let mut notices = Vec::new();
+        if fixes.contains(&Fix::SystemUpdate) || fixes.contains(&Fix::VulkanDriver) {
+            // Listes de paquets refaites : le diagnostic relit pacman.
+            let _ = std::fs::remove_file(last1_panel_core::paths::cache_dir().join("updates.txt"));
+        }
+        if fixes.contains(&Fix::SystemUpdate) {
+            notices.push(t(
+                "Système à jour : un redémarrage met en service le nouveau pilote et le nouveau noyau.",
+                "System up to date: a restart puts the new driver and kernel into service.",
+            ));
+        }
         if fixes.contains(&Fix::Zram) {
             notices.push(t(
                 "Mémoire compressée activée : les programmes en arrière-plan restent en mémoire, même après un redémarrage.",

@@ -349,6 +349,12 @@ impl Panel {
             go_to_linux: Path::new("/var/lib/gtl").is_dir(),
             can_zram: Path::new("/usr/lib/systemd/system-generators/zram-generator").exists()
                 || crate::exec::which("pacman").is_some(),
+            pacman: crate::exec::which("pacman").is_some(),
+            updates: if crate::exec::which("pacman").is_some() {
+                crate::system::packages::upgradable(self.exec.as_ref(), &crate::paths::cache_dir().join("updates.txt"))
+            } else {
+                Vec::new()
+            },
         })
     }
 

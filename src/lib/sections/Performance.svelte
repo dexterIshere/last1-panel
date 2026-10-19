@@ -85,6 +85,8 @@
       scheduler: t("Revenir à l'ordonnanceur du noyau", "Go back to the kernel's scheduler"),
       zram: t("Activer la mémoire compressée", "Turn on compressed memory"),
       restart: t("Redémarrer le PC", "Restart the PC"),
+      "vulkan-driver": t("Installer le pilote Vulkan", "Install the Vulkan driver"),
+      "system-update": t("Mettre à jour le pilote", "Update the driver"),
     })[kind];
   const icon = (check: PerfCheck) => ({ problem: CircleAlert, warning: TriangleAlert, info: Info, ok: Check })[check.level];
 </script>

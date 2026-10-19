@@ -222,6 +222,7 @@ fn watch() -> ExitCode {
         std::thread::spawn(propose_updates);
     }
     std::thread::spawn(share_reports);
+    std::thread::spawn(watch_updates);
     let tray = last1_panel_core::tray::spawn();
     std::thread::sleep(Duration::from_secs(3));
     apply_until_ready(20);
@@ -254,6 +255,22 @@ fn watch() -> ExitCode {
     }
     let _ = child.kill();
     ExitCode::SUCCESS
+}
+
+/// Mises à jour des paquets (system/packages.rs) : `checkupdates` cinq
+/// minutes après la connexion, puis toutes les 6 h ; le diagnostic dit alors
+/// tout de suite si le pilote graphique a une version plus récente.
+fn watch_updates() {
+    if last1_panel_core::exec::which("checkupdates").is_none() {
+        return;
+    }
+    std::thread::sleep(Duration::from_secs(300));
+    let cache = last1_panel_core::paths::cache_dir().join("updates.txt");
+    loop {
+        let exec = SystemExec { timeout: Duration::from_secs(300), ..SystemExec::default() };
+        last1_panel_core::system::packages::refresh(&exec, &cache);
+        std::thread::sleep(Duration::from_secs(6 * 3600));
+    }
 }
 
 /// Rapports de performances partagés avec last1.fun (system/sharing.rs) :

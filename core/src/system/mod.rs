@@ -4,6 +4,7 @@ pub mod desktop;
 pub mod diagnostic;
 pub mod edid;
 pub mod gpu;
+pub mod packages;
 pub mod repair;
 pub mod sessions;
 pub mod sharing;

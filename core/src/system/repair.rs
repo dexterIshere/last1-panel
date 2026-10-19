@@ -15,9 +15,29 @@ const ZRAM_GENERATOR: &str = "/usr/lib/systemd/system-generators/zram-generator"
 /// administrateur). `etc` : /etc, ou un dossier de test. `power_profiles` :
 /// power-profiles-daemon présent (le mode performance passe alors par lui,
 /// sans mot de passe) ; `pacman` : MangoHud s'installe par lui.
-pub fn root_script(fixes: &[Fix], etc: &Path, power_profiles: bool, pacman: bool) -> CoreResult<Option<String>> {
+pub fn root_script(
+    fixes: &[Fix],
+    etc: &Path,
+    power_profiles: bool,
+    pacman: bool,
+    vulkan: &[&str],
+) -> CoreResult<Option<String>> {
     let etc = etc.to_string_lossy();
     let mut parts: Vec<String> = Vec::new();
+    let no_pacman = || {
+        CoreError::message(t(
+            "Mettez le système à jour avec son gestionnaire de paquets.",
+            "Update the system with its package manager.",
+        ))
+    };
+    // Système d'abord : sous Arch, rien ne s'installe sur un système à
+    // moitié à jour.
+    if fixes.contains(&Fix::SystemUpdate) {
+        if !pacman {
+            return Err(no_pacman());
+        }
+        parts.push("pacman -Syu --noconfirm".into());
+    }
     for fix in fixes {
         match fix {
             // Chargé à chaque démarrage, ouvert à tous les comptes (Proton
@@ -106,7 +126,16 @@ systemctl start dev-zram0.swap || systemctl start swap.target
 if ! grep -q '^/dev/zram' /proc/swaps; then echo "zram ne s'est pas activé (zramctl, journalctl -b -u systemd-zram-setup@zram0)" >&2; exit 1; fi"#
                 ));
             }
-            Fix::Performance | Fix::LowLatency | Fix::WrapGames | Fix::Restart => {}
+            // Pilotes Vulkan des cartes du PC (64 et 32 bits) ; liste trop
+            // ancienne : avec une mise à jour du système.
+            Fix::VulkanDriver if pacman && !vulkan.is_empty() => {
+                let packages = vulkan.join(" ");
+                parts.push(format!(
+                    "pacman -S --needed --noconfirm {packages} || pacman -Syu --needed --noconfirm {packages}"
+                ));
+            }
+            Fix::VulkanDriver => return Err(no_pacman()),
+            Fix::Performance | Fix::LowLatency | Fix::WrapGames | Fix::Restart | Fix::SystemUpdate => {}
         }
     }
     Ok((!parts.is_empty()).then(|| format!("set -e\n{}\n", parts.join("\n"))))
@@ -123,7 +152,7 @@ mod tests {
     use std::fs;
     use std::process::Command;
 
-    const ALL: [Fix; 11] = [
+    const ALL: [Fix; 13] = [
         Fix::Performance,
         Fix::Ntsync,
         Fix::ShaderCache,
@@ -135,11 +164,15 @@ mod tests {
         Fix::WrapGames,
         Fix::Zram,
         Fix::Restart,
+        Fix::VulkanDriver,
+        Fix::SystemUpdate,
     ];
 
     #[test]
     fn one_script_for_every_system_fix() {
-        let script = root_script(&ALL, Path::new("/etc"), false, true).unwrap().unwrap();
+        let script = root_script(&ALL, Path::new("/etc"), false, true, &["vulkan-radeon", "lib32-vulkan-radeon"])
+            .unwrap()
+            .unwrap();
         for expected in [
             "/etc/modules-load.d/last1-panel-ntsync.conf",
             "/etc/udev/rules.d/99-last1-panel-ntsync.rules",
@@ -152,19 +185,22 @@ mod tests {
             "pacman -S --needed --noconfirm mangohud",
             "/etc/systemd/zram-generator.conf",
             "systemctl start dev-zram0.swap",
+            "pacman -S --needed --noconfirm vulkan-radeon lib32-vulkan-radeon",
         ] {
             assert!(script.contains(expected), "{expected}\n{script}");
         }
+        // La mise à jour du système passe avant tout le reste.
+        assert!(script.starts_with("set -e\npacman -Syu --noconfirm\n"), "{script}");
         // Le shell le lit sans erreur.
         let check = Command::new("/bin/sh").args(["-n", "-c", &script]).status().unwrap();
         assert!(check.success());
         // power-profiles-daemon : le mode performance passe par lui.
-        let script = root_script(&[Fix::Performance], Path::new("/etc"), true, true).unwrap();
+        let script = root_script(&[Fix::Performance], Path::new("/etc"), true, true, &[]).unwrap();
         assert_eq!(script, None);
         // Réglages de Last1 Panel seuls : pas de mot de passe.
-        assert_eq!(root_script(&[Fix::LowLatency, Fix::WrapGames], Path::new("/etc"), false, true).unwrap(), None);
+        assert_eq!(root_script(&[Fix::LowLatency, Fix::WrapGames], Path::new("/etc"), false, true, &[]).unwrap(), None);
         // Sans pacman, MangoHud ne s'installe pas d'ici.
-        assert!(root_script(&[Fix::InstallMangoHud], Path::new("/etc"), false, false).is_err());
+        assert!(root_script(&[Fix::InstallMangoHud], Path::new("/etc"), false, false, &[]).is_err());
     }
 
     #[test]
@@ -173,7 +209,7 @@ mod tests {
         let environment = dir.path().join("environment");
         // Sans retour à la ligne final, avec une ancienne valeur.
         fs::write(&environment, "PATH=/usr/bin\nexport __GL_SHADER_DISK_CACHE_SIZE=1000\nEDITOR=nano").unwrap();
-        let script = root_script(&[Fix::ShaderCache], dir.path(), false, true).unwrap().unwrap();
+        let script = root_script(&[Fix::ShaderCache], dir.path(), false, true, &[]).unwrap().unwrap();
         for _ in 0..2 {
             assert!(Command::new("/bin/sh").args(["-c", &script]).status().unwrap().success());
         }

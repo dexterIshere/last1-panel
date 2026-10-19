@@ -213,7 +213,9 @@ export type PerfFix =
   | "x3d-cache"
   | "scheduler"
   | "zram"
-  | "restart";
+  | "restart"
+  | "vulkan-driver"
+  | "system-update";
 
 export interface PerfCheck {
   id: string;
