@@ -452,41 +452,36 @@ fn share_reports() {
 }
 
 /// Installation par l'AppImage (update.rs) : une version plus récente est
-/// cherchée cinq minutes après la connexion, puis dès qu'une version est
-/// publiée (attente longue sur last1.fun, watch_releases), et au moins une
-/// fois par jour ; elle est proposée (notification avec « Mettre à jour »,
-/// comme le bouton de la fenêtre) ; rien ne s'installe sans ce clic. La
-/// même version n'est pas reproposée avant un jour ; une nouvelle, tout de
-/// suite. Une heure plus tard en cas d'échec (pas d'Internet). Une fois la
-/// mise à jour faite, le service s'arrête en erreur et systemd le relance sur
-/// le nouvel outil.
+/// cherchée cinq minutes après la connexion, dès qu'une version est publiée
+/// (attente longue sur last1.fun, watch_releases), et en secours toutes les
+/// 3 h, comme go-to-linux ; elle est proposée (notification avec « Mettre à
+/// jour », comme le bouton de la fenêtre) ; rien ne s'installe sans ce clic.
+/// Jamais pendant une partie : elle attend la fin du jeu.
+/// Notification fermée sans clic : reproposée à la prochaine occasion ; tant
+/// qu'elle est à l'écran, pas de double (desktop::ask attend la réponse).
+/// Une heure plus tard en cas d'échec (pas d'Internet). Une fois la mise à
+/// jour faite, le service s'arrête en erreur et systemd le relance sur le
+/// nouvel outil.
 fn propose_updates() {
     let (published, received) = mpsc::channel();
     std::thread::spawn(move || watch_releases(&published));
     std::thread::sleep(Duration::from_secs(300));
-    // Dernière version proposée, et quand.
-    let mut proposed: Option<(String, std::time::Instant)> = None;
+    const BACKUP: Duration = Duration::from_secs(3 * 3600);
     // Réveillé par une publication : la liste signée peut avoir un temps de
     // retard sur l'avis, revue deux minutes plus tard s'il ne propose rien.
     let mut woken = false;
     loop {
         let exec = SystemExec { timeout: Duration::from_secs(90), ..SystemExec::default() };
         let wait = match update::check(&exec, update::now()) {
-            Ok(Some(release))
-                if proposed.as_ref().is_some_and(|(version, at)| {
-                    *version == release.version && at.elapsed() < Duration::from_secs(24 * 3600)
-                }) =>
-            {
-                Duration::from_secs(24 * 3600)
-            }
-            Ok(Some(release)) => {
-                proposed = Some((release.version.clone(), std::time::Instant::now()));
+            Ok(Some(_)) => {
+                // Jamais par-dessus un jeu : proposée à la fin de la partie.
+                wait_for_no_game();
                 let message = t(
                     "Une mise à jour de Last1 Panel est disponible. « Mettre à jour » installe la dernière version.",
                     "A Last1 Panel update is available. \"Update\" installs the latest version.",
                 );
                 if !desktop::ask(&message, &t("Mettre à jour", "Update")) {
-                    Duration::from_secs(24 * 3600)
+                    BACKUP
                 } else {
                     // Clic parfois des jours après la recherche : la version en
                     // ligne est redemandée, jamais celle notée alors (dépassée,
@@ -514,7 +509,7 @@ fn propose_updates() {
                 }
             }
             Ok(None) if woken => Duration::from_secs(120),
-            Ok(None) => Duration::from_secs(24 * 3600),
+            Ok(None) => BACKUP,
             Err(error) => {
                 eprintln!("last1-panel-cli : mise à jour : {error}");
                 Duration::from_secs(3600)
