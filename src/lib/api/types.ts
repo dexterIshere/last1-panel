@@ -257,6 +257,8 @@ export interface Precache {
   /** Avancement comme Steam le compte ; absents : pas encore commencé. */
   done: number | null;
   total: number | null;
+  /** Avancement lisible (faux : Steam Flatpak ou version inconnue). */
+  readable: boolean;
 }
 
 export interface Sharing {

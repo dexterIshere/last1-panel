@@ -258,8 +258,8 @@ export function installMockBackend(): void {
     shader_precache: () => {
       const elapsed = (Date.now() - shadersStart) / 1000;
       if (!params.get("shaders") || elapsed > 90) return null;
-      if (elapsed < 6) return { game: "Cyberpunk 2077", done: null, total: null };
-      return { game: "Cyberpunk 2077", done: Math.min(10_000, Math.round((elapsed - 6) * 120)), total: 10_000 };
+      if (elapsed < 6) return { game: "Cyberpunk 2077", done: null, total: null, readable: true };
+      return { game: "Cyberpunk 2077", done: Math.min(10_000, Math.round((elapsed - 6) * 120)), total: 10_000, readable: true };
     },
     enable_lact: async () => {
       await wait(1200);

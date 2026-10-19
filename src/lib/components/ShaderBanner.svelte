@@ -96,7 +96,9 @@
       <div class="gauge__fill" style:width={ratio === null ? undefined : `${ratio * 100}%`}></div>
     </div>
     <p class="banner__text">
-      {#if ratio === null}
+      {#if ratio === null && !precache.readable}
+        {t("Steam ne donne pas son avancement à Last1 Panel : la jauge attend la fin.", "Steam doesn't share its progress with Last1 Panel: the gauge waits for the end.")}
+      {:else if ratio === null}
         {t("Steam prépare la compilation.", "Steam is getting the compilation ready.")}
       {:else if remaining !== null}
         {t(`Fini dans ${duration(remaining)}.`, `Done in ${duration(remaining)}.`)}

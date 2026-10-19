@@ -169,6 +169,56 @@ fn read(path: &Path) -> Option<String> {
     fs::read_to_string(path).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+/// Liaison PCI Express d'une carte graphique avec la carte mère.
+#[derive(Debug, PartialEq)]
+struct SlotLink {
+    /// Largeur actuelle (nombre de voies).
+    current: u32,
+    /// Ce que la carte sait faire.
+    card: u32,
+    /// Ce que l'emplacement sait faire (port du processeur ou du chipset).
+    slot: Option<u32>,
+}
+
+/// Une carte AMD ou Intel a son propre commutateur PCI Express : la liaison
+/// avec l'emplacement est en haut de ce commutateur (même fabricant que la
+/// puce), pas celle de la puce, interne à la carte.
+fn slot_link(device: &Path, vendor_id: u32) -> Option<SlotLink> {
+    let is_pci = |path: &Path| {
+        path.file_name().and_then(|name| name.to_str()).is_some_and(|name| {
+            name.len() == 12 && name.as_bytes()[4] == b':' && name.as_bytes()[7] == b':' && name.as_bytes()[10] == b'.'
+        })
+    };
+    let vendor =
+        |path: &Path| read(&path.join("vendor")).and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok());
+    let width = |path: &Path, name: &str| read(&path.join(name)).and_then(|v| v.parse::<u32>().ok());
+    let mut top = fs::canonicalize(device).unwrap_or_else(|_| device.to_path_buf());
+    while let Some(parent) = top.parent().filter(|p| is_pci(p) && vendor(p) == Some(vendor_id)) {
+        top = parent.to_path_buf();
+    }
+    Some(SlotLink {
+        current: width(&top, "current_link_width")?,
+        card: width(&top, "max_link_width")?,
+        slot: top.parent().filter(|p| is_pci(p)).and_then(|p| width(p, "max_link_width")),
+    })
+}
+
+/// Pilote AMD : la liaison change avec la charge (pp_dpm_pcie, niveau en
+/// cours marqué « * ») ; réduite au repos, elle s'élargit en jeu.
+fn amd_idle_link(device: &Path) -> bool {
+    let Some(levels) = read(&device.join("pp_dpm_pcie")) else { return false };
+    let levels: Vec<(u32, bool)> = levels
+        .lines()
+        .filter_map(|line| {
+            let width =
+                line.split_whitespace().find_map(|word| word.trim_end_matches(',').strip_prefix('x')?.parse().ok())?;
+            Some((width, line.trim_end().ends_with('*')))
+        })
+        .collect();
+    let widest = levels.iter().map(|(width, _)| *width).max();
+    levels.iter().any(|(width, current)| *current && Some(*width) < widest)
+}
+
 /// Le compte peut-il se servir de GameMode ? Sa règle polkit ne laisse
 /// changer le mode du processeur qu'aux membres du groupe « gamemode ». Pas
 /// de groupe (GameMode absent, autre distribution) : rien à dire.
@@ -593,19 +643,63 @@ pub fn run(src: &Sources) -> Report {
     // Carte graphique : liaison PCI Express, Resizable BAR, pilote.
     for gpu in src.gpus.iter().filter(|g| matches!(g.vendor, Vendor::Nvidia | Vendor::Amd)) {
         let device = src.sys.join("bus/pci/devices").join(&gpu.pci_slot);
-        let width = |name: &str| read(&device.join(name)).and_then(|v| v.parse::<u32>().ok());
-        if let (Some(current), Some(max)) = (width("current_link_width"), width("max_link_width"))
-            && current < max
-        {
-            checks.push(check(
-                "pcie",
-                Level::Problem,
-                t(&format!("Carte graphique branchée en x{current} au lieu de x{max}"), &format!("Graphics card linked at x{current} instead of x{max}")),
-                t(
-                    "Elle reçoit ses données moins vite : vérifiez qu'elle est dans le premier emplacement PCI Express de la carte mère, sans rallonge.",
-                    "It receives its data more slowly: check it sits in the motherboard's first PCI Express slot, without a riser.",
+        if let Some(link) = slot_link(&device, gpu.vendor_id) {
+            facts.push((
+                t("Liaison PCI Express de la carte graphique", "Graphics card PCI Express link"),
+                format!(
+                    "x{} ({} x{}, {} x{})",
+                    link.current,
+                    t("carte", "card"),
+                    link.card,
+                    t("emplacement", "slot"),
+                    link.slot.map_or_else(|| "?".to_string(), |slot| slot.to_string())
                 ),
             ));
+            let possible = link.slot.map_or(link.card, |slot| slot.min(link.card));
+            // Liaison réduite au repos par le pilote AMD : pas un défaut.
+            if link.current < possible && !amd_idle_link(&device) {
+                // x4 ou moins : les jeux le sentent nettement.
+                let level = if link.current * 4 <= possible { Level::Problem } else { Level::Warning };
+                checks.push(check(
+                    "pcie",
+                    level,
+                    t(
+                        &format!("Carte graphique branchée en x{} au lieu de x{possible}", link.current),
+                        &format!("Graphics card linked at x{} instead of x{possible}", link.current),
+                    ),
+                    t(
+                        &format!(
+                            "La carte et son emplacement savent faire x{possible}, mais la liaison s'est faite en x{} : elle reçoit ses données moins vite. Rien ne se règle depuis le PC, c'est le branchement : carte pas tout à fait enfoncée, rallonge (riser), ou emplacement qui partage ses voies avec un SSD M.2 (voir le manuel de la carte mère). PC éteint, renfoncez la carte jusqu'au clic, sans rallonge.",
+                            link.current
+                        ),
+                        &format!(
+                            "The card and its slot can do x{possible}, but the link came up at x{}: it receives its data more slowly. Nothing can be set from the PC, it's the connection: card not fully seated, riser, or a slot sharing its lanes with an M.2 SSD (see the motherboard manual). With the PC off, push the card back in until it clicks, without a riser.",
+                            link.current
+                        ),
+                    ),
+                ));
+            } else if link.slot.is_some_and(|slot| slot < link.card) && !battery {
+                // PC fixe : emplacement câblé plus étroit que la carte.
+                let slot = link.slot.unwrap_or_default();
+                checks.push(check(
+                    "pcie",
+                    Level::Warning,
+                    t(
+                        &format!("Carte graphique dans un emplacement x{slot}"),
+                        &format!("Graphics card in an x{slot} slot"),
+                    ),
+                    t(
+                        &format!(
+                            "La carte sait faire x{}, mais son emplacement est câblé en x{slot} : elle reçoit ses données moins vite. PC éteint, mettez-la dans l'emplacement du haut (le plus proche du processeur), câblé en x16.",
+                            link.card
+                        ),
+                        &format!(
+                            "The card can do x{}, but its slot is wired x{slot}: it receives its data more slowly. With the PC off, move it to the top slot (closest to the CPU), wired x16.",
+                            link.card
+                        ),
+                    ),
+                ));
+            }
         }
         if let Some((bar, largest)) = largest_prefetchable_bar(&device.join("resource")) {
             let mib = largest / (1024 * 1024);
@@ -960,8 +1054,14 @@ pub fn run(src: &Sources) -> Report {
                 ),
             },
             t(
-                "C'est Steam (« Traitement des shaders Vulkan »), après une mise à jour d'un jeu ou du pilote : il occupe le processeur, les jeux peuvent saccader jusqu'à la fin. Ensuite, ils tournent mieux.",
-                "It's Steam (“Vulkan shader processing”), after a game or driver update: it keeps the CPU busy, games may stutter until it ends. Afterwards, they run better.",
+                &format!(
+                    "C'est Steam (« Traitement des shaders Vulkan »), après une mise à jour d'un jeu ou du pilote : il occupe le processeur, les jeux peuvent saccader jusqu'à la fin. Ensuite, ils tournent mieux.{}",
+                    if precache.readable { "" } else { " (Avancement illisible par Last1 Panel.)" }
+                ),
+                &format!(
+                    "It's Steam (“Vulkan shader processing”), after a game or driver update: it keeps the CPU busy, games may stutter until it ends. Afterwards, they run better.{}",
+                    if precache.readable { "" } else { " (Progress unreadable by Last1 Panel.)" }
+                ),
             ),
         ));
     }
@@ -1160,6 +1260,7 @@ mod tests {
                 game: Some("ARC Raiders".into()),
                 done: Some(42),
                 total: Some(100),
+                readable: true,
             }),
             sessions: vec![GameSession {
                 program: "PioneerGame.exe".into(),
@@ -1475,6 +1576,48 @@ mod tests {
         // … GameMode installé sur un portable.
         assert_eq!(power(&nothing, true, true, true), (Level::Warning, Some(Fix::GameMode)));
         assert_eq!(power(&nothing, true, true, false), (Level::Warning, None));
+    }
+
+    #[test]
+    fn pcie_link_is_read_at_the_slot() {
+        // Radeon : port du processeur (AMD 1022), commutateur de la carte
+        // (1002, deux ponts), puce graphique. La puce voit x16 (interne), la
+        // liaison avec l'emplacement est en x8.
+        let dir = tempfile::tempdir().unwrap();
+        let port = dir.path().join("devices/pci0000:00/0000:00:01.1");
+        let up = port.join("0000:01:00.0");
+        let down = up.join("0000:02:00.0");
+        let gpu = down.join("0000:03:00.0");
+        let device = |path: &PathBuf, vendor: &str, current: &str, max: &str| {
+            write(path.join("vendor"), &format!("{vendor}\n"));
+            write(path.join("current_link_width"), &format!("{current}\n"));
+            write(path.join("max_link_width"), &format!("{max}\n"));
+        };
+        device(&port, "0x1022", "8", "16");
+        device(&up, "0x1002", "8", "16");
+        device(&down, "0x1002", "16", "16");
+        device(&gpu, "0x1002", "16", "16");
+        let link = dir.path().join("bus/pci/devices/0000:03:00.0");
+        fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&gpu, &link).unwrap();
+        assert_eq!(slot_link(&link, 0x1002), Some(SlotLink { current: 8, card: 16, slot: Some(16) }));
+        // Portable : port du processeur câblé en x8, rien d'anormal.
+        device(&port, "0x1022", "8", "8");
+        assert_eq!(slot_link(&link, 0x1002), Some(SlotLink { current: 8, card: 16, slot: Some(8) }));
+        // GeForce, sans commutateur : sa propre liaison.
+        assert_eq!(slot_link(&gpu, 0x10de), Some(SlotLink { current: 16, card: 16, slot: Some(16) }));
+    }
+
+    #[test]
+    fn amd_link_reduced_at_rest_is_not_a_fault() {
+        let dir = tempfile::tempdir().unwrap();
+        let levels = dir.path().join("pp_dpm_pcie");
+        write(levels.clone(), "0: 2.5GT/s, x8 97Mhz *\n1: 16.0GT/s, x16 619Mhz\n");
+        assert!(amd_idle_link(dir.path()));
+        write(levels.clone(), "0: 2.5GT/s, x8 97Mhz\n1: 16.0GT/s, x16 619Mhz *\n");
+        assert!(!amd_idle_link(dir.path()));
+        fs::remove_file(levels).unwrap();
+        assert!(!amd_idle_link(dir.path()));
     }
 
     #[test]
