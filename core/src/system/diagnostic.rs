@@ -296,9 +296,17 @@ pub fn run(src: &Sources) -> Report {
     facts.push((
         t("Profil d'énergie", "Power profile"),
         power_profile.clone().unwrap_or_else(|| {
-            // Sans power-profiles-daemon, le gouverneur (ci-dessus) décide seul.
+            // Sans power-profiles-daemon, le gouverneur (ci-dessus) décide
+            // seul : rien ne manque, il n'est qu'un sélecteur de mode.
             if src.exec.which("powerprofilesctl").is_none() {
-                t("aucun (pas de power-profiles-daemon)", "none (no power-profiles-daemon)")
+                if governor.as_deref() == Some("performance") {
+                    t(
+                        "inutile : processeur réglé directement en performance",
+                        "not needed: CPU set straight to performance",
+                    )
+                } else {
+                    t("aucun : le gouverneur décide", "none: the governor decides")
+                }
             } else {
                 unknown()
             }
@@ -1113,6 +1121,10 @@ fn text(facts: &[(String, String)], checks: &[Check], sessions: &[GameSession]) 
             let limit = match s.limit {
                 "gpu" => t("limité par la carte graphique", "limited by the graphics card"),
                 "cpu" => t("limité par le processeur", "limited by the CPU"),
+                "loading" => t(
+                    "presque que du chargement ou de la compilation de shaders, pas une vraie partie",
+                    "almost only loading or shader compilation, not a real game",
+                ),
                 _ => "?".into(),
             };
             text.push_str(&format!(

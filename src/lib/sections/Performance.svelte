@@ -176,7 +176,7 @@
                 <td class="mono">{session.fpsOnePercentLow}</td>
                 <td class="mono">{session.cpuLoad} %</td>
                 <td class="mono">{session.gpuLoad} %</td>
-                <td>{session.limit === "gpu" ? t("Carte graphique", "Graphics card") : session.limit === "cpu" ? t("Processeur", "CPU") : "?"}</td>
+                <td>{session.limit === "gpu" ? t("Carte graphique", "Graphics card") : session.limit === "cpu" ? t("Processeur", "CPU") : session.limit === "loading" ? t("Chargement (pas une vraie partie)", "Loading (not a real game)") : "?"}</td>
               </tr>
             {/each}
           </tbody>

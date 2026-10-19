@@ -236,7 +236,7 @@ export interface GameSession {
   cpuLoad: number;
   gpuLoad: number;
   gpuClock: number;
-  limit: "gpu" | "cpu" | "?";
+  limit: "gpu" | "cpu" | "loading" | "?";
 }
 
 export interface PerfReport {

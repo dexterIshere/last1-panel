@@ -23,7 +23,9 @@ pub struct GameSession {
     pub gpu_load: f64,
     /// Fréquence moyenne de la carte graphique (MHz).
     pub gpu_clock: f64,
-    /// Ce qui limite : « gpu » (carte à fond), « cpu » (carte qui attend), « ? ».
+    /// Ce qui limite : « gpu » (carte à fond), « cpu » (carte qui attend),
+    /// « loading » (presque que du chargement : écran de compilation des
+    /// shaders, menus figés), « ? ».
     pub limit: &'static str,
 }
 
@@ -80,6 +82,23 @@ fn date_of(path: &Path) -> Option<String> {
     stem.len().checked_sub(19).map(|start| stem[start..].to_string())
 }
 
+/// Une ligne du journal de MangoHud.
+struct Row {
+    fps: f64,
+    frametime: f64,
+    cpu: Option<f64>,
+    gpu: Option<f64>,
+    clock: Option<f64>,
+}
+
+impl Row {
+    /// Chargement : très peu d'images, carte presque au repos (écran de
+    /// compilation des shaders au démarrage, après une mise à jour du pilote).
+    fn loading(&self) -> bool {
+        self.fps < 12.0 && self.gpu.is_some_and(|gpu| gpu < 35.0)
+    }
+}
+
 /// Résumé d'un journal ; `name` : son nom sans « .csv ».
 pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     let mut lines = text.lines();
@@ -89,29 +108,33 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     let (cpu_col, gpu_col, clock_col, elapsed_col) =
         (column("cpu_load"), column("gpu_load"), column("gpu_core_clock"), column("elapsed"));
 
-    let mut fps = Vec::new();
-    let mut frametimes = Vec::new();
-    let (mut cpu, mut gpu, mut clock) = (Vec::new(), Vec::new(), Vec::new());
+    let mut rows: Vec<Row> = Vec::new();
     let mut elapsed_ns = 0.0_f64;
     for line in lines {
         let values: Vec<f64> = line.split(',').map(|v| v.trim().parse().unwrap_or(f64::NAN)).collect();
         let at = |col: Option<usize>| col.and_then(|c| values.get(c).copied()).filter(|v| v.is_finite());
-        let (Some(f), Some(ft)) = (at(Some(fps_col)), at(Some(frametime_col))) else { continue };
-        if f <= 0.0 || ft <= 0.0 {
+        let (Some(fps), Some(frametime)) = (at(Some(fps_col)), at(Some(frametime_col))) else { continue };
+        if fps <= 0.0 || frametime <= 0.0 {
             continue;
         }
-        fps.push(f);
-        frametimes.push(ft);
-        cpu.extend(at(cpu_col));
-        gpu.extend(at(gpu_col));
-        clock.extend(at(clock_col));
+        rows.push(Row { fps, frametime, cpu: at(cpu_col), gpu: at(gpu_col), clock: at(clock_col) });
         if let Some(e) = at(elapsed_col) {
             elapsed_ns = elapsed_ns.max(e);
         }
     }
-    if fps.is_empty() {
+    if rows.is_empty() {
         return None;
     }
+    // Le chargement est compté à part : la partie, c'est le reste ; s'il n'y
+    // a presque que ça, la partie n'en est pas une.
+    let playing = rows.iter().filter(|row| !row.loading()).count();
+    let mostly_loading = playing * 10 < rows.len();
+    let used: Vec<&Row> = rows.iter().filter(|row| mostly_loading || !row.loading()).collect();
+    let fps: Vec<f64> = used.iter().map(|row| row.fps).collect();
+    let mut frametimes: Vec<f64> = used.iter().map(|row| row.frametime).collect();
+    let cpu: Vec<f64> = used.iter().filter_map(|row| row.cpu).collect();
+    let gpu: Vec<f64> = used.iter().filter_map(|row| row.gpu).collect();
+    let clock: Vec<f64> = used.iter().filter_map(|row| row.clock).collect();
     let mean = |v: &[f64]| if v.is_empty() { 0.0 } else { v.iter().sum::<f64>() / v.len() as f64 };
     // 1 % les plus lentes : le temps d'image au 99e centile.
     frametimes.sort_by(f64::total_cmp);
@@ -119,6 +142,8 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     let gpu_load = mean(&gpu);
     let limit = if gpu.is_empty() {
         "?"
+    } else if mostly_loading {
+        "loading"
     } else if gpu_load >= 90.0 {
         "gpu"
     } else {
@@ -176,6 +201,21 @@ mod tests {
         assert_eq!(session.fps_one_percent_low, 20.0);
         assert_eq!((session.cpu_load, session.gpu_load, session.gpu_clock), (45.0, 60.0, 2610.0));
         assert_eq!(session.limit, "cpu");
+    }
+
+    #[test]
+    fn loading_screens_are_set_apart() {
+        // Six minutes d'écran « compilation des shaders » : 6 i/s, carte à 12 %.
+        let compiling: Vec<(f64, f64, f64, f64, u64)> =
+            (1..=360).map(|i| (6.0, 166.0, 47.0, 12.0, i * 1_000_000_000)).collect();
+        let session = summarize("PioneerGame_2026-10-19_15-38-00", &log(&compiling)).unwrap();
+        assert_eq!((session.limit, session.fps_average), ("loading", 6.0));
+        // Puis vingt minutes de jeu : la partie, sans le chargement.
+        let mut game = compiling.clone();
+        game.extend((1..=1200).map(|i| (90.0, 11.1, 40.0, 98.0, (360 + i) * 1_000_000_000)));
+        let session = summarize("PioneerGame_2026-10-19_15-38-00", &log(&game)).unwrap();
+        assert_eq!((session.limit, session.fps_average, session.gpu_load), ("gpu", 90.0, 98.0));
+        assert_eq!(session.minutes, 26.0);
     }
 
     #[test]
