@@ -67,7 +67,13 @@ impl Plan {
         if !self.mangohud.is_empty() {
             // Configuration de l'utilisateur d'abord, nos clés ensuite (sauf
             // « cacher » : s'il a sa configuration, il veut voir MangoHud).
-            let value = match existing("MANGOHUD_CONFIG").filter(|v| !v.trim().is_empty()) {
+            let user = existing("MANGOHUD_CONFIG")
+                .filter(|v| !v.trim().is_empty())
+                // MangoHud déjà demandé (MANGOHUD=1 hérité : compteur d'images
+                // de go-to-linux, GOverlay…) : son fichier de configuration,
+                // visible.
+                .or_else(|| (existing("MANGOHUD").as_deref() == Some("1")).then(|| "read_cfg".to_string()));
+            let value = match user {
                 Some(user) => {
                     let ours: Vec<&str> = self
                         .mangohud
@@ -363,6 +369,12 @@ mod tests {
         let vars = plan.environment(|name| (name == "MANGOHUD_CONFIG").then(|| "fps,gpu_stats".to_string()));
         let config = get(&vars, "MANGOHUD_CONFIG").unwrap();
         assert!(config.starts_with("fps,gpu_stats,autostart_log=1") && !config.contains("alpha=0"), "{config}");
+        // MANGOHUD=1 hérité (compteur d'images de go-to-linux, GOverlay) : son
+        // fichier de configuration, visible, et la partie mesurée.
+        let vars = plan.environment(|name| (name == "MANGOHUD").then(|| "1".to_string()));
+        let config = get(&vars, "MANGOHUD_CONFIG").unwrap();
+        assert!(config.starts_with("read_cfg,autostart_log=1"), "{config}");
+        assert!(!config.contains("alpha=0") && !config.contains("no_display"), "{config}");
         // Affiché : la configuration de l'utilisateur, plus la mesure.
         let shown = GameProfile { overlay: Some(true), ..Default::default() };
         let vars = env(&super::plan(&shown, &context));
