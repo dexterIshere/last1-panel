@@ -245,6 +245,9 @@ export function installMockBackend(): void {
       await wait(1500);
       window.location.reload();
     },
+    quit: async () => {
+      window.location.reload();
+    },
     enable_lact: async () => {
       await wait(1200);
       lactRunning = true;

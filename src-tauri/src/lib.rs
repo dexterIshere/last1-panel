@@ -74,6 +74,7 @@ pub fn run() {
             commands::performance_fix,
             commands::update_available,
             commands::install_update,
+            commands::quit,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {
@@ -153,6 +154,12 @@ fn integrate_only() -> i32 {
 pub(crate) fn restart_service() {
     systemctl(&["daemon-reload"]);
     systemctl(&["restart", "last1-panel-apply.service"]);
+}
+
+/// Service de session arrêté (l'icône près de l'horloge disparaît) ; il
+/// revient à la prochaine connexion.
+pub(crate) fn stop_service() {
+    systemctl(&["--no-block", "stop", "last1-panel-apply.service"]);
 }
 
 fn systemctl(args: &[&str]) {

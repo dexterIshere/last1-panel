@@ -63,6 +63,7 @@ export const api = {
   deleteColorProfile: (id: string) => invoke<void>("delete_color_profile", { id }),
   updateAvailable: () => invoke<string | null>("update_available"),
   installUpdate: () => invoke<void>("install_update"),
+  quit: () => invoke<void>("quit"),
 
   games: () => invoke<GamesInfo>("games"),
   saveGameSettings: (settings: GamesSettings) => invoke<void>("save_game_settings", { settings }),

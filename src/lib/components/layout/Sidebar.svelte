@@ -5,7 +5,7 @@
   import { api, errorMessage } from "$lib/api/ipc";
   import { i18n, t, type Lang } from "$lib/i18n.svelte";
   import { app, type Section } from "$lib/state/app.svelte";
-  import { Cpu, Gamepad2, Gauge, Monitor, Palette } from "@lucide/svelte";
+  import { Cpu, Gamepad2, Gauge, Monitor, Palette, Power } from "@lucide/svelte";
 
   const LANGS: Lang[] = ["fr", "en"];
 
@@ -82,7 +82,19 @@
       </button>
       {#if updateError}<p class="pc__meta update__error">{updateError}</p>{/if}
     {/if}
-    <p class="pc__meta mono">{desktop} · v{app.system?.version ?? "0.1.0"}</p>
+    <div class="pc__foot">
+      <p class="pc__meta mono">{desktop} · v{app.system?.version ?? "0.1.0"}</p>
+      <button
+        class="quit"
+        onclick={() => api.quit()}
+        title={t(
+          "Ferme la fenêtre et l'icône près de l'horloge. L'icône revient à la prochaine connexion.",
+          "Closes the window and the icon by the clock. The icon comes back at the next login.",
+        )}
+      >
+        <Power size={14} />{t("Quitter", "Quit")}
+      </button>
+    </div>
   </div>
 </aside>
 
@@ -251,6 +263,32 @@
     padding: 0 var(--space-2);
     color: var(--color-text-faint);
     font-size: var(--text-2xs);
+  }
+
+  .pc__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .quit {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    padding: 2px var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-faint);
+    font-size: var(--text-2xs);
+    cursor: pointer;
+  }
+
+  .quit:hover {
+    border-color: var(--color-danger-line);
+    color: var(--color-danger);
   }
 
   .update {

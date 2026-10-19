@@ -218,6 +218,19 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<()> {
     Ok(())
 }
 
+/// Ferme Last1 Panel entièrement : l'icône près de l'horloge (service de
+/// session), puis la fenêtre. Tout revient à la prochaine connexion.
+#[tauri::command]
+pub async fn quit(app: tauri::AppHandle) -> Result<()> {
+    blocking(|| {
+        crate::stop_service();
+        Ok(())
+    })
+    .await?;
+    app.exit(0);
+    Ok(())
+}
+
 /// Installe LACT s'il manque (pacman ; avec une mise à jour du système si
 /// la liste des paquets est trop ancienne), puis active et démarre son service.
 /// Mot de passe demandé par pkexec.

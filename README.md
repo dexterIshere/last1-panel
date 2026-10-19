@@ -87,7 +87,9 @@ pour ce canal (le bleu d'un guide, par exemple).
 
 L'icône Last1 Panel près de l'horloge (Plasma, Waybar sous Hyprland) met un
 profil sur l'écran au clic droit et ouvre la fenêtre au clic gauche ; elle se
-masque depuis son menu et revient par **Couleurs**.
+masque depuis son menu et revient par **Couleurs**. « Quitter Last1 Panel »
+(menu de l'icône, ou « Quitter » en bas de la fenêtre) ferme la fenêtre et
+l'icône ; l'icône revient à la prochaine connexion.
 
 ## Performances en jeu
 

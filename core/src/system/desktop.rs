@@ -49,6 +49,18 @@ pub fn session_env() -> BTreeMap<String, String> {
     text.lines().filter_map(|line| line.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect()
 }
 
+/// Ferme les fenêtres de Last1 Panel ouvertes par ce compte (paquet ou
+/// AppImage : le programme s'appelle « last1-panel » ; l'outil
+/// « last1-panel-cli » et les jeux ne sont pas touchés).
+pub fn close_windows() {
+    let mut command = Command::new("pkill");
+    command.args(["-TERM", "-x", "last1-panel"]);
+    if let Ok(meta) = std::fs::metadata("/proc/self") {
+        command.args(["-u", &std::os::unix::fs::MetadataExt::uid(&meta).to_string()]);
+    }
+    let _ = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+}
+
 /// Notification du bureau, depuis le service de la session.
 pub fn notify(message: &str) {
     let _ = Command::new("notify-send")

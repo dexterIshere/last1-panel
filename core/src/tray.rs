@@ -28,6 +28,9 @@ enum Request {
         profile: Option<String>,
     },
     Hide,
+    /// Last1 Panel fermé entièrement : la fenêtre, puis l'icône et le
+    /// service (il revient à la prochaine connexion).
+    Quit,
     ScreensChanged,
 }
 
@@ -289,6 +292,15 @@ fn menu(model: &Model) -> Vec<MenuItem<Icon>> {
         }
         .into(),
     );
+    items.push(
+        StandardItem {
+            label: t("Quitter Last1 Panel", "Quit Last1 Panel"),
+            icon_name: "application-exit".into(),
+            activate: Box::new(|icon: &mut Icon| icon.send(Request::Quit)),
+            ..Default::default()
+        }
+        .into(),
+    );
     items
 }
 
@@ -397,6 +409,15 @@ fn serve(sender: Sender<Request>, requests: Receiver<Request>) {
                     ));
                 }
             }
+            Ok(Request::Quit) => {
+                desktop::close_windows();
+                if let Some(icon) = handle.take() {
+                    icon.shutdown().wait();
+                }
+                // Sortie normale : systemd ne relance pas le service
+                // (Restart=on-failure) ; il revient à la prochaine connexion.
+                std::process::exit(0);
+            }
             Ok(Request::ScreensChanged) => screens_read = Instant::now() - Duration::from_secs(3600),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return,
@@ -496,7 +517,7 @@ mod tests {
         let items = labels(&menu(&model(&Settings::default(), &[("DP-1".into(), "DP-1".into())])));
         assert!(items.contains(&"(x) Valeurs par défaut".to_string()));
         assert!(items.contains(&"Vos profils se créent dans Couleurs".to_string()));
-        assert_eq!(items.last().unwrap(), "Masquer cette icône");
+        assert_eq!(items[items.len() - 2..], ["Masquer cette icône", "Quitter Last1 Panel"]);
     }
 
     #[test]
