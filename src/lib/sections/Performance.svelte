@@ -5,6 +5,7 @@
   import type { PerfCheck, PerfFix, PerfReport } from "$lib/api/types";
   import SectionHeader from "$lib/components/layout/SectionHeader.svelte";
   import Callout from "$lib/components/ui/Callout.svelte";
+  import WarningDialog from "$lib/components/ui/WarningDialog.svelte";
   import Spinner from "$lib/components/ui/Spinner.svelte";
   import { t } from "$lib/i18n.svelte";
   import { Check, CircleAlert, Copy, Info, RefreshCw, TriangleAlert, Wrench } from "@lucide/svelte";
@@ -53,8 +54,9 @@
   }
 
   const toFix = $derived(report?.checks.filter((c) => c.level === "problem" || c.level === "warning").length ?? 0);
-  /** Tout ce qui se règle d'un clic. */
-  const fixable = $derived(report?.checks.flatMap((c) => (c.fix ? [c.fix] : [])) ?? []);
+  /** Tout ce qui se règle d'un clic (le redémarrage reste à part). */
+  const fixable = $derived(report?.checks.flatMap((c) => (c.fix && c.fix !== "restart" ? [c.fix] : [])) ?? []);
+  let confirmRestart = $state(false);
   const fixLabel = (kind: PerfFix) =>
     ({
       "low-latency": t("Rendre la latence aux jeux", "Give latency back to games"),
@@ -66,6 +68,8 @@
       "split-lock": t("Arrêter ce frein", "Stop this slowdown"),
       "x3d-cache": t("Mettre les jeux sur la 3D V-Cache", "Put games on the 3D V-Cache"),
       scheduler: t("Revenir à l'ordonnanceur du noyau", "Go back to the kernel's scheduler"),
+      zram: t("Activer la mémoire compressée", "Turn on compressed memory"),
+      restart: t("Redémarrer le PC", "Restart the PC"),
     })[kind];
   const icon = (check: PerfCheck) => ({ problem: CircleAlert, warning: TriangleAlert, info: Info, ok: Check })[check.level];
 </script>
@@ -111,7 +115,11 @@
               <span class="field__hint">{check.detail}</span>
             </div>
             {#if check.fix}
-              <button class="btn" onclick={() => fix([check.fix!])} disabled={fixing.length > 0}>
+              <button
+                class="btn"
+                onclick={() => (check.fix === "restart" ? (confirmRestart = true) : fix([check.fix!]))}
+                disabled={fixing.length > 0}
+              >
                 {#if fixing.includes(check.fix)}<Spinner />{/if}{fixLabel(check.fix)}
               </button>
             {/if}
@@ -168,6 +176,20 @@
   </div>
 {:else if loading}
   <p class="muted"><Spinner /> {t("Lecture du PC…", "Reading the PC…")}</p>
+{/if}
+
+{#if confirmRestart}
+  <WarningDialog
+    title={t("Redémarrer le PC ?", "Restart the PC?")}
+    confirmLabel={t("Redémarrer", "Restart")}
+    onconfirm={() => {
+      confirmRestart = false;
+      fix(["restart"]);
+    }}
+    oncancel={() => (confirmRestart = false)}
+  >
+    <p>{t("Les programmes ouverts seront fermés : enregistrez votre travail avant.", "Open programs will be closed: save your work first.")}</p>
+  </WarningDialog>
 {/if}
 
 <style>

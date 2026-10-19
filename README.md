@@ -100,7 +100,9 @@ désactivé, pilote ancien, NTSync absent, cache des shaders trop petit,
 faible latence forcée, mémoire pleine, shaders compilés par Steam pendant le
 jeu. Chaque point qu'un logiciel peut régler a son bouton, et « Tout régler »
 les fait tous avec un seul mot de passe : mode performance, NTSync, cache des
-shaders de 12 Go, split locks, 3D V-Cache, ordonnanceur du noyau. Ce sont les
+shaders de 12 Go (puis « Redémarrer le PC »), split locks, 3D V-Cache,
+ordonnanceur du noyau, mémoire compressée (zram) quand les programmes en
+arrière-plan partent sur le disque. Ce sont les
 réglages que go-to-linux pose dès l'installation de CachyOS ; Last1 Panel les
 écrit dans ses propres fichiers (`/etc/…/last1-panel…`). Le reste (BIOS,
 emplacement de la carte) est expliqué. « Copier le rapport » donne le tout en

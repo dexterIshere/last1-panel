@@ -347,6 +347,8 @@ impl Panel {
                 .filter(|games| !games.is_empty())
                 .map(|games| (games.iter().filter(|game| game.wrapped).count(), games.len())),
             go_to_linux: Path::new("/var/lib/gtl").is_dir(),
+            can_zram: Path::new("/usr/lib/systemd/system-generators/zram-generator").exists()
+                || crate::exec::which("pacman").is_some(),
         })
     }
 

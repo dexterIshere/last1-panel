@@ -46,6 +46,10 @@ pub enum Fix {
     SplitLock,
     X3dCache,
     Scheduler,
+    /// Mémoire compressée (zram-generator, comme CachyOS).
+    Zram,
+    /// Redémarrage du PC (cache des shaders posé pour la prochaine connexion).
+    Restart,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -99,6 +103,8 @@ pub struct Sources<'a> {
     pub wrapped_games: Option<(usize, usize)>,
     /// PC installé par go-to-linux (/var/lib/gtl).
     pub go_to_linux: bool,
+    /// zram-generator installé, ou installable (pacman).
+    pub can_zram: bool,
 }
 
 /// Variable posée pour toutes les sessions dans /etc/environment (pam_env) :
@@ -346,15 +352,18 @@ pub fn run(src: &Sources) -> Report {
             t("Cache des shaders agrandi", "Larger shader cache"),
             format!("{cache_var}={value}"),
         ),
-        (None, Some(_)) => check(
-            "shader-cache",
-            Level::Info,
-            t("Cache des shaders agrandi à la prochaine connexion", "Larger shader cache from the next login"),
-            t(
-                "Déconnectez-vous puis reconnectez-vous (ou redémarrez le PC) : Steam et ses jeux le prendront alors.",
-                "Log out and back in (or restart the PC): Steam and its games will then use it.",
-            ),
-        ),
+        (None, Some(_)) => Check {
+            fix: Some(Fix::Restart),
+            ..check(
+                "shader-cache",
+                Level::Info,
+                t("Cache des shaders agrandi à la prochaine connexion", "Larger shader cache from the next login"),
+                t(
+                    "C'est fait : Steam et ses jeux le prendront après un redémarrage du PC (ou une déconnexion-reconnexion).",
+                    "Done: Steam and its games will use it after the PC restarts (or after logging out and back in).",
+                ),
+            )
+        },
         (None, None) => Check {
             fix: Some(Fix::ShaderCache),
             ..check(
@@ -494,24 +503,46 @@ pub fn run(src: &Sources) -> Report {
         if let Some(total) = kib("MemTotal:") {
             facts.push((t("Mémoire", "Memory"), format!("{} Go", (total + 524_288) / 1_048_576)));
         }
-        if let Some(used) = kib("SwapTotal:")
-            .zip(kib("SwapFree:"))
-            .map(|(total, free)| total.saturating_sub(free))
-            .filter(|used| *used > 1_048_576)
-        {
-            checks.push(check(
-                "swap",
-                Level::Warning,
-                t("La mémoire déborde sur le disque", "Memory spills to disk"),
-                t(
-                    &format!(
-                        "{} Go en mémoire d'échange : fermez les programmes inutiles (navigateur…) avant de jouer.",
-                        used / 1_048_576
-                    ),
-                    &format!("{} GB in swap: close unneeded programs (browser…) before playing.", used / 1_048_576),
-                ),
-            ));
+    }
+    // Mémoire d'échange : zram (mémoire compressée, en RAM : CachyOS y range
+    // exprès les pages froides pour laisser la RAM au jeu) ou disque.
+    // /proc/swaps, en Kio : nom, type, taille, utilisé, priorité.
+    let (mut zram_kib, mut disk_kib, mut zram_on) = (0u64, 0u64, false);
+    for line in read(&src.proc_dir.join("swaps")).unwrap_or_default().lines().skip(1) {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        let used = fields.get(3).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+        if fields.first().is_some_and(|name| name.starts_with("/dev/zram")) {
+            zram_on = true;
+            zram_kib += used;
+        } else {
+            disk_kib += used;
         }
+    }
+    let gib = |kib: u64| (kib + 524_288) / 1_048_576;
+    if zram_kib >= 1_048_576 {
+        facts.push((t("Mémoire compressée (zram)", "Compressed memory (zram)"), format!("{} Go", gib(zram_kib))));
+    }
+    if disk_kib > 1_048_576 {
+        let used = gib(disk_kib);
+        checks.push(Check {
+            fix: (!zram_on && src.can_zram).then_some(Fix::Zram),
+            ..check(
+                "swap",
+                Level::Info,
+                t("Conseil : mémoire bien remplie pendant les parties", "Tip: memory is quite full while playing"),
+                if zram_on {
+                    t(
+                        &format!("{used} Go de programmes en arrière-plan sont sur le disque pour laisser la mémoire au jeu ; si une partie saccade, fermer le navigateur peut aider."),
+                        &format!("{used} GB of background programs are on the disk to leave memory to the game; if a game stutters, closing the browser can help."),
+                    )
+                } else {
+                    t(
+                        &format!("{used} Go de programmes en arrière-plan sont sur le disque pour laisser la mémoire au jeu. La mémoire compressée (zram, comme CachyOS) les garderait en mémoire, bien plus vite à reprendre."),
+                        &format!("{used} GB of background programs are on the disk to leave memory to the game. Compressed memory (zram, like CachyOS) would keep them in memory, much faster to bring back."),
+                    )
+                },
+            )
+        });
     }
 
     // Steam compile les shaders en arrière-plan.
@@ -643,7 +674,12 @@ mod tests {
     #[test]
     fn finds_what_costs_frames() {
         let pc = pc();
-        write(pc.proc_dir.join("meminfo"), "MemTotal: 32768000 kB\nSwapTotal: 8000000 kB\nSwapFree: 5000000 kB\n");
+        write(pc.proc_dir.join("meminfo"), "MemTotal: 32768000 kB\n");
+        // Échange sur disque seul, 3 Go utilisés : conseil, et zram d'un clic.
+        write(
+            pc.proc_dir.join("swaps"),
+            "Filename\tType\tSize\tUsed\tPriority\n/swap/swapfile                          file\t8388604\t3145728\t-2\n",
+        );
         write(pc.proc_dir.join("sys/kernel/split_lock_mitigate"), "1\n");
         write(pc.proc_dir.join("4242/comm"), "fossilize_repla\n");
         write(pc.sys.join("kernel/sched_ext/state"), "enabled\n");
@@ -688,6 +724,7 @@ mod tests {
             mangohud: false,
             wrapped_games: Some((0, 3)),
             go_to_linux: true,
+            can_zram: true,
         });
         let ids =
             |level: Level| -> Vec<&str> { report.checks.iter().filter(|c| c.level == level).map(|c| c.id).collect() };
@@ -703,11 +740,10 @@ mod tests {
                 "driver",
                 "measure",
                 "low-latency",
-                "swap",
                 "shader-precache"
             ]
         );
-        assert_eq!(ids(Level::Info), ["scheduler"]);
+        assert_eq!(ids(Level::Info), ["scheduler", "swap"]);
         let fixes: Vec<Fix> = report.checks.iter().filter_map(|c| c.fix).collect();
         assert_eq!(
             fixes,
@@ -719,7 +755,8 @@ mod tests {
                 Fix::ShaderCache,
                 Fix::InstallMangoHud,
                 Fix::LowLatency,
-                Fix::Scheduler
+                Fix::Scheduler,
+                Fix::Zram
             ]
         );
         assert!(report.text.contains("AMD Ryzen 9 7950X3D") && report.text.contains("balanced"));
@@ -759,6 +796,7 @@ mod tests {
             mangohud: true,
             wrapped_games: Some((1, 1)),
             go_to_linux: true,
+            can_zram: true,
         });
         assert!(report.checks.iter().all(|c| c.level == Level::Ok), "{:#?}", report.checks);
         assert!(report.checks.iter().any(|c| c.id == "rebar" && c.detail.contains("16384")));
@@ -797,6 +835,7 @@ mod tests {
                 mangohud: true,
                 wrapped_games: Some((1, 1)),
                 go_to_linux: false,
+                can_zram: true,
             })
         };
         let arch = report(None);
@@ -816,7 +855,23 @@ mod tests {
         // Cache posé pour la prochaine connexion : plus de bouton, la consigne.
         let pending = report(Some("12000000000"));
         let cache = pending.checks.iter().find(|c| c.id == "shader-cache").unwrap();
-        assert_eq!((cache.level, cache.fix), (Level::Info, None));
+        assert_eq!((cache.level, cache.fix), (Level::Info, Some(Fix::Restart)));
+        // CachyOS : 6 Go dans zram (en mémoire) ; rien à signaler, un fait.
+        write(
+            pc.proc_dir.join("swaps"),
+            "Filename\tType\tSize\tUsed\tPriority\n/dev/zram0 partition\t16318460\t6291456\t100\n/swap/swapfile file\t8388604\t0\t10\n",
+        );
+        let cachyos = report(None);
+        assert!(cachyos.checks.iter().all(|c| c.id != "swap"));
+        assert!(cachyos.facts.iter().any(|(name, value)| name.contains("zram") && value == "6 Go"));
+        // zram plein, le disque prend le relais : un conseil, sans bouton.
+        write(
+            pc.proc_dir.join("swaps"),
+            "Filename\tType\tSize\tUsed\tPriority\n/dev/zram0 partition\t16318460\t16318460\t100\n/swap/swapfile file\t8388604\t2097152\t10\n",
+        );
+        let swap = report(None).checks.into_iter().find(|c| c.id == "swap").unwrap();
+        assert_eq!((swap.level, swap.fix), (Level::Info, None));
+        assert!(swap.title.starts_with("Conseil"));
         // La carte ne se redimensionne pas : rien à régler dans le BIOS.
         let rebar = arch.checks.iter().find(|c| c.id == "rebar").unwrap();
         assert_eq!(rebar.level, Level::Ok);
@@ -850,6 +905,7 @@ mod tests {
                 mangohud: true,
                 wrapped_games: Some((1, 1)),
                 go_to_linux: true,
+                can_zram: true,
             })
             .checks
             .into_iter()

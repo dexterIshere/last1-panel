@@ -9,6 +9,8 @@ use crate::i18n::t;
 use crate::system::diagnostic::Fix;
 use std::path::Path;
 
+const ZRAM_GENERATOR: &str = "/usr/lib/systemd/system-generators/zram-generator";
+
 /// Script d'administrateur pour `fixes` (rien s'il n'y a rien à faire en
 /// administrateur). `etc` : /etc, ou un dossier de test. `power_profiles` :
 /// power-profiles-daemon présent (le mode performance passe alors par lui,
@@ -74,7 +76,27 @@ for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do if [ -e "$f" 
                     "Install MangoHud with the system's package manager.",
                 )));
             }
-            Fix::Performance | Fix::LowLatency | Fix::WrapGames => {}
+            // Mémoire compressée, comme CachyOS (zram de la taille de la RAM,
+            // zstd, avant l'échange sur disque) ; la configuration de
+            // zram-generator déjà là est gardée.
+            Fix::Zram => {
+                if !pacman && !Path::new(ZRAM_GENERATOR).exists() {
+                    return Err(CoreError::message(t(
+                        "Installez zram-generator avec le gestionnaire de paquets du système.",
+                        "Install zram-generator with the system's package manager.",
+                    )));
+                }
+                parts.push(format!(
+                    r#"if [ ! -e {ZRAM_GENERATOR} ]; then pacman -S --needed --noconfirm zram-generator; fi
+if [ ! -e {etc}/systemd/zram-generator.conf ]; then mkdir -p {etc}/systemd; printf '%s\n' '[zram0]' 'zram-size = ram' 'compression-algorithm = zstd' 'swap-priority = 100' > {etc}/systemd/zram-generator.conf; fi
+mkdir -p {etc}/sysctl.d
+printf '%s\n' 'vm.swappiness = 150' 'vm.page-cluster = 0' > {etc}/sysctl.d/99-last1-panel-zram.conf
+sysctl -q -p {etc}/sysctl.d/99-last1-panel-zram.conf
+systemctl daemon-reload
+systemctl start systemd-zram-setup@zram0.service"#
+                ));
+            }
+            Fix::Performance | Fix::LowLatency | Fix::WrapGames | Fix::Restart => {}
         }
     }
     Ok((!parts.is_empty()).then(|| format!("set -e\n{}\n", parts.join("\n"))))
@@ -91,7 +113,7 @@ mod tests {
     use std::fs;
     use std::process::Command;
 
-    const ALL: [Fix; 9] = [
+    const ALL: [Fix; 11] = [
         Fix::Performance,
         Fix::Ntsync,
         Fix::ShaderCache,
@@ -101,6 +123,8 @@ mod tests {
         Fix::InstallMangoHud,
         Fix::LowLatency,
         Fix::WrapGames,
+        Fix::Zram,
+        Fix::Restart,
     ];
 
     #[test]
@@ -115,6 +139,8 @@ mod tests {
             "systemctl disable --now",
             "/etc/tmpfiles.d/last1-panel-performance.conf",
             "pacman -S --needed --noconfirm mangohud",
+            "/etc/systemd/zram-generator.conf",
+            "systemd-zram-setup@zram0.service",
         ] {
             assert!(script.contains(expected), "{expected}\n{script}");
         }

@@ -382,6 +382,11 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
             let ids: Vec<u32> = steam::installed_games(&root).iter().map(|game| game.app_id).collect();
             set_wrapped_closing_steam(&ids, true)?;
         }
+        // En dernier : logind redémarre le PC de la session active, sans mot
+        // de passe.
+        if fixes.contains(&Fix::Restart) {
+            SystemExec::default().run_ok("systemctl", &["reboot".into()])?;
+        }
         let mut notices = Vec::new();
         if fixes.contains(&Fix::ShaderCache) {
             notices.push(t(

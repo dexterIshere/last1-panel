@@ -211,7 +211,9 @@ export type PerfFix =
   | "shader-cache"
   | "split-lock"
   | "x3d-cache"
-  | "scheduler";
+  | "scheduler"
+  | "zram"
+  | "restart";
 
 export interface PerfCheck {
   id: string;

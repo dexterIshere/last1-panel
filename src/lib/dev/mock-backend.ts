@@ -306,7 +306,10 @@ export function installMockBackend(): void {
           : [{ id: "ntsync", level: "ok", title: "NTSync", detail: "Disponible pour Proton.", fix: null }]),
         ...(open("shader-cache")
           ? [{ id: "shader-cache", level: "warning", title: "Cache des shaders limité à 1 Go", detail: "Les shaders d'un gros jeu (Unreal Engine 5) n'y tiennent pas et se recompilent à chaque partie : saccades, chutes d'images par seconde.", fix: "shader-cache" }]
-          : [{ id: "shader-cache", level: "info", title: "Cache des shaders agrandi à la prochaine connexion", detail: "Déconnectez-vous puis reconnectez-vous (ou redémarrez le PC) : Steam et ses jeux le prendront alors.", fix: null }]),
+          : [{ id: "shader-cache", level: "info", title: "Cache des shaders agrandi à la prochaine connexion", detail: "C'est fait : Steam et ses jeux le prendront après un redémarrage du PC (ou une déconnexion-reconnexion).", fix: "restart" }]),
+        ...(open("zram")
+          ? [{ id: "swap", level: "info", title: "Conseil : mémoire bien remplie pendant les parties", detail: "3 Go de programmes en arrière-plan sont sur le disque pour laisser la mémoire au jeu. La mémoire compressée (zram, comme CachyOS) les garderait en mémoire, bien plus vite à reprendre.", fix: "zram" }]
+          : []),
         { id: "rebar", level: "warning", title: "Resizable BAR désactivé", detail: "Le processeur ne voit la mémoire de la carte que par une fenêtre de 256 Mo, ce qui freine les jeux DirectX 12 (VKD3D-Proton). À activer dans le BIOS : Resizable BAR et Above 4G Decoding.", fix: null },
         ...(open("scheduler")
           ? [{ id: "scheduler", level: "info", title: "Ordonnanceur lavd actif", detail: "Conçu pour le Steam Deck : aucun gain d'images par seconde prouvé, et des chutes rapportées. go-to-linux garde celui du noyau.", fix: "scheduler" }]
@@ -334,6 +337,10 @@ export function installMockBackend(): void {
     performance_fix: async (args) => {
       await wait(600);
       const fixes = args.fixes as string[];
+      if (fixes.includes("restart")) {
+        window.location.reload();
+        return [];
+      }
       for (const fix of fixes) perfFixed.add(fix);
       if (fixes.includes("low-latency")) lowLatencyForced = false;
       return fixes.includes("shader-cache") ? ["Cache des shaders agrandi : il vaudra après une déconnexion-reconnexion (ou un redémarrage)."] : [];
