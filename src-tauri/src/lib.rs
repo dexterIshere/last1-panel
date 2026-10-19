@@ -75,6 +75,8 @@ pub fn run() {
             commands::update_available,
             commands::install_update,
             commands::quit,
+            commands::sharing,
+            commands::set_sharing,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

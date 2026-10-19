@@ -1,7 +1,7 @@
 // État de la fenêtre : le PC (system_info), la page affichée, la langue.
 
 import { api, errorMessage } from "$lib/api/ipc";
-import type { SystemInfo } from "$lib/api/types";
+import type { Sharing, SystemInfo } from "$lib/api/types";
 import { i18n, saveLang, savedLang, t, type Lang } from "$lib/i18n.svelte";
 
 export type Section = "colors" | "display" | "gpu" | "games" | "perf";
@@ -13,6 +13,8 @@ class App {
   error = $state<string | null>(null);
   /** Version plus récente sur last1.fun (installation par l'AppImage). */
   update = $state<string | null>(null);
+  /** Partage des rapports de performances (accord du joueur). */
+  sharing = $state<Sharing | null>(null);
 
   async init(): Promise<void> {
     try {
@@ -20,6 +22,7 @@ class App {
       i18n.lang = savedLang() ?? this.system.lang;
       await api.setLanguage(i18n.lang);
       api.updateAvailable().then((version) => (this.update = version), () => undefined);
+      this.sharing = await api.sharing().catch(() => null);
     } catch (error) {
       this.error = errorMessage(error);
     }
@@ -29,6 +32,12 @@ class App {
     i18n.lang = lang;
     saveLang(lang);
     await api.setLanguage(lang).catch(() => undefined);
+  }
+
+  /** Réponse du joueur au partage des rapports (gardée, révocable). */
+  async setSharing(enabled: boolean): Promise<void> {
+    if (this.sharing) this.sharing = { ...this.sharing, asked: true, enabled };
+    await api.setSharing(enabled);
   }
 
   /** La carte NVIDIA du PC, s'il en a une. */

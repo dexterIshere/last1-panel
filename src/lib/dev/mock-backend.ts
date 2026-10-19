@@ -113,6 +113,7 @@ export function installMockBackend(): void {
   let tray = true;
   let lowLatencyForced = true;
   const perfFixed = new Set<string>();
+  let sharingChoice: boolean | null = null;
   let colorProfiles: ColorProfile[] = [
     { id: "p1", name: "Arc Raiders", color: { red: guide(52, 47, 1.47), green: guide(52, 47, 1.47), blue: guide(62, 72, 1.65) }, vibrance: 50 },
   ];
@@ -245,6 +246,10 @@ export function installMockBackend(): void {
     install_update: async () => {
       await wait(1500);
       window.location.reload();
+    },
+    sharing: () => ({ asked: sharingChoice !== null, enabled: sharingChoice === true, goToLinux: !params.get("arch") }),
+    set_sharing: (args) => {
+      sharingChoice = args.enabled as boolean;
     },
     quit: async () => {
       window.location.reload();

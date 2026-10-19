@@ -27,6 +27,9 @@ pub struct Settings {
     pub games: GamesSettings,
     /// Icône près de l'horloge (service de la session, `tray.rs`).
     pub tray: bool,
+    /// Rapports de performances partagés avec last1.fun (system/sharing.rs) :
+    /// absent tant que le joueur n'a pas répondu ; jamais envoyé sans « oui ».
+    pub share_reports: Option<bool>,
 }
 
 impl Default for Settings {
@@ -37,6 +40,7 @@ impl Default for Settings {
             color_profiles: Vec::new(),
             games: GamesSettings::default(),
             tray: true,
+            share_reports: None,
         }
     }
 }

@@ -6,3 +6,4 @@ pub mod edid;
 pub mod gpu;
 pub mod repair;
 pub mod sessions;
+pub mod sharing;

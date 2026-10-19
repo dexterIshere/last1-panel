@@ -219,6 +219,34 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<()> {
     Ok(())
 }
 
+/// Partage des rapports de performances (system/sharing.rs) : demandé une
+/// fois, hors go-to-linux (qui envoie lui-même les siens).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sharing {
+    asked: bool,
+    enabled: bool,
+    go_to_linux: bool,
+}
+
+#[tauri::command]
+pub async fn sharing() -> Result<Sharing> {
+    blocking(|| {
+        let choice = Settings::load().share_reports;
+        Ok(Sharing {
+            asked: choice.is_some(),
+            enabled: choice == Some(true),
+            go_to_linux: Path::new("/var/lib/gtl").is_dir(),
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn set_sharing(enabled: bool) -> Result<()> {
+    blocking(move || Settings::update(&Settings::path(), |s| s.share_reports = Some(enabled))).await
+}
+
 /// Ferme Last1 Panel entièrement : l'icône près de l'horloge (service de
 /// session), puis la fenêtre. Tout revient à la prochaine connexion.
 #[tauri::command]

@@ -9,6 +9,7 @@ import type {
   ColorProfiles,
   GameLink,
   PerfFix,
+  Sharing,
   PerfReport,
   ColorState,
   GamesInfo,
@@ -65,6 +66,8 @@ export const api = {
   updateAvailable: () => invoke<string | null>("update_available"),
   installUpdate: () => invoke<void>("install_update"),
   quit: () => invoke<void>("quit"),
+  sharing: () => invoke<Sharing>("sharing"),
+  setSharing: (enabled: boolean) => invoke<void>("set_sharing", { enabled }),
 
   games: () => invoke<GamesInfo>("games"),
   saveGameSettings: (settings: GamesSettings) => invoke<void>("save_game_settings", { settings }),

@@ -19,7 +19,7 @@
 //!                                            (go-to-linux)
 
 use last1_panel_core::error::CoreResult;
-use last1_panel_core::exec::SystemExec;
+use last1_panel_core::exec::{Exec, SystemExec};
 use last1_panel_core::games::launch::{self, Context};
 use last1_panel_core::i18n::{self, t};
 use last1_panel_core::panel::Panel;
@@ -221,6 +221,7 @@ fn watch() -> ExitCode {
     if update::enabled() {
         std::thread::spawn(propose_updates);
     }
+    std::thread::spawn(share_reports);
     let tray = last1_panel_core::tray::spawn();
     std::thread::sleep(Duration::from_secs(3));
     apply_until_ready(20);
@@ -253,6 +254,60 @@ fn watch() -> ExitCode {
     }
     let _ = child.kill();
     ExitCode::SUCCESS
+}
+
+/// Rapports de performances partagés avec last1.fun (system/sharing.rs) :
+/// seulement avec l'accord du joueur, et hors go-to-linux (qui envoie les
+/// siens). Regardé dix minutes après la connexion, puis toutes les 30 minutes ;
+/// envoyé au plus une fois par jour, après des parties, s'il a changé.
+fn share_reports() {
+    use last1_panel_core::system::sharing;
+    std::thread::sleep(Duration::from_secs(600));
+    let state_path = last1_panel_core::paths::cache_dir().join("sharing.json");
+    let read = |path: &str| std::fs::read_to_string(path).unwrap_or_default().trim().to_string();
+    loop {
+        if Settings::load().share_reports == Some(true) && !std::path::Path::new("/var/lib/gtl").exists() {
+            let report = Panel::system().performance_report();
+            let mut state = sharing::State::load(&state_path);
+            let now = update::now();
+            if let Some(sum) = sharing::due(&report, &state, now) {
+                let body = sharing::body(
+                    &report,
+                    update::RELEASE.unwrap_or(env!("CARGO_PKG_VERSION")),
+                    &sharing::pc_id(&read("/etc/machine-id")),
+                    &sharing::os_name(&read("/etc/os-release")),
+                    &read("/proc/sys/kernel/osrelease"),
+                    &std::env::var("USER").unwrap_or_default(),
+                    &read("/proc/sys/kernel/hostname"),
+                );
+                let file = state_path.with_extension("pending");
+                let exec = SystemExec { timeout: Duration::from_secs(60), ..SystemExec::default() };
+                let args = [
+                    "-fsS".to_string(),
+                    "--proto".into(),
+                    "=https".into(),
+                    "--max-time".into(),
+                    "30".into(),
+                    "-H".into(),
+                    "Content-Type: application/json".into(),
+                    "--data-binary".into(),
+                    format!("@{}", file.display()),
+                    "-o".into(),
+                    "/dev/null".into(),
+                    sharing::URL.into(),
+                ];
+                let sent = std::fs::write(&file, body).is_ok() && exec.run_ok("curl", &args).is_ok();
+                let _ = std::fs::remove_file(&file);
+                if sent {
+                    state = sharing::State { sent_at: now, sum, retry_at: 0 };
+                } else {
+                    state.retry_at = now + sharing::RETRY;
+                }
+                state.save(&state_path);
+            }
+        }
+        std::thread::sleep(Duration::from_secs(1800));
+    }
 }
 
 /// Installation par l'AppImage (update.rs) : cinq minutes après la connexion,

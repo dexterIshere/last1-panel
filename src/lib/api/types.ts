@@ -248,6 +248,15 @@ export interface PerfReport {
   goToLinux: boolean;
 }
 
+/** Partage des rapports de performances avec last1.fun (avec l'accord du joueur). */
+export interface Sharing {
+  /** Le joueur a répondu. */
+  asked: boolean;
+  enabled: boolean;
+  /** PC installé par go-to-linux : il envoie lui-même ses rapports. */
+  goToLinux: boolean;
+}
+
 /** Lien d'un jeu à un profil de couleurs. */
 export interface GameLink {
   /** L'option de lancement de Last1 Panel manque et Steam est ouvert. */

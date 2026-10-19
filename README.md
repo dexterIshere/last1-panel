@@ -115,6 +115,18 @@ et ce qui limite le jeu. Les 30 dernières parties restent dans
 MangoHud manque, ou si des jeux ne passent pas par Last1 Panel, la page le
 propose en un clic.
 
+## Rapports partagés (avec votre accord)
+
+Hors go-to-linux, Last1 Panel demande une fois s'il peut envoyer à last1.fun,
+au plus une fois par jour après vos parties, le rapport de la page
+**Performances** : composants du PC, ce que le diagnostic a lu et trouvé,
+images par seconde des parties mesurées. Seulement pour optimiser le
+produit : ni nom ni compte (nom du compte et du PC masqués, PC désigné par
+une empreinte anonyme). Rien n'est envoyé sans « Oui » ; l'interrupteur
+« Partager ces rapports » de **Performances** le retire à tout moment
+(`core/src/system/sharing.rs`). Sous go-to-linux, c'est lui qui envoie ces
+rapports.
+
 ## Construire
 
 Il faut Rust (1.90 ou plus récent), [Bun](https://bun.sh) et les bibliothèques

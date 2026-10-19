@@ -6,12 +6,15 @@
   import Games from "$lib/sections/Games.svelte";
   import GpuTuning from "$lib/sections/Gpu.svelte";
   import Performance from "$lib/sections/Performance.svelte";
+  import SharingDialog from "$lib/components/SharingDialog.svelte";
   import { t } from "$lib/i18n.svelte";
   import { app } from "$lib/state/app.svelte";
   import { isTauri } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
   let ready = $state(false);
+  /** Accord de partage des rapports à demander (une fois, hors go-to-linux). */
+  let askSharing = $state(false);
 
   onMount(async () => {
     // Hors de Tauri, `vite dev` tourne avec un PC simulé : l'interface se
@@ -22,6 +25,7 @@
     }
     await app.init();
     ready = true;
+    askSharing = !!app.sharing && !app.sharing.asked && !app.sharing.goToLinux;
   });
 </script>
 
@@ -55,6 +59,15 @@
     </svelte:boundary>
   </main>
 </div>
+
+{#if askSharing}
+  <SharingDialog
+    onanswer={(share) => {
+      askSharing = false;
+      app.setSharing(share).catch(() => undefined);
+    }}
+  />
+{/if}
 
 <style>
   .app {

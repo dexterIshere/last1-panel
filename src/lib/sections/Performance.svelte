@@ -7,6 +7,8 @@
   import Callout from "$lib/components/ui/Callout.svelte";
   import WarningDialog from "$lib/components/ui/WarningDialog.svelte";
   import Spinner from "$lib/components/ui/Spinner.svelte";
+  import Switch from "$lib/components/ui/Switch.svelte";
+  import { app } from "$lib/state/app.svelte";
   import { t } from "$lib/i18n.svelte";
   import { Check, CircleAlert, Copy, Info, RefreshCw, TriangleAlert, Wrench } from "@lucide/svelte";
 
@@ -32,6 +34,9 @@
   $effect(() => {
     load();
   });
+
+  const sharing = $derived(app.sharing);
+  const setSharing = (enabled: boolean) => app.setSharing(enabled).catch((e) => (error = errorMessage(e)));
 
   async function fix(kinds: PerfFix[]) {
     fixing = kinds;
@@ -182,6 +187,17 @@
           "For help: “Copy the report”, with the game's name and the frame rate on Windows and on Linux.",
         )}
       </p>
+      {#if sharing && !sharing.goToLinux}
+        <Switch
+          label={t("Partager ces rapports", "Share these reports")}
+          hint={t(
+            "Avec last1.fun, au plus une fois par jour après vos parties, pour optimiser Last1 Panel : composants, diagnostic, images par seconde. Ni nom ni compte.",
+            "With last1.fun, at most once a day after your games, to optimize Last1 Panel: components, diagnostic, frame rate. No name, no account.",
+          )}
+          checked={sharing.enabled}
+          onchange={setSharing}
+        />
+      {/if}
     </aside>
   </div>
 {:else if loading}
