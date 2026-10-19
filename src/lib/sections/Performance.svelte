@@ -9,7 +9,7 @@
   import Spinner from "$lib/components/ui/Spinner.svelte";
   import Switch from "$lib/components/ui/Switch.svelte";
   import { app } from "$lib/state/app.svelte";
-  import { t } from "$lib/i18n.svelte";
+  import { i18n, t } from "$lib/i18n.svelte";
   import { Check, CircleAlert, Copy, Info, RefreshCw, TriangleAlert, Wrench } from "@lucide/svelte";
 
   let report = $state<PerfReport | null>(null);
@@ -20,11 +20,15 @@
   let notices = $state<string[]>([]);
   let copied = $state(false);
 
+  /** Heure de la dernière lecture du PC (« Relancer » le montre). */
+  let readAt = $state<string | null>(null);
+
   async function load() {
     loading = true;
     error = null;
     try {
       report = await api.performanceReport();
+      readAt = new Date().toLocaleTimeString(i18n.lang === "fr" ? "fr-FR" : "en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     } catch (e) {
       error = errorMessage(e);
     }
@@ -110,6 +114,7 @@
     <button class="btn" onclick={load} disabled={loading}>
       {#if loading}<Spinner />{:else}<RefreshCw size={16} />{/if}{t("Relancer", "Run again")}
     </button>
+    {#if readAt && !loading}<span class="read-at muted">{t(`Lu à ${readAt}`, `Read at ${readAt}`)}</span>{/if}
   {/snippet}
 </SectionHeader>
 
@@ -221,6 +226,11 @@
 {/if}
 
 <style>
+  .read-at {
+    align-self: center;
+    font-size: var(--text-sm);
+  }
+
   .layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 20rem;

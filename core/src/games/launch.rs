@@ -73,7 +73,7 @@ impl Plan {
                         .mangohud
                         .iter()
                         .map(String::as_str)
-                        .filter(|o| *o != "no_display" && *o != "read_cfg")
+                        .filter(|o| !HIDDEN.contains(o) && *o != "read_cfg")
                         .collect();
                     if ours.is_empty() { user } else { format!("{user},{}", ours.join(",")) }
                 }
@@ -207,17 +207,27 @@ pub fn plan(profile: &GameProfile, context: &Context) -> Plan {
 
     // MangoHud : affiché, ou caché mais limiteur d'images d'un jeu natif, ou
     // mesure de la partie.
+    let measured = plan.mangohud.iter().any(|key| key == "autostart_log=1");
     if overlay || !plan.mangohud.is_empty() {
         plan.wrappers.push("mangohud".into());
         if overlay && !plan.mangohud.is_empty() {
             // Garder la configuration de l'utilisateur (GOverlay…).
             plan.mangohud.insert(0, "read_cfg".into());
+        } else if !overlay && measured {
+            // Caché mais actif : avec no_display, MangoHud ne met plus ses
+            // mesures à jour et autostart_log ne démarre jamais (overlay.cpp,
+            // update_hud_info). Il tourne donc normalement, transparent.
+            plan.mangohud.extend(["alpha=0".to_string(), "background_alpha=0".to_string()]);
         } else if !overlay {
             plan.mangohud.push("no_display".into());
         }
     }
     plan
 }
+
+/// Clés qui cachent MangoHud : jamais ajoutées à la configuration de
+/// l'utilisateur (s'il en a une, il veut le voir).
+const HIDDEN: [&str; 3] = ["no_display", "alpha=0", "background_alpha=0"];
 
 /// Jeu lancé par Proton : un argument de la commande Steam est le script
 /// `…/proton`.
@@ -342,12 +352,22 @@ mod tests {
         assert_eq!(plan.wrappers, ["mangohud"]);
         assert_eq!(
             get(&env(&plan), "MANGOHUD_CONFIG").as_deref(),
-            Some("autostart_log=1,log_interval=100,output_folder=/home/j/.local/share/last1-panel/parties,no_display")
+            Some(
+                "autostart_log=1,log_interval=100,output_folder=/home/j/.local/share/last1-panel/parties,alpha=0,background_alpha=0"
+            )
         );
+        // Jamais no_display avec la mesure : MangoHud ne démarrerait pas
+        // l'enregistrement.
+        assert!(!get(&env(&plan), "MANGOHUD_CONFIG").unwrap().contains("no_display"));
+        // MANGOHUD_CONFIG de l'utilisateur : il veut le voir, rien de caché.
+        let vars = plan.environment(|name| (name == "MANGOHUD_CONFIG").then(|| "fps,gpu_stats".to_string()));
+        let config = get(&vars, "MANGOHUD_CONFIG").unwrap();
+        assert!(config.starts_with("fps,gpu_stats,autostart_log=1") && !config.contains("alpha=0"), "{config}");
         // Affiché : la configuration de l'utilisateur, plus la mesure.
         let shown = GameProfile { overlay: Some(true), ..Default::default() };
         let vars = env(&super::plan(&shown, &context));
         assert!(get(&vars, "MANGOHUD_CONFIG").unwrap().starts_with("read_cfg,autostart_log=1"));
+        assert!(!get(&vars, "MANGOHUD_CONFIG").unwrap().contains("alpha=0"));
         // Sans MangoHud : rien.
         context.tools.clear();
         assert_eq!(super::plan(&GameProfile::default(), &context), Plan::default());

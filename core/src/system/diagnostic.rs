@@ -691,6 +691,16 @@ pub fn run(src: &Sources) -> Report {
             ),
             fix: Some(Fix::WrapGames),
         },
+        // Tout est prêt, mais « mesurées » seulement quand une partie l'a été.
+        _ if src.sessions.is_empty() => check(
+            "measure",
+            Level::Info,
+            t("Aucune partie mesurée pour l'instant", "No game measured yet"),
+            t(
+                "MangoHud enregistrera la prochaine partie lancée par Last1 Panel (une minute au moins), sans rien afficher : elle apparaîtra ici.",
+                "MangoHud will record the next game launched by Last1 Panel (one minute at least), without showing anything: it will appear here.",
+            ),
+        ),
         _ => check(
             "measure",
             Level::Ok,
@@ -1030,7 +1040,17 @@ mod tests {
             desktop: Desktop::Plasma,
             default_proton: None,
             recent_games: Vec::new(),
-            sessions: Vec::new(),
+            sessions: vec![GameSession {
+                program: "Cyberpunk2077.exe".into(),
+                started: "2026-10-18 21:04".into(),
+                minutes: 75.0,
+                fps_average: 96.0,
+                fps_one_percent_low: 71.0,
+                cpu_load: 38.0,
+                gpu_load: 98.0,
+                gpu_clock: 2745.0,
+                limit: "gpu",
+            }],
             mangohud: true,
             wrapped_games: Some((1, 1)),
             go_to_linux: true,
