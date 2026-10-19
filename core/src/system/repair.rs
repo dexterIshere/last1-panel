@@ -134,6 +134,26 @@ fi"#
 echo 'w /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor - - - - performance' > {etc}/tmpfiles.d/last1-panel-performance.conf
 for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do if [ -e "$f" ]; then echo performance > "$f"; fi; done"#
             )),
+            // GameMode : installé s'il manque (lib32-gamemode : jeux 32 bits),
+            // puis le compte qui a cliqué (PKEXEC_UID) dans son groupe, sans
+            // lequel sa règle polkit refuse de changer le mode du processeur.
+            // Pris tout de suite : polkit relit les groupes à chaque demande.
+            Fix::GameMode => {
+                if pacman {
+                    parts.push(
+                        "command -v gamemoderun >/dev/null || pacman -S --needed --noconfirm gamemode lib32-gamemode || pacman -S --needed --noconfirm gamemode || pacman -Syu --needed --noconfirm gamemode"
+                            .to_string(),
+                    );
+                }
+                parts.push(
+                    r#"user=$(id -nu "$PKEXEC_UID")
+if getent group gamemode >/dev/null; then
+  id -nG "$user" | tr ' ' '\n' | grep -qx gamemode || gpasswd -a "$user" gamemode >/dev/null
+  id -nG "$user" | tr ' ' '\n' | grep -qx gamemode || { echo "$user n'est pas dans le groupe gamemode" >&2; exit 1; }
+fi"#
+                        .to_string(),
+                );
+            }
             // lib32-mangohud : jeux 32 bits ; sans le dépôt multilib, MangoHud
             // seul ; liste des paquets trop ancienne : avec une mise à jour du
             // système (comme pour LACT).
@@ -196,7 +216,8 @@ mod tests {
     use std::fs;
     use std::process::Command;
 
-    const ALL: [Fix; 13] = [
+    const ALL: [Fix; 14] = [
+        Fix::GameMode,
         Fix::Performance,
         Fix::Ntsync,
         Fix::ShaderCache,
@@ -235,6 +256,8 @@ mod tests {
             "/etc/systemd/zram-generator.conf",
             "systemctl start dev-zram0.swap",
             "pacman -S --needed --noconfirm vulkan-radeon lib32-vulkan-radeon",
+            "pacman -S --needed --noconfirm gamemode lib32-gamemode",
+            "gpasswd -a \"$user\" gamemode",
         ] {
             assert!(script.contains(expected), "{expected}\n{script}");
         }
@@ -276,6 +299,45 @@ mod tests {
             calls,
             "systemctl daemon-reload\nsystemctl enable last1-panel-ntsync.service\nmodprobe --ignore-install ntsync\nchmod 0666 /dev/ntsync\n"
         );
+    }
+
+    #[test]
+    fn gamemode_group_is_given_to_the_account() {
+        // Le script lancé pour de vrai, avec de faux id, getent et gpasswd :
+        // le compte de PKEXEC_UID ajouté au groupe, une seule fois.
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let groups = dir.path().join("groups");
+        fs::write(&groups, "alice wheel\n").unwrap();
+        let tools = [
+            (
+                "id",
+                format!("if [ \"$1\" = -nu ]; then [ \"$2\" = 1000 ] && echo alice; else cat {}; fi", groups.display()),
+            ),
+            ("getent", "exit 0".to_string()),
+            (
+                "gpasswd",
+                format!(
+                    "echo \"gpasswd $*\" >> {0}/calls; echo \"alice wheel gamemode\" > {1}",
+                    dir.path().display(),
+                    groups.display()
+                ),
+            ),
+        ];
+        for (tool, body) in tools {
+            let path = bin.join(tool);
+            fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+            fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        }
+        let script = root_script(&[Fix::GameMode], Path::new("/etc"), false, false, &[]).unwrap().unwrap();
+        let path = format!("{}:/usr/bin:/bin", bin.display());
+        let run = || {
+            Command::new("/bin/sh").args(["-c", &script]).env("PATH", &path).env("PKEXEC_UID", "1000").status().unwrap()
+        };
+        assert!(run().success());
+        assert!(run().success());
+        assert_eq!(fs::read_to_string(dir.path().join("calls")).unwrap(), "gpasswd -a alice gamemode\n");
     }
 
     #[test]

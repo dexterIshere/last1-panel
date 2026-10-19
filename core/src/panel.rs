@@ -346,6 +346,10 @@ impl Panel {
                 steam.as_deref(),
             ),
             precache: crate::games::shaders::running(Path::new("/proc"), steam.as_deref()),
+            gamemode_allowed: crate::system::diagnostic::gamemode_allowed(
+                Path::new("/etc/group"),
+                &std::env::var("USER").unwrap_or_default(),
+            ),
             mangohud: crate::exec::which("mangohud").is_some(),
             wrapped_games: steam
                 .as_deref()

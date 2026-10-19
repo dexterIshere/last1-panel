@@ -61,7 +61,7 @@ posée par l'utilisateur dans l'option de lancement n'est jamais remplacée.
 | Smooth Motion | `NVPRESENT_ENABLE_SMOOTH_MOTION=1` | idem (Vulkan) | RTX 40 et plus récentes. |
 | HDR | `PROTON_ENABLE_WAYLAND=1`, `DXVK_HDR=1` ; désactivé : `DXVK_NO_HDR=1` | — | Proton CachyOS active le HDR seul quand c'est possible. |
 | Performances à l'écran | `mangohud` (configuration de l'utilisateur gardée : `read_cfg`) | idem | |
-| Mode performance | Automatique dans chaque jeu, sans réglage : `game-performance` de CachyOS (avec `powerprofilesctl`, sans lequel il échoue), sinon `gamemoderun` | idem | |
+| Mode performance | Automatique dans chaque jeu, sans réglage : `game-performance` de CachyOS (avec `powerprofilesctl`, sans lequel il échoue), sinon `gamemoderun` | idem | GameMode ne change le gouverneur que pour un membre du groupe `gamemode` (sa règle polkit, `allow_active` à `no`) : le diagnostic le vérifie dans `/etc/group`, « Activer GameMode » l'installe s'il manque et y ajoute le compte (`PKEXEC_UID`). |
 
 Le dernier lancement est noté dans `~/.cache/last1-panel/last-launch.txt`
 (variables posées, commande), pour vérifier ce qu'un jeu a reçu.

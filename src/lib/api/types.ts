@@ -213,7 +213,8 @@ export type PerfFix =
   | "zram"
   | "restart"
   | "vulkan-driver"
-  | "system-update";
+  | "system-update"
+  | "game-mode";
 
 export interface PerfCheck {
   id: string;

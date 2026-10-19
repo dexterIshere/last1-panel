@@ -56,6 +56,9 @@ pub enum Fix {
     VulkanDriver,
     /// Système mis à jour (pilote graphique compris) : `pacman -Syu`.
     SystemUpdate,
+    /// GameMode prêt à passer le processeur en performance pendant les
+    /// jeux : installé (pacman) et le compte dans son groupe « gamemode ».
+    GameMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -103,6 +106,8 @@ pub struct Sources<'a> {
     pub recent_games: Vec<String>,
     /// Dernier jeu lancé par Last1 Panel (paths::last_launch_file).
     pub last_launch: Option<LastLaunch>,
+    /// Le compte peut se servir de GameMode (gamemode_allowed).
+    pub gamemode_allowed: bool,
     /// Shaders compilés par Steam en ce moment (games/shaders.rs).
     pub precache: Option<crate::games::shaders::Precache>,
     /// Dernières parties mesurées (journaux de MangoHud, system/sessions.rs).
@@ -162,6 +167,16 @@ pub(crate) fn environment_value(text: &str, name: &str) -> Option<String> {
 
 fn read(path: &Path) -> Option<String> {
     fs::read_to_string(path).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+/// Le compte peut-il se servir de GameMode ? Sa règle polkit ne laisse
+/// changer le mode du processeur qu'aux membres du groupe « gamemode ». Pas
+/// de groupe (GameMode absent, autre distribution) : rien à dire.
+pub fn gamemode_allowed(group_file: &Path, user: &str) -> bool {
+    let Ok(text) = fs::read_to_string(group_file) else { return true };
+    text.lines()
+        .find(|line| line.starts_with("gamemode:"))
+        .is_none_or(|line| line.rsplit(':').next().unwrap_or_default().split(',').any(|member| member.trim() == user))
 }
 
 /// Dernier jeu lancé par Last1 Panel.
@@ -294,10 +309,31 @@ pub fn run(src: &Sources) -> Report {
         .flatten()
         .flatten()
         .any(|entry| read(&entry.path().join("type")).as_deref() == Some("Battery"));
-    // Last1 Panel aussi, dans les jeux qui passent par lui (games/launch.rs).
-    let by_panel = src.wrapped_games.is_some_and(|(wrapped, _)| wrapped > 0)
-        && (src.exec.which("game-performance").is_some() && src.exec.which("powerprofilesctl").is_some()
-            || src.exec.which("gamemoderun").is_some());
+    // Last1 Panel aussi, dans les jeux qui passent par lui (games/launch.rs) :
+    // game-performance (power-profiles-daemon), sinon GameMode, qui ne change
+    // le mode du processeur que pour un compte de son groupe (règle polkit).
+    let wrapped = src.wrapped_games.is_some_and(|(wrapped, _)| wrapped > 0);
+    let ppd_tool = src.exec.which("game-performance").is_some() && src.exec.which("powerprofilesctl").is_some();
+    let gamemode = src.exec.which("gamemoderun").is_some();
+    let gamemode_ready = gamemode && src.gamemode_allowed;
+    facts.push((
+        t("Pleine vitesse pendant les jeux", "Full speed while playing"),
+        if during_games {
+            "go-to-linux (gtl-perf)".to_string()
+        } else if ppd_tool {
+            "game-performance (power-profiles-daemon)".to_string()
+        } else if gamemode_ready {
+            "GameMode".to_string()
+        } else if gamemode {
+            t("GameMode, compte hors de son groupe « gamemode »", "GameMode, account outside its “gamemode” group")
+        } else {
+            t(
+                "aucun outil (ni power-profiles-daemon ni GameMode)",
+                "no tool (neither power-profiles-daemon nor GameMode)",
+            )
+        },
+    ));
+    let by_panel = wrapped && (ppd_tool || gamemode_ready);
     if saving && (during_games || by_panel) {
         checks.push(check(
             "power",
@@ -317,20 +353,62 @@ pub fn run(src: &Sources) -> Report {
         ));
     } else if saving {
         let current = power_profile.as_deref().or(governor.as_deref()).unwrap_or("?");
+        // Ce qui manque pour la pleine vitesse, et le bouton qui le règle.
+        let (reason, fix) = if gamemode && !src.gamemode_allowed {
+            (
+                t(
+                    "GameMode est installé, mais votre compte n'est pas dans son groupe « gamemode » : sans lui, GameMode n'a pas le droit de passer le processeur en performance pendant les jeux.",
+                    "GameMode is installed, but your account is not in its “gamemode” group: without it, GameMode may not switch the CPU to performance while playing.",
+                ),
+                Some(Fix::GameMode),
+            )
+        } else if power_profile.is_some() || !battery {
+            (
+                t(
+                    &format!(
+                        "{}Sur un PC fixe, le mode performance tient le processeur à pleine vitesse, comme « Performances élevées » sous Windows.",
+                        if power_profile.is_none() {
+                            "Ni GameMode ni power-profiles-daemon : rien ne le passe en performance le temps des jeux. "
+                        } else {
+                            ""
+                        }
+                    ),
+                    &format!(
+                        "{}On a desktop PC, performance mode keeps the CPU at full speed, like Windows' “High performance”.",
+                        if power_profile.is_none() {
+                            "Neither GameMode nor power-profiles-daemon: nothing switches it to performance while playing. "
+                        } else {
+                            ""
+                        }
+                    ),
+                ),
+                Some(Fix::Performance),
+            )
+        } else if gamemode {
+            // Le bouton est celui de la mesure des parties (même page).
+            (
+                t(
+                    "GameMode est prêt, mais aucun jeu ne passe encore par Last1 Panel pour s'en servir : le bouton « Activer pour tous les jeux » de cette page le règle.",
+                    "GameMode is ready, but no game goes through Last1 Panel yet to use it: this page's “Turn on for all games” button sets it.",
+                ),
+                None,
+            )
+        } else {
+            (
+                t(
+                    "Ni GameMode ni power-profiles-daemon sur ce portable : GameMode le passerait en performance le temps de chaque jeu, sans vider la batterie le reste du temps.",
+                    "Neither GameMode nor power-profiles-daemon on this laptop: GameMode would switch it to performance for each game, without draining the battery the rest of the time.",
+                ),
+                src.pacman.then_some(Fix::GameMode),
+            )
+        };
         checks.push(Check {
-            fix: (power_profile.is_some() || !battery).then_some(Fix::Performance),
+            fix,
             ..check(
                 "power",
                 Level::Warning,
                 t("Processeur en mode économie", "CPU in power-saving mode"),
-                t(
-                    &format!(
-                        "Mode « {current} ». Sur un PC fixe, le mode performance tient le processeur à pleine vitesse, comme « Performances élevées » sous Windows."
-                    ),
-                    &format!(
-                        "“{current}” mode. On a desktop PC, performance mode keeps the CPU at full speed, like Windows' “High performance”."
-                    ),
-                ),
+                t(&format!("Mode « {current} ». {reason}"), &format!("“{current}” mode. {reason}")),
             )
         });
     } else if power_profile.is_some() || governor.is_some() {
@@ -1077,6 +1155,7 @@ mod tests {
             default_proton: Some("proton-cachyos-slr".into()),
             recent_games: vec!["ARC Raiders (proton_experimental)".into()],
             last_launch: None,
+            gamemode_allowed: true,
             precache: Some(crate::games::shaders::Precache {
                 game: Some("ARC Raiders".into()),
                 done: Some(42),
@@ -1173,6 +1252,7 @@ mod tests {
                 measured: true,
                 logged: true,
             }),
+            gamemode_allowed: true,
             precache: None,
             sessions: vec![GameSession {
                 program: "Cyberpunk2077.exe".into(),
@@ -1240,6 +1320,7 @@ mod tests {
                 default_proton: None,
                 recent_games: Vec::new(),
                 last_launch: None,
+                gamemode_allowed: true,
                 precache: None,
                 sessions: Vec::new(),
                 mangohud: true,
@@ -1324,6 +1405,7 @@ mod tests {
             default_proton: None,
             recent_games: Vec::new(),
             last_launch: None,
+            gamemode_allowed: true,
             precache: None,
             sessions: Vec::new(),
             mangohud: true,
@@ -1348,6 +1430,67 @@ mod tests {
     }
 
     #[test]
+    fn gamemode_needs_its_group() {
+        // Arch, PC fixe sans power-profiles-daemon, gouverneur « powersave ».
+        let pc = pc();
+        write(pc.sys.join("devices/system/cpu/cpu0/cpufreq/scaling_governor"), "powersave\n");
+        let gamemode = FakeExec::new().without("powerprofilesctl").without("game-performance");
+        let power = |exec: &FakeExec, allowed: bool, battery: bool, pacman: bool| {
+            if battery {
+                write(pc.sys.join("class/power_supply/BAT0/type"), "Battery\n");
+            }
+            let report = run(&Sources {
+                sys: &pc.sys,
+                dev: &pc.dev,
+                proc_dir: &pc.proc_dir,
+                exec,
+                env: &|_| None,
+                next_login_env: &|_| None,
+                settings: &Settings::default(),
+                gpus: &[],
+                desktop: Desktop::Plasma,
+                default_proton: None,
+                recent_games: Vec::new(),
+                last_launch: None,
+                gamemode_allowed: allowed,
+                precache: None,
+                sessions: Vec::new(),
+                mangohud: true,
+                wrapped_games: Some((3, 3)),
+                go_to_linux: false,
+                can_zram: true,
+                pacman,
+                updates: Vec::new(),
+            });
+            let check = report.checks.into_iter().find(|c| c.id == "power").unwrap();
+            (check.level, check.fix)
+        };
+        // GameMode installé, compte hors de son groupe : le bouton l'y met.
+        assert_eq!(power(&gamemode, false, false, true), (Level::Warning, Some(Fix::GameMode)));
+        // Dans le groupe : pleine vitesse le temps des jeux.
+        assert_eq!(power(&gamemode, true, false, true).0, Level::Ok);
+        // Sans GameMode : mode performance permanent sur un PC fixe…
+        let nothing = FakeExec::new().without("powerprofilesctl").without("game-performance").without("gamemoderun");
+        assert_eq!(power(&nothing, true, false, true), (Level::Warning, Some(Fix::Performance)));
+        // … GameMode installé sur un portable.
+        assert_eq!(power(&nothing, true, true, true), (Level::Warning, Some(Fix::GameMode)));
+        assert_eq!(power(&nothing, true, true, false), (Level::Warning, None));
+    }
+
+    #[test]
+    fn gamemode_group_members() {
+        let dir = tempfile::tempdir().unwrap();
+        let group = dir.path().join("group");
+        write(group.clone(), "wheel:x:998:alice\ngamemode:x:961:bob,alice\n");
+        assert!(gamemode_allowed(&group, "alice") && !gamemode_allowed(&group, "carol"));
+        write(group.clone(), "wheel:x:998:alice\ngamemode:x:961:\n");
+        assert!(!gamemode_allowed(&group, "alice"));
+        // Pas de groupe gamemode : rien à dire.
+        write(group.clone(), "wheel:x:998:alice\n");
+        assert!(gamemode_allowed(&group, "alice"));
+    }
+
+    #[test]
     fn game_time_performance_counts() {
         let pc = pc();
         let power = |exec: &FakeExec| {
@@ -1364,6 +1507,7 @@ mod tests {
                 default_proton: None,
                 recent_games: Vec::new(),
                 last_launch: None,
+                gamemode_allowed: true,
                 precache: None,
                 sessions: Vec::new(),
                 mangohud: true,
