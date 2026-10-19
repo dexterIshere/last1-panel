@@ -9,10 +9,12 @@
 //! la commande `nvibrant` installée à part.
 //!
 //! nvibrant prend une valeur par prise physique de la carte, dans l'ordre du
-//! pilote, et ne donne pas le nom des sorties (DP-1…). La correspondance est
-//! faite avec l'ordre des connecteurs DRM de la carte NVIDIA (créés dans le
-//! même ordre par nvidia-drm), puis vérifiée par l'état branché de chaque
-//! prise : au moindre doute, rien n'est réglé.
+//! pilote, et ne donne pas le nom des sorties (DP-1…). Les écrans branchés
+//! qu'il voit sont associés, type de prise par type, à ceux que le noyau voit
+//! branchés sur la carte NVIDIA, dans l'ordre des connecteurs DRM (créés dans
+//! le même ordre par nvidia-drm) ; les prises vides ne comptent pas (le pilote
+//! en a parfois que le noyau ne montre pas). S'ils ne voient pas autant
+//! d'écrans, rien n'est réglé.
 
 use crate::error::{CoreError, CoreResult};
 use crate::exec::Exec;
@@ -140,40 +142,59 @@ fn connector_number(name: &str) -> u32 {
     name.rsplit('-').next().and_then(|n| n.parse().ok()).unwrap_or(u32::MAX)
 }
 
-/// Nom DRM de chaque prise (None : prise non reconnue). Erreur si la
-/// correspondance contredit l'état branché vu par le noyau.
+/// Type de prise d'un connecteur DRM (« eDP-1 », « HDMI-A-2 »).
+fn drm_kind(name: &str) -> Option<PortKind> {
+    let (prefix, _) = name.rsplit_once('-')?;
+    [PortKind::Dp, PortKind::Hdmi, PortKind::DviI, PortKind::DviD, PortKind::Vga, PortKind::Lvds]
+        .into_iter()
+        .find(|kind| drm_prefixes(*kind).contains(&prefix))
+}
+
+/// Nom DRM de chaque prise (None : rien de branché, ou prise illisible).
+/// Seuls les écrans branchés sont associés, type par type, dans l'ordre du
+/// pilote : le pilote compte parfois des prises que le noyau ne montre pas
+/// (écran interne d'un portable relié à l'autre puce), qui décaleraient tout.
+/// Erreur si les deux ne voient pas autant d'écrans d'un type.
 pub fn map_ports(ports: &[Port], gpu: &Gpu) -> CoreResult<Vec<Option<String>>> {
-    let mut by_prefix: BTreeMap<&str, Vec<(String, bool)>> = BTreeMap::new();
-    for prefix in ["eDP", "DP", "HDMI-A", "DVI-I", "DVI-D", "VGA", "LVDS"] {
-        let mut list: Vec<(String, bool)> = gpu
-            .connectors
+    let mut names = vec![None; ports.len()];
+    let mut kinds: Vec<PortKind> = ports
+        .iter()
+        .filter(|port| port.connected)
+        .map(|port| port.kind)
+        .chain(gpu.connectors.iter().filter(|c| c.connected).filter_map(|c| drm_kind(&c.name)))
+        .collect();
+    kinds.sort();
+    kinds.dedup();
+    for kind in kinds {
+        // eDP avant DP (même type pour le pilote), puis l'ordre de création.
+        let screens: Vec<String> = drm_prefixes(kind)
             .iter()
-            .filter(|c| c.name.rsplit_once('-').is_some_and(|(p, _)| p == prefix))
-            .map(|c| (c.name.clone(), c.connected))
+            .flat_map(|prefix| {
+                let mut list: Vec<&str> = gpu
+                    .connectors
+                    .iter()
+                    .filter(|c| c.connected && c.name.rsplit_once('-').is_some_and(|(p, _)| p == *prefix))
+                    .map(|c| c.name.as_str())
+                    .collect();
+                list.sort_by_key(|name| connector_number(name));
+                list
+            })
+            .map(str::to_string)
             .collect();
-        list.sort_by_key(|(name, _)| connector_number(name));
-        by_prefix.insert(prefix, list);
-    }
-    let mut taken: BTreeMap<PortKind, usize> = BTreeMap::new();
-    let mut names = Vec::new();
-    for port in ports {
-        let prefixes = drm_prefixes(port.kind);
-        let candidates: Vec<&(String, bool)> = prefixes.iter().flat_map(|p| by_prefix[p].iter()).collect();
-        let index = taken.entry(port.kind).or_insert(0);
-        let name = candidates.get(*index).map(|(name, connected)| (name.clone(), *connected));
-        *index += 1;
-        match name {
-            Some((name, connected)) if connected == port.connected => names.push(Some(name)),
-            Some((name, _)) => {
-                return Err(CoreError::message(format!(
-                    "{} ({name})",
-                    t(
-                        "Prises de la carte NVIDIA non reconnues : vibrance désactivée pour ne pas régler le mauvais écran",
-                        "NVIDIA card ports not recognised: vibrance disabled so the wrong screen is never changed",
-                    )
-                )));
-            }
-            None => names.push(None),
+        let plugged: Vec<usize> =
+            ports.iter().enumerate().filter(|(_, port)| port.kind == kind && port.connected).map(|(i, _)| i).collect();
+        if plugged.len() != screens.len() {
+            return Err(CoreError::message(format!(
+                "{} ({})",
+                t(
+                    "Prises de la carte NVIDIA non reconnues : vibrance désactivée pour ne pas régler le mauvais écran",
+                    "NVIDIA card ports not recognised: vibrance disabled so the wrong screen is never changed",
+                ),
+                if screens.is_empty() { format!("{kind:?}") } else { screens.join(", ") }
+            )));
+        }
+        for (index, name) in plugged.into_iter().zip(screens) {
+            names[index] = Some(name);
         }
     }
     Ok(names)
@@ -334,13 +355,28 @@ mod tests {
         // commencent à 3 (la puce intégrée a DP-1 et DP-2).
         let card = gpu(&[("DP-3", true), ("DP-4", false), ("DP-5", false), ("HDMI-A-2", true)]);
         let names = map_ports(&parse(OUTPUT), &card).unwrap();
-        assert_eq!(names, [Some("HDMI-A-2".into()), Some("DP-3".into()), Some("DP-4".into()), Some("DP-5".into())]);
+        assert_eq!(names, [Some("HDMI-A-2".into()), Some("DP-3".into()), None, None]);
+    }
+
+    #[test]
+    fn ports_the_kernel_does_not_show_are_skipped() {
+        // Portable : le pilote compte d'abord la prise de l'écran interne
+        // (relié à la puce intégrée, absente du noyau côté NVIDIA).
+        let laptop = "Driver version: (595.58.03)\n\nDisplay 0:\n\
+            • (0, DP  ) • Set vibrance (    0) • None\n\
+            • (1, DP  ) • Set vibrance (    0) • Success\n\
+            • (2, HDMI) • Set vibrance (    0) • None\n";
+        let card = gpu(&[("DP-1", true), ("HDMI-A-1", false)]);
+        assert_eq!(map_ports(&parse(laptop), &card).unwrap(), [None, Some("DP-1".into()), None]);
     }
 
     #[test]
     fn contradiction_disables_vibrance() {
-        // Le noyau voit l'écran sur la 2e prise DP, nvibrant sur la 1re.
-        let card = gpu(&[("DP-1", false), ("DP-2", true), ("DP-3", false), ("HDMI-A-1", true)]);
+        // Le noyau voit deux écrans DP, nvibrant un seul.
+        let card = gpu(&[("DP-1", true), ("DP-2", true), ("DP-3", false), ("HDMI-A-1", true)]);
+        assert!(map_ports(&parse(OUTPUT), &card).is_err());
+        // Un écran HDMI que nvibrant ne voit pas.
+        let card = gpu(&[("DP-1", true), ("HDMI-A-1", true), ("HDMI-A-2", true)]);
         assert!(map_ports(&parse(OUTPUT), &card).is_err());
     }
 
