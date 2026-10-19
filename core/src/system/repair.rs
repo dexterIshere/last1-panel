@@ -30,12 +30,17 @@ modprobe ntsync
 chmod 0666 /dev/ntsync"#
             )),
             // 12 Go pour NVIDIA et pour Mesa (AMD, Intel), comme go-to-linux ;
-            // les valeurs d'avant sont remplacées. Lu à la connexion (pam_env).
+            // les valeurs d'avant sont remplacées. Lu à la connexion : par
+            // pam_env (/etc/environment) et par le gestionnaire systemd de la
+            // session (environment.d : uwsm, Plasma, programmes lancés par
+            // systemd), quel que soit le chemin par lequel Steam démarre.
             Fix::ShaderCache => parts.push(format!(
                 r#"touch {etc}/environment
 if [ -s {etc}/environment ] && [ -n "$(tail -c 1 {etc}/environment)" ]; then echo >> {etc}/environment; fi
 sed -i -e '/^# Last1 Panel : cache des shaders/d' -e '/^[[:space:]]*\(export[[:space:]]\{{1,\}}\)\{{0,1\}}__GL_SHADER_DISK_CACHE_SIZE=/d' -e '/^[[:space:]]*\(export[[:space:]]\{{1,\}}\)\{{0,1\}}MESA_SHADER_CACHE_MAX_SIZE=/d' {etc}/environment
-printf '%s\n' '# Last1 Panel : cache des shaders de 12 Go' '__GL_SHADER_DISK_CACHE_SIZE=12000000000' 'MESA_SHADER_CACHE_MAX_SIZE=12G' >> {etc}/environment"#
+printf '%s\n' '# Last1 Panel : cache des shaders de 12 Go' '__GL_SHADER_DISK_CACHE_SIZE=12000000000' 'MESA_SHADER_CACHE_MAX_SIZE=12G' >> {etc}/environment
+mkdir -p {etc}/environment.d
+printf '%s\n' '__GL_SHADER_DISK_CACHE_SIZE=12000000000' 'MESA_SHADER_CACHE_MAX_SIZE=12G' > {etc}/environment.d/90-last1-panel-shader-cache.conf"#
             )),
             // Comme SteamOS.
             Fix::SplitLock => parts.push(format!(
@@ -65,9 +70,11 @@ pkill -x 'scx_.+' || true"#
 echo 'w /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor - - - - performance' > {etc}/tmpfiles.d/last1-panel-performance.conf
 for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do if [ -e "$f" ]; then echo performance > "$f"; fi; done"#
             )),
-            // lib32-mangohud : jeux 32 bits ; sans le dépôt multilib, MangoHud seul.
+            // lib32-mangohud : jeux 32 bits ; sans le dépôt multilib, MangoHud
+            // seul ; liste des paquets trop ancienne : avec une mise à jour du
+            // système (comme pour LACT).
             Fix::InstallMangoHud if pacman => parts.push(
-                "pacman -S --needed --noconfirm mangohud lib32-mangohud || pacman -S --needed --noconfirm mangohud"
+                "pacman -S --needed --noconfirm mangohud lib32-mangohud || pacman -S --needed --noconfirm mangohud || pacman -Syu --needed --noconfirm mangohud"
                     .to_string(),
             ),
             Fix::InstallMangoHud => {
@@ -89,7 +96,7 @@ for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do if [ -e "$f" 
                     )));
                 }
                 parts.push(format!(
-                    r#"if [ ! -e {ZRAM_GENERATOR} ]; then pacman -S --needed --noconfirm zram-generator; fi
+                    r#"if [ ! -e {ZRAM_GENERATOR} ]; then pacman -S --needed --noconfirm zram-generator || pacman -Syu --needed --noconfirm zram-generator; fi
 if [ ! -e {etc}/systemd/zram-generator.conf ]; then mkdir -p {etc}/systemd; printf '%s\n' '[zram0]' 'zram-size = ram' 'compression-algorithm = zstd' 'swap-priority = 100' > {etc}/systemd/zram-generator.conf; fi
 mkdir -p {etc}/sysctl.d
 printf '%s\n' 'vm.swappiness = 150' 'vm.page-cluster = 0' > {etc}/sysctl.d/99-last1-panel-zram.conf
@@ -137,6 +144,7 @@ mod tests {
             "/etc/modules-load.d/last1-panel-ntsync.conf",
             "/etc/udev/rules.d/99-last1-panel-ntsync.rules",
             "__GL_SHADER_DISK_CACHE_SIZE=12000000000",
+            "/etc/environment.d/90-last1-panel-shader-cache.conf",
             "/etc/sysctl.d/99-last1-panel-split-lock.conf",
             "/etc/udev/rules.d/99-last1-panel-x3d.rules",
             "systemctl disable --now",
@@ -184,5 +192,8 @@ mod tests {
             crate::system::diagnostic::environment_value(&text, "MESA_SHADER_CACHE_MAX_SIZE").as_deref(),
             Some("12G")
         );
+        // Et pour le gestionnaire systemd de la session.
+        let session = fs::read_to_string(dir.path().join("environment.d/90-last1-panel-shader-cache.conf")).unwrap();
+        assert_eq!(session, "__GL_SHADER_DISK_CACHE_SIZE=12000000000\nMESA_SHADER_CACHE_MAX_SIZE=12G\n");
     }
 }

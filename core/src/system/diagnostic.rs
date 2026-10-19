@@ -114,6 +114,31 @@ pub fn etc_environment(name: &str) -> Option<String> {
     environment_value(&fs::read_to_string("/etc/environment").ok()?, name)
 }
 
+/// Variable telle que les jeux la reçoivent : dans l'environnement de Steam
+/// s'il tourne (les jeux en héritent), sinon dans celui du bureau (Hyprland,
+/// KWin, GNOME Shell), sinon dans celui de ce programme. Seuls les processus
+/// de ce compte se lisent : ceux des autres sont sautés.
+pub fn game_env(proc_dir: &Path, name: &str) -> Option<String> {
+    for comm in ["steam", "Hyprland", "kwin_wayland", "gnome-shell"] {
+        let Ok(entries) = fs::read_dir(proc_dir) else { break };
+        let environ = entries.flatten().find_map(|entry| {
+            let numeric = entry.file_name().to_str().is_some_and(|n| n.chars().all(|c| c.is_ascii_digit()));
+            (numeric && read(&entry.path().join("comm")).as_deref() == Some(comm))
+                .then(|| fs::read(entry.path().join("environ")).ok())
+                .flatten()
+        });
+        if let Some(environ) = environ {
+            let prefix = format!("{name}=");
+            return environ
+                .split(|&b| b == 0)
+                .find_map(|var| var.strip_prefix(prefix.as_bytes()))
+                .map(|value| String::from_utf8_lossy(value).into_owned())
+                .filter(|value| !value.is_empty());
+        }
+    }
+    std::env::var(name).ok()
+}
+
 pub(crate) fn environment_value(text: &str, name: &str) -> Option<String> {
     text.lines().rev().find_map(|line| {
         let (key, value) = line.trim().strip_prefix("export ").unwrap_or(line.trim()).split_once('=')?;
@@ -918,6 +943,20 @@ mod tests {
         assert_eq!(power(&FakeExec::new().on("powerprofilesctl", "balanced\n")), Some(Level::Warning));
         // Rien de lu (machine virtuelle) : pas d'avis.
         assert_eq!(power(&FakeExec::new().without("powerprofilesctl")), None);
+    }
+
+    #[test]
+    fn reads_the_environment_games_get() {
+        let pc = pc();
+        write(pc.proc_dir.join("900/comm"), "Hyprland\n");
+        write(pc.proc_dir.join("900/environ"), "HOME=/home/j\0__GL_SHADER_DISK_CACHE_SIZE=12000000000\0");
+        // Steam lancé avant la reconnexion : sans la variable ; il passe
+        // avant le bureau (les jeux héritent de lui).
+        write(pc.proc_dir.join("1200/comm"), "steam\n");
+        write(pc.proc_dir.join("1200/environ"), "HOME=/home/j\0");
+        assert_eq!(game_env(&pc.proc_dir, "__GL_SHADER_DISK_CACHE_SIZE"), None);
+        fs::remove_dir_all(pc.proc_dir.join("1200")).unwrap();
+        assert_eq!(game_env(&pc.proc_dir, "__GL_SHADER_DISK_CACHE_SIZE").as_deref(), Some("12000000000"));
     }
 
     #[test]
