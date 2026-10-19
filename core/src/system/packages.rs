@@ -20,12 +20,20 @@ fn names(output: &str) -> Vec<String> {
 }
 
 /// Paquets qui ont une version plus récente : la liste gardée si elle est
-/// récente, sinon `pacman -Qu`.
+/// récente ; sinon refaite tout de suite par `checkupdates` (quelques
+/// secondes : le service ne l'a pas encore faite) ; sans lui, `pacman -Qu`.
 pub fn upgradable(exec: &dyn Exec, cache: &Path) -> Vec<String> {
-    let fresh = fs::metadata(cache)
-        .and_then(|m| m.modified())
-        .is_ok_and(|at| SystemTime::now().duration_since(at).unwrap_or_default() < FRESH);
-    if fresh && let Ok(text) = fs::read_to_string(cache) {
+    let fresh = |cache: &Path| {
+        fs::metadata(cache)
+            .and_then(|m| m.modified())
+            .is_ok_and(|at| SystemTime::now().duration_since(at).unwrap_or_default() < FRESH)
+    };
+    if !fresh(cache) && exec.which("checkupdates").is_some() {
+        refresh(exec, cache);
+    }
+    if fresh(cache)
+        && let Ok(text) = fs::read_to_string(cache)
+    {
         return names(&text);
     }
     exec.run("pacman", &["-Qu".into()]).map(|output| names(&output.stdout)).unwrap_or_default()
@@ -93,12 +101,16 @@ mod tests {
     fn upgradable_from_the_kept_list_or_pacman() {
         let dir = tempfile::tempdir().unwrap();
         let cache = dir.path().join("updates.txt");
-        let pacman = FakeExec::new().on("pacman", "mesa 1:25.2.3-1 -> 1:25.2.4-1\n");
+        let pacman = FakeExec::new().without("checkupdates").on("pacman", "mesa 1:25.2.3-1 -> 1:25.2.4-1\n");
         assert_eq!(upgradable(&pacman, &cache), ["mesa"]);
         // checkupdates : gardé, puis relu sans pacman.
         let check = FakeExec::new().on("checkupdates", "nvidia-utils 595.58.03-1 -> 600.10-1\nfirefox 1 -> 2\n");
         refresh(&check, &cache);
-        assert_eq!(upgradable(&FakeExec::new(), &cache), ["nvidia-utils", "firefox"]);
+        assert_eq!(upgradable(&FakeExec::new().without("checkupdates"), &cache), ["nvidia-utils", "firefox"]);
+        // Pas de liste gardée : checkupdates tout de suite.
+        let fresh = dir.path().join("neuve.txt");
+        let check = FakeExec::new().on("checkupdates", "mesa 1 -> 2\n");
+        assert_eq!(upgradable(&check, &fresh), ["mesa"]);
         // Aucune mise à jour (code 2) : liste vide gardée.
         let none = FakeExec::new().on_args("checkupdates", &[], Output { status: 2, ..Default::default() });
         refresh(&none, &cache);

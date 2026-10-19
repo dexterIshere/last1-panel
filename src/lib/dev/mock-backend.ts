@@ -320,6 +320,8 @@ export function installMockBackend(): void {
           ? [{ id: "scheduler", level: "info", title: "Ordonnanceur lavd actif", detail: "Conçu pour le Steam Deck : aucun gain d'images par seconde prouvé, et des chutes rapportées. go-to-linux garde celui du noyau.", fix: "scheduler" }]
           : []),
         { id: "power", level: "ok", title: "Mode performance", detail: "Processeur à pleine vitesse.", fix: null },
+        { id: "vulkan", level: "ok", title: "Pilotes Vulkan installés", detail: "En 64 et 32 bits, pour les jeux Proton (nvidia-utils, lib32-nvidia-utils).", fix: null },
+        { id: "driver-update", level: "ok", title: "Pilote graphique à jour", detail: "nvidia 595.58.03 : la version la plus récente des dépôts.", fix: null },
       ];
       const facts: [string, string][] = [
         ["Processeur", "AMD Ryzen 9 7950X3D 16-Core Processor"],

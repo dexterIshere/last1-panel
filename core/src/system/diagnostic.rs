@@ -193,7 +193,17 @@ pub fn run(src: &Sources) -> Report {
         .filter(|o| o.success())
         .map(|o| o.stdout.trim().to_string())
         .filter(|s| !s.is_empty());
-    facts.push((t("Profil d'énergie", "Power profile"), power_profile.clone().unwrap_or_else(unknown)));
+    facts.push((
+        t("Profil d'énergie", "Power profile"),
+        power_profile.clone().unwrap_or_else(|| {
+            // Sans power-profiles-daemon, le gouverneur (ci-dessus) décide seul.
+            if src.exec.which("powerprofilesctl").is_none() {
+                t("aucun (pas de power-profiles-daemon)", "none (no power-profiles-daemon)")
+            } else {
+                unknown()
+            }
+        }),
+    ));
     let scheduler = (read(&src.sys.join("kernel/sched_ext/state")).as_deref() == Some("enabled"))
         .then(|| read(&src.sys.join("kernel/sched_ext/root/ops")))
         .flatten();
@@ -490,7 +500,19 @@ pub fn run(src: &Sources) -> Report {
     // démarrent pas, ou pas en 32 bits), une version plus récente dans les
     // dépôts, et un pilote NVIDIA installé mais pas encore chargé.
     if src.pacman {
-        let missing = packages::missing(src.exec, &packages::vulkan_packages(src.gpus));
+        let vulkan = packages::vulkan_packages(src.gpus);
+        let missing = packages::missing(src.exec, &vulkan);
+        if missing.is_empty() && !vulkan.is_empty() {
+            checks.push(check(
+                "vulkan",
+                Level::Ok,
+                t("Pilotes Vulkan installés", "Vulkan drivers installed"),
+                t(
+                    &format!("En 64 et 32 bits, pour les jeux Proton ({}).", vulkan.join(", ")),
+                    &format!("In 64 and 32 bits, for Proton games ({}).", vulkan.join(", ")),
+                ),
+            ));
+        }
         if !missing.is_empty() {
             let only_32 = missing.iter().all(|name| name.starts_with("lib32-"));
             checks.push(Check {
@@ -531,6 +553,34 @@ pub fn run(src: &Sources) -> Report {
         }
         let driver_updates: Vec<&str> =
             src.updates.iter().map(String::as_str).filter(|name| packages::is_driver(name)).collect();
+        if driver_updates.is_empty() && !vulkan.is_empty() {
+            let driver = src
+                .gpus
+                .iter()
+                .find(|g| matches!(g.vendor, Vendor::Nvidia | Vendor::Amd))
+                .map(|g| match (&g.driver, &g.driver_version) {
+                    (Some(name), Some(version)) => format!("{name} {version}"),
+                    (Some(name), None) => name.clone(),
+                    _ => String::new(),
+                })
+                .unwrap_or_default();
+            checks.push(check(
+                "driver-update",
+                Level::Ok,
+                t("Pilote graphique à jour", "Graphics driver up to date"),
+                if src.exec.which("checkupdates").is_some() {
+                    t(
+                        &format!("{driver} : la version la plus récente des dépôts."),
+                        &format!("{driver}: the newest version in the repositories."),
+                    )
+                } else {
+                    t(
+                        &format!("{driver} : le plus récent d'après les listes de paquets du PC (sans pacman-contrib, pas vérifié en ligne)."),
+                        &format!("{driver}: the newest according to the PC's package lists (without pacman-contrib, not checked online)."),
+                    )
+                },
+            ));
+        }
         if !driver_updates.is_empty() {
             checks.push(Check {
                 fix: Some(Fix::SystemUpdate),
