@@ -361,8 +361,7 @@ export function installMockBackend(): void {
       return ids.length;
     },
     set_wrapped: async (args) => {
-      await wait(300);
-      if (steamRunning) throw "Fermez Steam d'abord (menu Steam > Quitter) : il remplacerait ce réglage en se fermant.";
+      await wait(steamRunning ? 1500 : 300);
       const ids = args.appIds as number[];
       let count = 0;
       for (const game of games) {

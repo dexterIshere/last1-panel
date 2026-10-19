@@ -104,7 +104,9 @@
     saving = false;
   }
 
+  /** Option de lancement mise ou retirée ; Steam ouvert : fermé puis rouvert. */
   async function setWrapped(ids: number[], wrapped: boolean) {
+    const steamWasOpen = info?.steamRunning ?? false;
     wrapping = true;
     error = null;
     notice = null;
@@ -115,9 +117,11 @@
         info.games = fresh.games;
         info.steamRunning = fresh.steamRunning;
       }
-      notice = wrapped
-        ? t(`Option de lancement mise (${count} changement${count > 1 ? "s" : ""}).`, `Launch option set (${count} change${count > 1 ? "s" : ""}).`)
-        : t("Option de lancement retirée.", "Launch option removed.");
+      const reopened = steamWasOpen ? t(" Steam a été rouvert.", " Steam was reopened.") : "";
+      notice =
+        (wrapped
+          ? t(`Option de lancement mise (${count} changement${count > 1 ? "s" : ""}).`, `Launch option set (${count} change${count > 1 ? "s" : ""}).`)
+          : t("Option de lancement retirée.", "Launch option removed.")) + reopened;
     } catch (e) {
       error = errorMessage(e);
     }
@@ -180,12 +184,19 @@
 {#if loading}
   <p class="muted"><Spinner /> {t("Lecture de la bibliothèque Steam…", "Reading the Steam library…")}</p>
 {:else if info}
-  {#if info.steamRunning}
-    <Callout kind="warning" title={t("Steam est ouvert", "Steam is open")}>
-      {t(
-        "Fermez Steam (menu Steam > Quitter) pour que Last1 Panel puisse mettre son option de lancement : Steam la remplacerait en se fermant. Les réglages, eux, s'enregistrent Steam ouvert.",
-        "Quit Steam (Steam menu > Exit) so Last1 Panel can set its launch option: Steam would overwrite it when closing. Settings can be saved with Steam open.",
-      )}
+  {#if info.steamRunning && info.games.some((g) => !g.wrapped)}
+    <Callout kind="info" title={t("Steam est ouvert", "Steam is open")}>
+      <div class="steam">
+        <span>
+          {t(
+            "Pour mettre son option de lancement, Last1 Panel ferme Steam quelques secondes, puis le rouvre (jamais pendant un jeu). Les réglages, eux, s'enregistrent Steam ouvert.",
+            "To set its launch option, Last1 Panel closes Steam for a few seconds, then reopens it (never during a game). Settings can be saved with Steam open.",
+          )}
+        </span>
+        <button class="btn btn--primary" disabled={wrapping} onclick={() => setWrapped(info!.games.map((g) => g.appId), true)}>
+          {#if wrapping}<Spinner />{/if}{t("Fermer Steam, activer tous les jeux, le rouvrir", "Close Steam, turn on all games, reopen it")}
+        </button>
+      </div>
     </Callout>
   {/if}
 
@@ -229,11 +240,11 @@
           </p>
         </div>
         {#if game}
-          <button class="btn" disabled={wrapping || info.steamRunning} onclick={() => setWrapped([game.appId], !game.wrapped)}>
+          <button class="btn" disabled={wrapping} onclick={() => setWrapped([game.appId], !game.wrapped)}>
             {#if wrapping}<Spinner />{/if}{game.wrapped ? t("Désactiver pour ce jeu", "Turn off for this game") : t("Activer pour ce jeu", "Turn on for this game")}
           </button>
         {:else}
-          <button class="btn" disabled={wrapping || info.steamRunning || info.games.length === 0} onclick={() => setWrapped(info!.games.map((g) => g.appId), true)}>
+          <button class="btn" disabled={wrapping || info.games.length === 0} onclick={() => setWrapped(info!.games.map((g) => g.appId), true)}>
             {#if wrapping}<Spinner />{/if}{t("Activer pour tous les jeux", "Turn on for all games")}
           </button>
         {/if}
@@ -433,6 +444,14 @@
 {/if}
 
 <style>
+  .steam {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
   .risk {
     display: block;
     color: var(--color-warning);

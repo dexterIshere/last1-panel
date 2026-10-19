@@ -275,6 +275,35 @@ pub fn is_running(proc_dir: &Path) -> bool {
     })
 }
 
+/// Un jeu lancé par Steam tourne-t-il ? (son « reaper SteamLaunch ») : fermer
+/// Steam le fermerait aussi.
+pub fn game_running(proc_dir: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(proc_dir) else { return false };
+    entries.flatten().any(|entry| {
+        entry.file_name().to_str().is_some_and(|name| name.chars().all(|c| c.is_ascii_digit()))
+            && fs::read(entry.path().join("cmdline"))
+                .is_ok_and(|cmdline| cmdline.split(|&b| b == 0).any(|arg| arg == b"SteamLaunch"))
+    })
+}
+
+/// L'option de lancement peut-elle être écrite ? (vérifié avant de fermer
+/// Steam : un refus ne doit pas le fermer pour rien).
+pub fn check_writable(root: &Path, wrapped: bool) -> CoreResult<()> {
+    if wrapped && is_flatpak(root) {
+        return Err(CoreError::message(t(
+            "Steam est installé en Flatpak : un jeu ne pourrait pas lancer Last1 Panel depuis son bac à sable. Installez Steam par le paquet de CachyOS (steam).",
+            "Steam is installed as a Flatpak: a game could not start Last1 Panel from its sandbox. Install Steam from the CachyOS package (steam).",
+        )));
+    }
+    if local_configs(root).is_empty() {
+        return Err(CoreError::message(t(
+            "Aucun compte Steam sur ce PC : lancez Steam et connectez-vous une première fois.",
+            "No Steam account on this PC: start Steam and sign in once.",
+        )));
+    }
+    Ok(())
+}
+
 /// Outil de compatibilité de Steam pour tous les jeux sans réglage propre
 /// (Paramètres > Compatibilité) : « proton_experimental », « proton-cachyos… ».
 pub fn default_compat_tool(root: &Path) -> Option<String> {
@@ -327,12 +356,7 @@ pub fn wait_closed(proc_dir: &Path, wait: Duration) -> bool {
 /// Met (ou retire) notre option de lancement pour ces jeux, dans tous les
 /// comptes Steam. Refusé si Steam est lancé.
 pub fn set_wrapped(root: &Path, proc_dir: &Path, app_ids: &[u32], wrapped: bool) -> CoreResult<usize> {
-    if wrapped && is_flatpak(root) {
-        return Err(CoreError::message(t(
-            "Steam est installé en Flatpak : un jeu ne pourrait pas lancer Last1 Panel depuis son bac à sable. Installez Steam par le paquet de CachyOS (steam).",
-            "Steam is installed as a Flatpak: a game could not start Last1 Panel from its sandbox. Install Steam from the CachyOS package (steam).",
-        )));
-    }
+    check_writable(root, wrapped)?;
     if is_running(proc_dir) {
         return Err(CoreError::message(t(
             "Fermez Steam d'abord (menu Steam > Quitter) : il remplacerait ce réglage en se fermant.",
@@ -340,12 +364,6 @@ pub fn set_wrapped(root: &Path, proc_dir: &Path, app_ids: &[u32], wrapped: bool)
         )));
     }
     let configs = local_configs(root);
-    if configs.is_empty() {
-        return Err(CoreError::message(t(
-            "Aucun compte Steam sur ce PC : lancez Steam et connectez-vous une première fois.",
-            "No Steam account on this PC: start Steam and sign in once.",
-        )));
-    }
     let mut changed = 0;
     for path in configs {
         let text = fs::read_to_string(&path)?;
@@ -589,6 +607,15 @@ mod tests {
         assert!(is_running(proc_dir.path()));
         assert!(set_wrapped(&root, proc_dir.path(), &[570], true).is_err());
         assert!(!wait_closed(proc_dir.path(), Duration::ZERO));
+        // Steam ouvert, sans jeu : il peut être fermé.
+        assert!(!game_running(proc_dir.path()));
+        fs::create_dir_all(proc_dir.path().join("4300")).unwrap();
+        fs::write(
+            proc_dir.path().join("4300/cmdline"),
+            b"/home/j/.local/share/Steam/ubuntu12_32/reaper\0SteamLaunch\0AppId=570\0--\0dota2\0",
+        )
+        .unwrap();
+        assert!(game_running(proc_dir.path()));
         fs::remove_dir_all(proc_dir.path().join("4242")).unwrap();
         assert!(wait_closed(proc_dir.path(), Duration::ZERO));
         assert!(!installed_games(&root).iter().any(|game| game.wrapped));

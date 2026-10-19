@@ -380,7 +380,7 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
             let root = steam::find_root(&last1_panel_core::paths::home_dir())
                 .ok_or_else(|| CoreError::message(t("Steam n'est pas installé.", "Steam is not installed.")))?;
             let ids: Vec<u32> = steam::installed_games(&root).iter().map(|game| game.app_id).collect();
-            wrap_closing_steam(&ids)?;
+            set_wrapped_closing_steam(&ids, true)?;
         }
         let mut notices = Vec::new();
         if fixes.contains(&Fix::ShaderCache) {
@@ -435,15 +435,26 @@ pub async fn link_game_color(app_id: u32, profile: Option<String>) -> Result<Gam
 /// Steam rouvert, comme avant.
 #[tauri::command]
 pub async fn close_steam_and_wrap(app_ids: Vec<u32>) -> Result<usize> {
-    blocking(move || wrap_closing_steam(&app_ids)).await
+    blocking(move || set_wrapped_closing_steam(&app_ids, true)).await
 }
 
-fn wrap_closing_steam(app_ids: &[u32]) -> last1_panel_core::error::CoreResult<usize> {
+/// Met (ou retire) l'option de lancement de Last1 Panel. Steam lancé : il
+/// est fermé le temps de l'écrire (il la remplacerait en se fermant), puis
+/// rouvert, même en cas d'échec. Jamais pendant un jeu : fermer Steam le
+/// fermerait.
+fn set_wrapped_closing_steam(app_ids: &[u32], wrapped: bool) -> last1_panel_core::error::CoreResult<usize> {
     let root = steam::find_root(&last1_panel_core::paths::home_dir())
         .ok_or_else(|| CoreError::message(t("Steam n'est pas installé.", "Steam is not installed.")))?;
+    steam::check_writable(&root, wrapped)?;
     let proc_dir = Path::new("/proc");
     let was_running = steam::is_running(proc_dir);
     if was_running {
+        if steam::game_running(proc_dir) {
+            return Err(CoreError::message(t(
+                "Un jeu est lancé : quittez-le, puis réessayez (fermer Steam le fermerait aussi).",
+                "A game is running: quit it, then try again (closing Steam would close it too).",
+            )));
+        }
         let _ = steam_command(&["-shutdown"]).spawn().map(|mut child| std::thread::spawn(move || child.wait()));
         if !steam::wait_closed(proc_dir, Duration::from_secs(60)) {
             return Err(CoreError::message(t(
@@ -452,11 +463,11 @@ fn wrap_closing_steam(app_ids: &[u32]) -> last1_panel_core::error::CoreResult<us
             )));
         }
     }
-    let changed = steam::set_wrapped(&root, proc_dir, app_ids, true)?;
+    let result = steam::set_wrapped(&root, proc_dir, app_ids, wrapped);
     if was_running && let Ok(mut child) = steam_command(&[]).spawn() {
         std::thread::spawn(move || child.wait());
     }
-    Ok(changed)
+    result
 }
 
 /// Steam lancé hors de la fenêtre (son propre groupe de processus) et sans
@@ -500,12 +511,8 @@ pub async fn delete_color_profile(id: String) -> Result<()> {
     blocking(move || Settings::update(&Settings::path(), |s| s.remove_color_profile(&id))).await
 }
 
+/// Option de lancement mise ou retirée ; Steam ouvert : fermé puis rouvert.
 #[tauri::command]
 pub async fn set_wrapped(app_ids: Vec<u32>, wrapped: bool) -> Result<usize> {
-    blocking(move || {
-        let root = steam::find_root(&last1_panel_core::paths::home_dir())
-            .ok_or_else(|| CoreError::message(t("Steam n'est pas installé.", "Steam is not installed.")))?;
-        steam::set_wrapped(&root, Path::new("/proc"), &app_ids, wrapped)
-    })
-    .await
+    blocking(move || set_wrapped_closing_steam(&app_ids, wrapped)).await
 }
