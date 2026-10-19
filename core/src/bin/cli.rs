@@ -291,10 +291,11 @@ fn watch_updates() {
 /// dernière partie est gardée (paths::pcie_in_game_file).
 fn watch_pcie_link() {
     use last1_panel_core::games::steam;
-    use last1_panel_core::system::diagnostic::link_width;
+    use last1_panel_core::system::diagnostic::link_now;
     let file = last1_panel_core::paths::pcie_in_game_file();
     let mut playing = false;
-    let mut widest: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
+    // Par carte : la plus large, la plus rapide.
+    let mut best: std::collections::BTreeMap<String, (u32, Option<f64>)> = std::collections::BTreeMap::new();
     loop {
         std::thread::sleep(Duration::from_secs(20));
         if !steam::game_running(std::path::Path::new("/proc")) {
@@ -303,16 +304,26 @@ fn watch_pcie_link() {
         }
         if !playing {
             playing = true;
-            widest.clear();
+            best.clear();
         }
         for gpu in gpu::detect(&SysPaths::default()).iter().filter(|g| matches!(g.vendor, Vendor::Nvidia | Vendor::Amd))
         {
-            if let Some(width) = link_width(std::path::Path::new("/sys"), gpu) {
-                let entry = widest.entry(gpu.pci_slot.clone()).or_insert(width);
-                *entry = (*entry).max(width);
+            if let Some((width, speed)) = link_now(std::path::Path::new("/sys"), gpu) {
+                let entry = best.entry(gpu.pci_slot.clone()).or_insert((width, speed));
+                entry.0 = entry.0.max(width);
+                entry.1 = match (entry.1, speed) {
+                    (Some(a), Some(b)) => Some(a.max(b)),
+                    (a, b) => a.or(b),
+                };
             }
         }
-        let text: String = widest.iter().map(|(slot, width)| format!("{slot} {width}\n")).collect();
+        let text: String = best
+            .iter()
+            .map(|(slot, (width, speed))| match speed {
+                Some(speed) => format!("{slot} {width} {speed}\n"),
+                None => format!("{slot} {width}\n"),
+            })
+            .collect();
         if let Some(dir) = file.parent() {
             let _ = std::fs::create_dir_all(dir);
         }

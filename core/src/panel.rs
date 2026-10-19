@@ -356,8 +356,12 @@ impl Panel {
                 .unwrap_or_default()
                 .lines()
                 .filter_map(|line| {
-                    let (slot, width) = line.split_once(' ')?;
-                    Some((slot.to_string(), width.trim().parse().ok()?))
+                    let mut words = line.split_whitespace();
+                    Some(crate::system::diagnostic::GameLink {
+                        slot: words.next()?.to_string(),
+                        width: words.next()?.parse().ok()?,
+                        speed: words.next().and_then(|speed| speed.parse().ok()),
+                    })
                 })
                 .collect(),
             gamemode_allowed: crate::system::diagnostic::gamemode_allowed(

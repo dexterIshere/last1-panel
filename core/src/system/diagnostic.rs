@@ -112,7 +112,7 @@ pub struct Sources<'a> {
     pub go_to_linux_version: Option<String>,
     /// Liaison PCI Express la plus large mesurée pendant la dernière partie,
     /// par carte (emplacement PCI) : au repos, le pilote peut la réduire.
-    pub pcie_in_game: Vec<(String, u32)>,
+    pub pcie_in_game: Vec<GameLink>,
     /// Le compte peut se servir de GameMode (gamemode_allowed).
     pub gamemode_allowed: bool,
     /// Shaders compilés par Steam en ce moment (games/shaders.rs).
@@ -185,6 +185,33 @@ struct SlotLink {
     card: u32,
     /// Ce que l'emplacement sait faire (port du processeur ou du chipset).
     slot: Option<u32>,
+    /// Vitesse actuelle, en GT/s (16 : PCIe 4.0).
+    speed: Option<f64>,
+}
+
+/// Liaison la plus large (et la plus rapide) mesurée pendant la dernière
+/// partie, pour une carte (paths::pcie_in_game_file).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GameLink {
+    /// Emplacement PCI de la carte (« 0000:01:00.0 »).
+    pub slot: String,
+    pub width: u32,
+    /// GT/s.
+    pub speed: Option<f64>,
+}
+
+/// « x8 en PCIe 4.0 » (16 GT/s), ou « x8 » sans la vitesse.
+fn link_text(width: u32, speed: Option<f64>) -> String {
+    let generation = speed.and_then(|gts| {
+        [(2.5, "1.0"), (5.0, "2.0"), (8.0, "3.0"), (16.0, "4.0"), (32.0, "5.0"), (64.0, "6.0")]
+            .iter()
+            .find(|(value, _)| (gts - value).abs() < 0.1)
+            .map(|(_, name)| *name)
+    });
+    match generation {
+        Some(generation) => t(&format!("x{width} en PCIe {generation}"), &format!("x{width} at PCIe {generation}")),
+        None => format!("x{width}"),
+    }
 }
 
 /// Une carte AMD ou Intel a son propre commutateur PCI Express : la liaison
@@ -215,13 +242,17 @@ fn slot_link(device: &Path, vendor_id: u32) -> Option<SlotLink> {
         current: width(&top, "current_link_width")?,
         card: width(&top, "max_link_width")?,
         slot: top.parent().filter(|p| is_pci(p)).and_then(|p| width(p, "max_link_width")),
+        // « 16.0 GT/s PCIe » ; « Unknown » quand le noyau ne sait pas.
+        speed: read(&top.join("current_link_speed"))
+            .and_then(|v| v.split_whitespace().next()?.parse::<f64>().ok())
+            .filter(|gts| *gts > 0.0),
     })
 }
 
-/// Largeur actuelle de la liaison d'une carte avec la carte mère (relevée
-/// pendant les parties par le service de la session).
-pub fn link_width(sys: &Path, gpu: &Gpu) -> Option<u32> {
-    slot_link(&sys.join("bus/pci/devices").join(&gpu.pci_slot), gpu.vendor_id).map(|link| link.current)
+/// Largeur et vitesse actuelles de la liaison d'une carte avec la carte
+/// mère (relevées pendant les parties par le service de la session).
+pub fn link_now(sys: &Path, gpu: &Gpu) -> Option<(u32, Option<f64>)> {
+    slot_link(&sys.join("bus/pci/devices").join(&gpu.pci_slot), gpu.vendor_id).map(|link| (link.current, link.speed))
 }
 
 /// Pilote AMD : la liaison change avec la charge (pp_dpm_pcie, niveau en
@@ -689,7 +720,8 @@ pub fn run(src: &Sources) -> Report {
         if let Some(link) = slot_link(&device, gpu.vendor_id) {
             // Au repos, le pilote peut réduire la liaison pour économiser
             // l'énergie : on juge sur celle mesurée pendant une partie.
-            let in_game = src.pcie_in_game.iter().find(|(slot, _)| *slot == gpu.pci_slot).map(|(_, width)| *width);
+            let measured = src.pcie_in_game.iter().find(|game| game.slot == gpu.pci_slot);
+            let in_game = measured.map(|game| game.width);
             let current = in_game.unwrap_or(link.current);
             let sides = format!(
                 "{} x{}, {} {}",
@@ -700,14 +732,15 @@ pub fn run(src: &Sources) -> Report {
             );
             facts.push((
                 t("Liaison PCI Express de la carte graphique", "Graphics card PCI Express link"),
-                match in_game {
-                    Some(width) if width != link.current => t(
-                        &format!("x{} au repos, x{width} en jeu ({sides})", link.current),
-                        &format!("x{} at rest, x{width} in game ({sides})", link.current),
+                match measured {
+                    Some(game) if game.width != link.current => t(
+                        &format!("x{} au repos, {} en jeu ({sides})", link.current, link_text(game.width, game.speed)),
+                        &format!("x{} at rest, {} in game ({sides})", link.current, link_text(game.width, game.speed)),
                     ),
-                    Some(width) => {
-                        t(&format!("x{width}, même en jeu ({sides})"), &format!("x{width}, even in game ({sides})"))
-                    }
+                    Some(game) => t(
+                        &format!("{}, même en jeu ({sides})", link_text(game.width, game.speed)),
+                        &format!("{}, even in game ({sides})", link_text(game.width, game.speed)),
+                    ),
                     None => t(
                         &format!("x{} ({sides} ; pas encore mesurée en jeu)", link.current),
                         &format!("x{} ({sides}; not measured in game yet)", link.current),
@@ -716,7 +749,41 @@ pub fn run(src: &Sources) -> Report {
             ));
             let possible = link.slot.map_or(link.card, |slot| slot.min(link.card));
             if laptop {
-                // Le fait seul (plus haut).
+                // Carte soudée : rien ne se règle, mais le joueur le sait,
+                // avec ce que ça coûte (vitesse mesurée en jeu).
+                if let Some(game) = measured.filter(|game| game.width < possible) {
+                    let cost = match game.speed {
+                        Some(gts) if gts >= 15.9 => t(
+                            " D'après les tests publiés, l'écart est faible en PCIe 4.0 : de l'ordre de 1 %.",
+                            " According to published tests, the gap is small at PCIe 4.0: around 1 %.",
+                        ),
+                        Some(gts) if gts >= 7.9 => t(
+                            " D'après les tests publiés, l'écart est de quelques % en PCIe 3.0 (environ 4 %).",
+                            " According to published tests, the gap is a few % at PCIe 3.0 (around 4 %).",
+                        ),
+                        _ => String::new(),
+                    };
+                    checks.push(check(
+                        "pcie",
+                        Level::Info,
+                        t(
+                            &format!("Carte graphique en x{} : câblage du portable", game.width),
+                            &format!("Graphics card at x{}: the laptop's wiring", game.width),
+                        ),
+                        t(
+                            &format!(
+                                "Même en jeu, la liaison reste {} : le fabricant du portable n'a relié la carte que par {} voies (souvent pour garder des voies à un second SSD). Rien ne se règle, ni depuis le PC ni dans le BIOS.{cost}",
+                                link_text(game.width, game.speed),
+                                game.width
+                            ),
+                            &format!(
+                                "Even in game, the link stays {}: the laptop maker wired the card with only {} lanes (often to keep lanes for a second SSD). Nothing can be set, neither from the PC nor in the BIOS.{cost}",
+                                link_text(game.width, game.speed),
+                                game.width
+                            ),
+                        ),
+                    ));
+                }
             } else if current < possible && in_game.is_none() {
                 // Liaison réduite au repos par le pilote AMD : pas un défaut.
                 if !amd_idle_link(&device) {
@@ -1339,7 +1406,7 @@ mod tests {
             last_launch: None,
             version: "0.1.0.r56".into(),
             go_to_linux_version: Some("2026.10.19-cf9724f".into()),
-            pcie_in_game: vec![("0000:01:00.0".into(), 4)],
+            pcie_in_game: vec![GameLink { slot: "0000:01:00.0".into(), width: 4, speed: None }],
             gamemode_allowed: true,
             precache: Some(crate::games::shaders::Precache {
                 game: Some("ARC Raiders".into()),
@@ -1708,12 +1775,12 @@ mod tests {
         let link = dir.path().join("bus/pci/devices/0000:03:00.0");
         fs::create_dir_all(link.parent().unwrap()).unwrap();
         std::os::unix::fs::symlink(&gpu, &link).unwrap();
-        assert_eq!(slot_link(&link, 0x1002), Some(SlotLink { current: 8, card: 16, slot: Some(16) }));
+        assert_eq!(slot_link(&link, 0x1002), Some(SlotLink { current: 8, card: 16, slot: Some(16), speed: None }));
         // Portable : port du processeur câblé en x8, rien d'anormal.
         device(&port, "0x1022", "8", "8");
-        assert_eq!(slot_link(&link, 0x1002), Some(SlotLink { current: 8, card: 16, slot: Some(8) }));
+        assert_eq!(slot_link(&link, 0x1002), Some(SlotLink { current: 8, card: 16, slot: Some(8), speed: None }));
         // GeForce, sans commutateur : sa propre liaison.
-        assert_eq!(slot_link(&gpu, 0x10de), Some(SlotLink { current: 16, card: 16, slot: Some(16) }));
+        assert_eq!(slot_link(&gpu, 0x10de), Some(SlotLink { current: 16, card: 16, slot: Some(16), speed: None }));
         // En veille, ou éteinte (elle répond 63) : rien.
         write(gpu.join("current_link_width"), "63\n");
         assert_eq!(slot_link(&gpu, 0x10de), None);
@@ -1730,7 +1797,7 @@ mod tests {
         write(device.join("current_link_width"), "8\n");
         write(device.join("max_link_width"), "16\n");
         let exec = FakeExec::new();
-        let pcie = |gpu: &Gpu, in_game: Option<u32>| {
+        let pcie = |gpu: &Gpu, in_game: Option<(u32, Option<f64>)>| {
             let report = run(&Sources {
                 sys: &pc.sys,
                 dev: &pc.dev,
@@ -1746,7 +1813,10 @@ mod tests {
                 last_launch: None,
                 version: "0.1.0.r56".into(),
                 go_to_linux_version: None,
-                pcie_in_game: in_game.map(|width| ("0000:01:00.0".to_string(), width)).into_iter().collect(),
+                pcie_in_game: in_game
+                    .map(|(width, speed)| GameLink { slot: "0000:01:00.0".into(), width, speed })
+                    .into_iter()
+                    .collect(),
                 gamemode_allowed: true,
                 precache: None,
                 sessions: Vec::new(),
@@ -1772,17 +1842,24 @@ mod tests {
             (Some(Level::Info), "x8 (carte x16, emplacement ? ; pas encore mesurée en jeu)".to_string())
         );
         // En jeu, x16 : réduite au repos seulement, rien à dire.
-        assert_eq!(pcie(&desktop, Some(16)), (None, "x8 au repos, x16 en jeu (carte x16, emplacement ?)".to_string()));
+        assert_eq!(
+            pcie(&desktop, Some((16, Some(16.0)))),
+            (None, "x8 au repos, x16 en PCIe 4.0 en jeu (carte x16, emplacement ?)".to_string())
+        );
         // En jeu, toujours x8 : le branchement.
         assert_eq!(
-            pcie(&desktop, Some(8)),
+            pcie(&desktop, Some((8, None))),
             (Some(Level::Warning), "x8, même en jeu (carte x16, emplacement ?)".to_string())
         );
-        // Portable : un fait seulement.
+        // Portable : câblé ainsi, une information avec ce que ça coûte.
         let laptop = Gpu { name: Some("GeForce RTX 3080 Laptop GPU".into()), ..desktop.clone() };
-        assert_eq!(pcie(&laptop, Some(8)).0, None);
+        assert_eq!(pcie(&laptop, Some((8, Some(16.0)))).0, Some(Level::Info));
+        assert_eq!(pcie(&laptop, None).0, None);
         write(pc.sys.join("class/dmi/id/chassis_type"), "10\n");
-        assert_eq!(pcie(&desktop, Some(8)).0, None);
+        assert_eq!(
+            pcie(&desktop, Some((8, Some(16.0)))),
+            (Some(Level::Info), "x8 en PCIe 4.0, même en jeu (carte x16, emplacement ?)".to_string())
+        );
     }
 
     #[test]
