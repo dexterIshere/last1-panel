@@ -21,7 +21,6 @@
     smoothMotion: null,
     hdr: null,
     overlay: null,
-    performanceMode: null,
     colorProfile: null,
   };
 
@@ -390,14 +389,6 @@
             {@render boolOptions(t("Affiché", "Shown"), t("Caché", "Hidden"))}
           </select>
           <span class="field__hint">{tools?.mangohud ? t("Images par seconde, températures (MangoHud).", "Frame rate, temperatures (MangoHud).") : t("MangoHud n'est pas installé.", "MangoHud is not installed.")}</span>
-        </label>
-
-        <label class="field">
-          <span class="field__label">{t("Mode performance", "Performance mode")}</span>
-          <select value={boolValue(profile.performanceMode)} disabled={!tools?.gamePerformance} onchange={(e) => edit("performanceMode", fromBool(e.currentTarget.value))}>
-            {@render boolOptions(t("Activé", "On"), t("Désactivé", "Off"))}
-          </select>
-          <span class="field__hint">{t("Processeur à pleine vitesse pendant le jeu.", "CPU at full speed while playing.")}</span>
         </label>
       </div>
 

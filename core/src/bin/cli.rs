@@ -83,7 +83,7 @@ fn run(command: &[String]) -> ExitCode {
         proton: launch::is_proton(command),
         nvidia,
         amd: !nvidia && gpus.iter().any(|g| g.vendor == Vendor::Amd),
-        tools: ["game-performance", "gamemoderun", "dlss-swapper", "mangohud"]
+        tools: ["game-performance", "powerprofilesctl", "gamemoderun", "dlss-swapper", "mangohud"]
             .iter()
             .filter(|tool| last1_panel_core::exec::which(tool).is_some())
             .map(|tool| tool.to_string())

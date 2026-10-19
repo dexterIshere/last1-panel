@@ -47,7 +47,7 @@ export function installMockBackend(): void {
         ? { card: "card1", pciSlot: "0000:03:00.0", vendor: "amd", name: "Radeon RX 7800 XT", driver: "amdgpu", driverVersion: null, bootVga: true }
         : { card: "card1", pciSlot: "0000:01:00.0", vendor: "nvidia", name: "GeForce RTX 4070", driver: "nvidia", driverVersion: "595.58.03", bootVga: true },
     ],
-    tools: { nvibrant: !amd, lact: params.get("lact") !== "absent", lactRunning, pacman: true, mangohud: true, dlssSwapper: true, gamePerformance: true, steam: true },
+    tools: { nvibrant: !amd, lact: params.get("lact") !== "absent", lactRunning, pacman: true, mangohud: true, dlssSwapper: true, steam: true },
   };
 
   const mode = (width: number, height: number, hz: number) => ({ width, height, refreshMhz: Math.round(hz * 1000) });
@@ -105,7 +105,6 @@ export function installMockBackend(): void {
     smoothMotion: null,
     hdr: null,
     overlay: null,
-    performanceMode: null,
     colorProfile: null,
     ...p,
   });
@@ -118,7 +117,7 @@ export function installMockBackend(): void {
     { id: "p1", name: "Arc Raiders", color: { red: guide(52, 47, 1.47), green: guide(52, 47, 1.47), blue: guide(62, 72, 1.65) }, vibrance: 50 },
   ];
   let gameSettings: GamesSettings = {
-    global: profile({ lowLatency: "on", performanceMode: true }),
+    global: profile({ lowLatency: "on" }),
     perGame: { "1091500": profile({ dlssLatest: true, fpsLimit: 117 }) },
   };
   const games = [

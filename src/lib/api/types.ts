@@ -31,7 +31,6 @@ export interface Tools {
   pacman: boolean;
   mangohud: boolean;
   dlssSwapper: boolean;
-  gamePerformance: boolean;
   steam: boolean;
 }
 
@@ -187,7 +186,6 @@ export interface GameProfile {
   smoothMotion: boolean | null;
   hdr: boolean | null;
   overlay: boolean | null;
-  performanceMode: boolean | null;
   /** Profil de couleurs (identifiant), dans la seule fenêtre du jeu. */
   colorProfile: string | null;
 }

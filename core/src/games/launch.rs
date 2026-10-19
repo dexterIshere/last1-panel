@@ -21,7 +21,8 @@ pub struct Context {
     pub proton: bool,
     pub nvidia: bool,
     pub amd: bool,
-    /// Outils installés : game-performance, gamemoderun, dlss-swapper, mangohud.
+    /// Outils installés : game-performance, powerprofilesctl, gamemoderun,
+    /// dlss-swapper, mangohud.
     pub tools: Vec<String>,
     /// Dossier où MangoHud enregistre chaque partie (images par seconde,
     /// charges), lu par le diagnostic des performances. Absent : pas de mesure.
@@ -192,12 +193,13 @@ pub fn plan(profile: &GameProfile, context: &Context) -> Plan {
         false => {}
     }
 
-    if profile.performance_mode == Some(true) {
-        if context.has("game-performance") {
-            plan.wrappers.insert(0, "game-performance".into());
-        } else if context.has("gamemoderun") {
-            plan.wrappers.insert(0, "gamemoderun".into());
-        }
+    // Processeur à pleine vitesse le temps de chaque jeu, sans réglage : le
+    // profil « performance » de power-profiles-daemon (game-performance de
+    // CachyOS, qui échoue sans powerprofilesctl), sinon GameMode.
+    if context.has("game-performance") && context.has("powerprofilesctl") {
+        plan.wrappers.insert(0, "game-performance".into());
+    } else if context.has("gamemoderun") {
+        plan.wrappers.insert(0, "gamemoderun".into());
     }
 
     // Mesure de la partie par MangoHud, caché s'il n'est pas affiché : un
@@ -273,8 +275,16 @@ mod tests {
 
     #[test]
     fn default_profile_changes_nothing() {
+        // game-performance sans powerprofilesctl échouerait : pas utilisé.
         let plan = plan(&GameProfile::default(), &ctx(true, true, &["mangohud", "dlss-swapper", "game-performance"]));
         assert_eq!(plan, Plan::default());
+    }
+
+    #[test]
+    fn every_game_gets_the_cpu_at_full_speed() {
+        let both = ["game-performance", "powerprofilesctl", "gamemoderun"];
+        assert_eq!(plan(&GameProfile::default(), &ctx(true, true, &both)).wrappers, ["game-performance"]);
+        assert_eq!(plan(&GameProfile::default(), &ctx(true, true, &both[1..])).wrappers, ["gamemoderun"]);
     }
 
     #[test]
@@ -286,10 +296,10 @@ mod tests {
             anisotropic: Some(16),
             dlss_latest: Some(true),
             smooth_motion: Some(true),
-            performance_mode: Some(true),
             ..Default::default()
         };
-        let plan = plan(&profile, &ctx(true, true, &["dlss-swapper", "game-performance", "mangohud"]));
+        let plan =
+            plan(&profile, &ctx(true, true, &["dlss-swapper", "game-performance", "powerprofilesctl", "mangohud"]));
         let vars = env(&plan);
         assert_eq!(
             get(&vars, "DXVK_CONFIG").unwrap(),
@@ -329,7 +339,8 @@ mod tests {
         let plan = plan(&profile, &ctx(false, false, &["mangohud", "gamemoderun"]));
         let vars = env(&plan);
         assert_eq!(get(&vars, "MANGOHUD_CONFIG").as_deref(), Some("fps_limit=60,no_display"));
-        assert_eq!(plan.wrappers, ["mangohud"]);
+        // Sans power-profiles-daemon : GameMode pour la pleine vitesse.
+        assert_eq!(plan.wrappers, ["gamemoderun", "mangohud"]);
         assert_eq!(get(&vars, "vblank_mode").as_deref(), Some("3"));
         assert_eq!(get(&vars, "MESA_VK_WSI_PRESENT_MODE").as_deref(), Some("fifo"));
         assert_eq!(get(&vars, "RADV_TEX_ANISO").as_deref(), Some("8"));

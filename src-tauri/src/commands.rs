@@ -47,7 +47,6 @@ pub struct Tools {
     pacman: bool,
     mangohud: bool,
     dlss_swapper: bool,
-    game_performance: bool,
     steam: bool,
 }
 
@@ -82,7 +81,6 @@ pub async fn system_info(panel: State<'_, Arc<Panel>>) -> Result<SystemInfo> {
                 pacman: which("pacman").is_some(),
                 mangohud: which("mangohud").is_some(),
                 dlss_swapper: which("dlss-swapper").is_some(),
-                game_performance: which("game-performance").is_some(),
                 steam: steam::find_root(&last1_panel_core::paths::home_dir()).is_some(),
             },
         })

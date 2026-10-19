@@ -292,15 +292,26 @@ pub fn run(src: &Sources) -> Report {
         .flatten()
         .flatten()
         .any(|entry| read(&entry.path().join("type")).as_deref() == Some("Battery"));
-    if saving && during_games {
+    // Last1 Panel aussi, dans les jeux qui passent par lui (games/launch.rs).
+    let by_panel = src.wrapped_games.is_some_and(|(wrapped, _)| wrapped > 0)
+        && (src.exec.which("game-performance").is_some() && src.exec.which("powerprofilesctl").is_some()
+            || src.exec.which("gamemoderun").is_some());
+    if saving && (during_games || by_panel) {
         checks.push(check(
             "power",
             Level::Ok,
             t("Mode performance pendant les jeux", "Performance mode while playing"),
-            t(
-                "go-to-linux passe le processeur en mode performance le temps de chaque jeu.",
-                "go-to-linux switches the CPU to performance mode for each game.",
-            ),
+            if during_games {
+                t(
+                    "go-to-linux passe le processeur en mode performance le temps de chaque jeu.",
+                    "go-to-linux switches the CPU to performance mode for each game.",
+                )
+            } else {
+                t(
+                    "Last1 Panel passe le processeur en mode performance le temps de chaque jeu.",
+                    "Last1 Panel switches the CPU to performance mode for each game.",
+                )
+            },
         ));
     } else if saving {
         let current = power_profile.as_deref().or(governor.as_deref()).unwrap_or("?");
@@ -1197,7 +1208,7 @@ mod tests {
             device.join("resource"),
             "0x00000000fb000000 0x00000000fbffffff 0x0000000000040200\n0x000000e000000000 0x000000e00fffffff 0x000000000014220c\n",
         );
-        let exec = FakeExec::new().without("powerprofilesctl");
+        let exec = FakeExec::new().without("powerprofilesctl").without("gamemoderun");
         let report = |next_login: Option<&str>| {
             let next_login = next_login.map(str::to_string);
             run(&Sources {
@@ -1353,7 +1364,11 @@ mod tests {
             power(&FakeExec::new().on("powerprofilesctl", "balanced\n").on("systemctl", "active\n")),
             Some(Level::Ok)
         );
-        assert_eq!(power(&FakeExec::new().on("powerprofilesctl", "balanced\n")), Some(Level::Warning));
+        // Ou par Last1 Panel (game-performance), dans les jeux qui passent par lui.
+        assert_eq!(power(&FakeExec::new().on("powerprofilesctl", "balanced\n")), Some(Level::Ok));
+        let without_tools =
+            FakeExec::new().on("powerprofilesctl", "balanced\n").without("game-performance").without("gamemoderun");
+        assert_eq!(power(&without_tools), Some(Level::Warning));
         // Rien de lu (machine virtuelle) : pas d'avis.
         assert_eq!(power(&FakeExec::new().without("powerprofilesctl")), None);
     }
