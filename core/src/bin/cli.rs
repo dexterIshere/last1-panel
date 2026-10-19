@@ -451,18 +451,36 @@ fn share_reports() {
     }
 }
 
-/// Installation par l'AppImage (update.rs) : cinq minutes après la connexion,
-/// puis chaque jour, une version plus récente est cherchée et proposée
-/// (notification avec « Mettre à jour », comme le bouton de la fenêtre) ;
-/// rien ne s'installe sans ce clic. Une heure plus tard en cas d'échec (pas
-/// d'Internet). Une fois la mise à jour faite, le service s'arrête en erreur
-/// et systemd le relance sur le nouvel outil.
+/// Installation par l'AppImage (update.rs) : une version plus récente est
+/// cherchée cinq minutes après la connexion, puis dès qu'une version est
+/// publiée (attente longue sur last1.fun, watch_releases), et au moins une
+/// fois par jour ; elle est proposée (notification avec « Mettre à jour »,
+/// comme le bouton de la fenêtre) ; rien ne s'installe sans ce clic. La
+/// même version n'est pas reproposée avant un jour ; une nouvelle, tout de
+/// suite. Une heure plus tard en cas d'échec (pas d'Internet). Une fois la
+/// mise à jour faite, le service s'arrête en erreur et systemd le relance sur
+/// le nouvel outil.
 fn propose_updates() {
+    let (published, received) = mpsc::channel();
+    std::thread::spawn(move || watch_releases(&published));
     std::thread::sleep(Duration::from_secs(300));
+    // Dernière version proposée, et quand.
+    let mut proposed: Option<(String, std::time::Instant)> = None;
+    // Réveillé par une publication : la liste signée peut avoir un temps de
+    // retard sur l'avis, revue deux minutes plus tard s'il ne propose rien.
+    let mut woken = false;
     loop {
         let exec = SystemExec { timeout: Duration::from_secs(90), ..SystemExec::default() };
         let wait = match update::check(&exec, update::now()) {
-            Ok(Some(_)) => {
+            Ok(Some(release))
+                if proposed.as_ref().is_some_and(|(version, at)| {
+                    *version == release.version && at.elapsed() < Duration::from_secs(24 * 3600)
+                }) =>
+            {
+                Duration::from_secs(24 * 3600)
+            }
+            Ok(Some(release)) => {
+                proposed = Some((release.version.clone(), std::time::Instant::now()));
                 let message = t(
                     "Une mise à jour de Last1 Panel est disponible. « Mettre à jour » installe la dernière version.",
                     "A Last1 Panel update is available. \"Update\" installs the latest version.",
@@ -495,13 +513,38 @@ fn propose_updates() {
                     }
                 }
             }
+            Ok(None) if woken => Duration::from_secs(120),
             Ok(None) => Duration::from_secs(24 * 3600),
             Err(error) => {
                 eprintln!("last1-panel-cli : mise à jour : {error}");
                 Duration::from_secs(3600)
             }
         };
-        std::thread::sleep(wait);
+        // Une publication réveille tout de suite ; celles arrivées pendant
+        // la notification ne comptent qu'une fois.
+        woken = received.recv_timeout(wait).is_ok();
+        while received.try_recv().is_ok() {}
+    }
+}
+
+/// Publications de Last1 Panel, sues dès qu'elles arrivent (attente longue
+/// sur last1.fun) : la première réponse note la version en ligne, chaque
+/// changement ensuite réveille propose_updates.
+fn watch_releases(published: &mpsc::Sender<()>) {
+    let exec = SystemExec { timeout: Duration::from_secs(110), ..SystemExec::default() };
+    let mut seen: Option<String> = None;
+    loop {
+        match update::wait_for_release(&exec, seen.as_deref().unwrap_or_default()) {
+            Ok(Some(version)) if seen.as_deref() != Some(version.as_str()) => {
+                if seen.is_some() && published.send(()).is_err() {
+                    return;
+                }
+                seen = Some(version);
+            }
+            Ok(Some(_)) => std::thread::sleep(Duration::from_secs(60)),
+            Ok(None) => {}
+            Err(_) => std::thread::sleep(Duration::from_secs(60)),
+        }
     }
 }
 

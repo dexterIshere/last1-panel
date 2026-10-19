@@ -1,8 +1,9 @@
 //! Mise à jour de Last1 Panel installé par l'AppImage
 //! (`~/.local/bin/last1-panel`), comme le fait go-to-linux pour le paquet :
-//! cherchée une fois par jour par le service de session (`last1-panel-cli
-//! watch`), qui la propose ; installée seulement au clic de l'utilisateur
-//! (notification ou bouton « Mettre à jour » de la fenêtre).
+//! le service de session (`last1-panel-cli watch`) la sait dès sa
+//! publication (attente longue sur last1.fun, wait_for_release) et la
+//! propose ; installée seulement au clic de l'utilisateur (notification ou
+//! bouton « Mettre à jour » de la fenêtre).
 //!
 //! Liste publique de last1.fun, signée (Ed25519, même clé que go-to-linux) :
 //! seulement une version plus récente que celle installée, AppImage
@@ -244,6 +245,32 @@ pub fn check(exec: &dyn Exec, now: i64) -> CoreResult<Option<Release>> {
     Ok(newer(&release.version, current).then_some(release))
 }
 
+/// Attend qu'une version de Last1 Panel autre que `seen` (la dernière en
+/// ligne déjà vue, vide au départ) soit en ligne : last1.fun répond tout de
+/// suite si c'est déjà le cas, sinon dès la publication (attente longue,
+/// 80 s au plus). Some : la version en ligne ; None : rien de nouveau,
+/// redemander aussitôt ; erreur (429 : trop d'attentes ; pas d'Internet) :
+/// redemander dans une minute.
+pub fn wait_for_release(exec: &dyn Exec, seen: &str) -> CoreResult<Option<String>> {
+    let url = format!("{SITE}/api/public/releases/wait?{PRODUCT}={seen}");
+    let output = exec.run(
+        "curl",
+        &["-sS", "--proto", "=https", "--max-time", "100", "-w", "\n%{http_code}", &url].map(String::from),
+    )?;
+    let (body, status) = output.stdout.trim_end().rsplit_once('\n').unwrap_or(("", output.stdout.trim()));
+    match status.trim() {
+        "204" => Ok(None),
+        "200" => {
+            let value: serde_json::Value = serde_json::from_str(body).map_err(|_| refused("réponse"))?;
+            value["versions"][PRODUCT]
+                .as_str()
+                .map(|version| Some(version.to_string()))
+                .ok_or_else(|| refused("réponse"))
+        }
+        other => Err(CoreError::message(format!("last1.fun : {other}"))),
+    }
+}
+
 /// Télécharge l'AppImage de `release` et remplace `target` d'un coup ; rien
 /// n'est remplacé au moindre écart de taille ou d'empreinte.
 pub fn download(exec: &dyn Exec, release: &Release, target: &Path) -> CoreResult<()> {
@@ -415,5 +442,30 @@ mod tests {
         assert_eq!(package_version("0.1.0.r52-1").as_deref(), Some("0.1.0.r52"));
         assert_eq!(package_version("1:0.1.0.r52-3").as_deref(), Some("0.1.0.r52"));
         assert_eq!(package_version("-1"), None);
+    }
+
+    #[test]
+    fn waits_for_a_new_release() {
+        use crate::exec::{FakeExec, Output};
+        let answer = |stdout: &str| {
+            FakeExec::new().on_args(
+                "curl",
+                &[
+                    "-sS",
+                    "--proto",
+                    "=https",
+                    "--max-time",
+                    "100",
+                    "-w",
+                    "\n%{http_code}",
+                    "https://last1.fun/api/public/releases/wait?last1-panel=0.1.0.r58",
+                ],
+                Output { status: 0, stdout: stdout.into(), ..Default::default() },
+            )
+        };
+        let published = answer("{\"versions\":{\"last1-panel\":\"0.1.0.r59\"}}\n200");
+        assert_eq!(wait_for_release(&published, "0.1.0.r58").unwrap().as_deref(), Some("0.1.0.r59"));
+        assert_eq!(wait_for_release(&answer("\n204"), "0.1.0.r58").unwrap(), None);
+        assert!(wait_for_release(&answer("trop\n429"), "0.1.0.r58").is_err());
     }
 }
