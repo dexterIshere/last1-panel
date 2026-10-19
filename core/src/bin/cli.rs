@@ -224,6 +224,7 @@ fn watch() -> ExitCode {
     std::thread::spawn(share_reports);
     std::thread::spawn(watch_updates);
     std::thread::spawn(watch_shaders);
+    std::thread::spawn(watch_own_update);
     std::thread::spawn(watch_pcie_link);
     let tray = last1_panel_core::tray::spawn();
     std::thread::sleep(Duration::from_secs(3));
@@ -282,6 +283,37 @@ fn watch_updates() {
         last1_panel_core::system::packages::refresh(&exec, &cache);
         std::thread::sleep(Duration::from_secs(6 * 3600));
     }
+}
+
+/// Last1 Panel mis à jour, par n'importe quel chemin (notification, bouton
+/// de la fenêtre, go-to-linux, pacman) : l'outil de ce service a été
+/// remplacé. Regardé toutes les 30 s.
+fn watch_own_update() {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(path) = std::fs::read_link("/proc/self/exe") else { return };
+    let inode = || std::fs::metadata(&path).map(|meta| meta.ino()).ok();
+    let started = inode();
+    loop {
+        std::thread::sleep(Duration::from_secs(30));
+        if inode().is_some() && inode() != started {
+            // Le temps que la mise à jour finisse d'écrire ses fichiers.
+            std::thread::sleep(Duration::from_secs(5));
+            restart_after_update();
+        }
+    }
+}
+
+/// Après une mise à jour : la fenêtre ouverte rouverte sur la nouvelle
+/// version, puis le service s'arrête en erreur pour que systemd le relance
+/// sur le nouvel outil.
+fn restart_after_update() -> ! {
+    let window = if update::is_package() {
+        std::path::PathBuf::from(last1_panel_core::paths::SYSTEM_APP)
+    } else {
+        last1_panel_core::paths::user_appimage()
+    };
+    desktop::reopen_window(&window);
+    std::process::exit(75);
 }
 
 /// Liaison PCI Express des cartes graphiques pendant les parties : au repos,
@@ -492,8 +524,8 @@ fn propose_updates() {
                                 &format!("Last1 Panel est à jour (version {version})."),
                                 &format!("Last1 Panel is up to date (version {version})."),
                             ));
-                            // Le service repart sur l'AppImage installée.
-                            std::process::exit(75);
+                            // Fenêtre et service repartent sur l'AppImage installée.
+                            restart_after_update();
                         }
                         Err(error) => {
                             eprintln!("last1-panel-cli : mise à jour : {error}");

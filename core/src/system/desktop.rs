@@ -54,11 +54,48 @@ pub fn session_env() -> BTreeMap<String, String> {
 /// « last1-panel-cli » et les jeux ne sont pas touchés).
 pub fn close_windows() {
     let mut command = Command::new("pkill");
-    command.args(["-TERM", "-x", "last1-panel"]);
-    if let Ok(meta) = std::fs::metadata("/proc/self") {
-        command.args(["-u", &std::os::unix::fs::MetadataExt::uid(&meta).to_string()]);
-    }
+    command.args(["-TERM", "-x", "last1-panel"]).args(this_user());
     let _ = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+}
+
+/// « -u <uid> » : les fenêtres de ce compte seulement.
+fn this_user() -> Vec<String> {
+    std::fs::metadata("/proc/self")
+        .map(|meta| vec!["-u".to_string(), std::os::unix::fs::MetadataExt::uid(&meta).to_string()])
+        .unwrap_or_default()
+}
+
+/// Une fenêtre de Last1 Panel est-elle ouverte par ce compte ?
+pub fn window_open() -> bool {
+    Command::new("pgrep")
+        .args(["-x", "last1-panel"])
+        .args(this_user())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+/// La fenêtre ouverte, rouverte avec `program` (la version qui vient d'être
+/// installée) : une mise à jour ne la laisse jamais sur l'ancienne. Rien si
+/// aucune n'est ouverte.
+pub fn reopen_window(program: &std::path::Path) {
+    if !window_open() {
+        return;
+    }
+    close_windows();
+    for _ in 0..50 {
+        if !window_open() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let mut command = Command::new(program);
+    command.envs(session_env()).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    crate::exec::without_appimage_env(&mut command);
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let _ = command.spawn();
 }
 
 /// Notification du bureau, depuis le service de la session.
