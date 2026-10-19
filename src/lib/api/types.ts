@@ -259,6 +259,12 @@ export interface Precache {
   total: number | null;
   /** Avancement lisible (faux : Steam Flatpak ou version inconnue). */
   readable: boolean;
+  /** Processus fossilize_replay. */
+  processes: number;
+  /** Temps de processeur pris, en centièmes de seconde. */
+  cpuTicks: number;
+  /** Depuis combien de secondes la compilation tourne. */
+  runningSecs: number | null;
 }
 
 export interface Sharing {

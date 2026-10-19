@@ -26,11 +26,30 @@ pub struct Precache {
     pub total: Option<u32>,
     /// Bloc de contrôle trouvé et lu (faux : Steam Flatpak, autre version).
     pub readable: bool,
+    /// Processus fossilize_replay (le maître et ceux qui compilent pour lui).
+    pub processes: u32,
+    /// Temps de processeur qu'ils ont pris, en centièmes de seconde :
+    /// l'interface en tire le nombre de cœurs au travail (la preuve que ça
+    /// avance, même sans pourcentage).
+    pub cpu_ticks: u64,
+    /// Depuis combien de secondes la compilation tourne.
+    pub running_secs: Option<u64>,
+}
+
+/// Temps de processeur d'un processus (utime + stime, en tops d'horloge :
+/// 100 par seconde sous Linux) et son heure de départ, en tops depuis le
+/// démarrage du PC (/proc/<pid>/stat, champs 14, 15 et 22).
+fn cpu_and_start(process: &Path) -> Option<(u64, u64)> {
+    let stat = fs::read_to_string(process.join("stat")).ok()?;
+    let fields: Vec<&str> = stat.rsplit_once(')')?.1.split_whitespace().collect();
+    let field = |n: usize| fields.get(n - 3)?.parse::<u64>().ok();
+    Some((field(14)? + field(15)?, field(22)?))
 }
 
 /// Compilation en cours, s'il y en a une.
 pub fn running(proc_dir: &Path, steam_root: Option<&Path>) -> Option<Precache> {
     let mut found: Option<(PathBuf, Vec<String>)> = None;
+    let (mut processes, mut cpu_ticks) = (0, 0);
     for entry in fs::read_dir(proc_dir).ok()?.flatten() {
         if !entry.file_name().to_str().is_some_and(|name| name.chars().all(|c| c.is_ascii_digit())) {
             continue;
@@ -41,6 +60,8 @@ pub fn running(proc_dir: &Path, steam_root: Option<&Path>) -> Option<Precache> {
         {
             continue;
         }
+        processes += 1;
+        cpu_ticks += cpu_and_start(&entry.path()).map_or(0, |(ticks, _)| ticks);
         let args: Vec<String> = fs::read(entry.path().join("cmdline"))
             .unwrap_or_default()
             .split(|&b| b == 0)
@@ -53,11 +74,13 @@ pub fn running(proc_dir: &Path, steam_root: Option<&Path>) -> Option<Precache> {
         if master || found.is_none() {
             found = Some((entry.path(), args));
         }
-        if master {
-            break;
-        }
     }
     let (process, args) = found?;
+    let uptime = fs::read_to_string(proc_dir.join("uptime"))
+        .ok()
+        .and_then(|text| text.split_whitespace().next()?.parse::<f64>().ok());
+    let running_secs =
+        cpu_and_start(&process).zip(uptime).map(|((_, start), uptime)| (uptime as u64).saturating_sub(start / 100));
     // « …/steamapps/shadercache/<appid>/… » : le jeu, et sa bibliothèque.
     let cache = args.iter().find_map(|arg| {
         let (library, rest) = arg.split_once("/steamapps/shadercache/")?;
@@ -75,6 +98,9 @@ pub fn running(proc_dir: &Path, steam_root: Option<&Path>) -> Option<Precache> {
         done: progress.and_then(|p| p.map(|p| p.0)),
         total: progress.and_then(|p| p.map(|p| p.1)),
         readable: progress.is_some(),
+        processes,
+        cpu_ticks,
+        running_secs,
     })
 }
 
@@ -318,8 +344,26 @@ mod tests {
         let precache = running(&proc_dir, None).unwrap();
         assert_eq!(
             precache,
-            Precache { game: Some("Subnautica 2".into()), done: Some(25), total: Some(100), readable: true }
+            Precache {
+                game: Some("Subnautica 2".into()),
+                done: Some(25),
+                total: Some(100),
+                readable: true,
+                processes: 2,
+                cpu_ticks: 0,
+                running_secs: None
+            }
         );
+        // Temps de processeur des deux processus, et depuis quand ça tourne
+        // (parti 600 s après le démarrage, il y a 3000 s).
+        let stat = |ticks: u64, start: u64| {
+            format!("4200 (fossilize_repla) S 4100 4100 0 0 -1 0 0 0 0 0 {ticks} 50 0 0 39 19 1 0 {start} 0 0\n")
+        };
+        fs::write(master.join("stat"), stat(1000, 60_000)).unwrap();
+        fs::write(proc_dir.join("4242/stat"), stat(250, 61_000)).unwrap();
+        fs::write(proc_dir.join("uptime"), "3600.42 1000.00\n").unwrap();
+        let alive = running(&proc_dir, None).unwrap();
+        assert_eq!((alive.processes, alive.cpu_ticks, alive.running_secs), (2, 1350, Some(3000)));
         // Autre espace de numéros (le pid du nom n'est pas celui vu ici) : le
         // parent de fossilize_replay.
         fs::rename(&steam, proc_dir.join("4101")).unwrap();
@@ -329,7 +373,15 @@ mod tests {
         fs::remove_file(proc_dir.join("4101/fd/45")).unwrap();
         assert_eq!(
             running(&proc_dir, None),
-            Some(Precache { game: Some("Subnautica 2".into()), done: None, total: None, readable: false })
+            Some(Precache {
+                game: Some("Subnautica 2".into()),
+                done: None,
+                total: None,
+                readable: false,
+                processes: 2,
+                cpu_ticks: 1350,
+                running_secs: Some(3000)
+            })
         );
     }
 }

@@ -14,6 +14,12 @@
   /** Avancement relevé (heure, fraction) pour le temps restant. */
   let samples: { at: number; ratio: number }[] = [];
   let remaining = $state<number | null>(null);
+  /** Temps de processeur relevé (heure, centièmes de seconde) : les cœurs au
+   * travail prouvent que la compilation avance, même sans pourcentage. */
+  let cpuSamples: { at: number; ticks: number }[] = [];
+  let cores = $state<number | null>(null);
+  /** Plus rien ne bouge depuis deux minutes. */
+  let stalled = $state(false);
   let timer: ReturnType<typeof setInterval> | undefined;
   let stoppedTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -36,14 +42,34 @@
       }
       precache = null;
       samples = [];
+      cpuSamples = [];
+      cores = null;
+      stalled = false;
       remaining = null;
       return;
     }
-    if (precache?.game !== next.game) samples = [];
+    if (precache?.game !== next.game) {
+      samples = [];
+      cpuSamples = [];
+    }
     precache = next;
     stopped = null;
+    const now = Date.now();
+    cpuSamples.push({ at: now, ticks: next.cpuTicks });
+    cpuSamples = cpuSamples.filter((s) => now - s.at <= 150_000);
+    const busy = (since: number) => {
+      const window = cpuSamples.filter((s) => now - s.at <= since);
+      const first = window[0];
+      const last = window[window.length - 1];
+      // Un processus parti fait baisser le total : pas de chiffre faux.
+      return last.at - first.at >= 6_000 && last.ticks >= first.ticks
+        ? (last.ticks - first.ticks) / 100 / ((last.at - first.at) / 1000)
+        : null;
+    };
+    cores = busy(30_000);
+    const quiet = busy(120_000);
+    stalled = quiet !== null && now - cpuSamples[0].at >= 115_000 && quiet < 0.05;
     if (next.done != null && next.total) {
-      const now = Date.now();
       samples.push({ at: now, ratio: Math.min(1, next.done / next.total) });
       // Vitesse des deux dernières minutes : elle change d'un jeu à l'autre.
       samples = samples.filter((s) => now - s.at <= 120_000);
@@ -52,6 +78,14 @@
       const speed = (last.ratio - first.ratio) / (last.at - first.at);
       remaining = last.at - first.at >= 15_000 && speed > 0 ? (1 - last.ratio) / speed : null;
     }
+  }
+
+  /** « 52 min », « 1 h 05 ». */
+  function since(seconds: number): string {
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 1) return t("moins d'une minute", "less than a minute");
+    if (minutes < 60) return `${minutes} min`;
+    return `${Math.floor(minutes / 60)} h ${(minutes % 60).toString().padStart(2, "0")}`;
   }
 
   function duration(ms: number): string {
@@ -110,6 +144,26 @@
         "It's Steam (“Vulkan shader processing”), after a game or driver update: meanwhile, games may stutter. Better wait for the end to play; afterwards, they run better.",
       )}
     </p>
+    {#if stalled}
+      <p class="banner__alive banner__alive--stalled">
+        {t(
+          "Plus rien ne bouge depuis 2 minutes : Steam a peut-être mis la compilation en pause (un jeu lancé ?). Elle reprend d'elle-même ; si elle reste figée, fermez Steam et rouvrez-le.",
+          "Nothing has moved for 2 minutes: Steam may have paused the compilation (a game running?). It resumes on its own; if it stays frozen, close Steam and open it again.",
+        )}
+      </p>
+    {:else if precache.runningSecs !== null || cores !== null}
+      <p class="banner__alive">
+        {#if precache.runningSecs !== null}
+          {t(`En cours depuis ${since(precache.runningSecs)}`, `Running for ${since(precache.runningSecs)}`)}
+        {/if}
+        {#if cores !== null}
+          · {t(
+            `${cores.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} cœur${cores >= 2 ? "s" : ""} du processeur au travail : ça avance.`,
+            `${cores.toLocaleString("en-US", { maximumFractionDigits: 1 })} CPU core${cores >= 2 ? "s" : ""} at work: it's moving.`,
+          )}
+        {/if}
+      </p>
+    {/if}
   </section>
 {:else if stopped && stopped.ratio !== null && stopped.ratio < 0.95}
   <section class="banner" role="status" aria-live="polite">
@@ -172,6 +226,17 @@
   .banner__text {
     margin: 0;
     color: var(--color-text-muted);
+  }
+
+  .banner__alive {
+    margin: 0;
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .banner__alive--stalled {
+    color: var(--color-warning);
+    font-weight: 600;
   }
 
   .gauge {

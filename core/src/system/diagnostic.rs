@@ -1338,6 +1338,9 @@ mod tests {
                 done: Some(42),
                 total: Some(100),
                 readable: true,
+                processes: 4,
+                cpu_ticks: 120_000,
+                running_secs: Some(1800),
             }),
             sessions: vec![GameSession {
                 program: "PioneerGame.exe".into(),
