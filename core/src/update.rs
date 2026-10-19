@@ -195,11 +195,21 @@ pub fn download(exec: &dyn Exec, release: &Release, target: &Path) -> CoreResult
     // ask=1 : installation demandée par l'utilisateur (clic). last1.fun ne
     // sert plus l'AppImage aux versions qui l'installaient sans demander.
     let url = format!("{SITE}/api/public/{PRODUCT}/files/{}?ask=1", release.appimage.name);
-    let fetched = exec.run_ok(
-        "curl",
-        &["-fsS", "--proto", "=https", "--max-time", "3600", "-o", &temporary.to_string_lossy(), &url]
-            .map(String::from),
-    );
+    let fetched = exec
+        .run_ok(
+            "curl",
+            &["-fsS", "--proto", "=https", "--max-time", "3600", "-o", &temporary.to_string_lossy(), &url]
+                .map(String::from),
+        )
+        .map_err(|error| {
+            CoreError::message(format!(
+                "{} ({error})",
+                crate::i18n::t(
+                    "Téléchargement de la mise à jour impossible. Si ça continue, retéléchargez Last1 Panel sur last1.fun/last1-panel et ouvrez-le une fois",
+                    "The update could not be downloaded. If this keeps happening, download Last1 Panel again from last1.fun/last1-panel and open it once",
+                )
+            ))
+        });
     let result = fetched.and_then(|_| install_download(&temporary, target, &release.appimage));
     let _ = fs::remove_file(&temporary);
     result
@@ -290,6 +300,33 @@ mod tests {
         assert!(!newer("0.1.0.r9", "0.1.0.r9"));
         assert!(!newer("0.1.0.r8", "0.1.0.r9"));
         assert!(!newer("0.1.0", "0.1.0.r9"));
+    }
+
+    #[test]
+    fn refused_download_says_what_to_do() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("last1-panel");
+        fs::write(&target, b"ancienne").unwrap();
+        let name = "Last1Panel_0.1.0.r30_amd64.AppImage";
+        let temporary = target.with_extension("download").to_string_lossy().into_owned();
+        let url = format!("{SITE}/api/public/{PRODUCT}/files/{name}?ask=1");
+        let refused = crate::exec::Output {
+            status: 22,
+            stdout: String::new(),
+            stderr: "curl: (22) The requested URL returned error: 404".into(),
+        };
+        let exec = crate::exec::FakeExec::new().on_args(
+            "curl",
+            &["-fsS", "--proto", "=https", "--max-time", "3600", "-o", &temporary, &url],
+            refused,
+        );
+        let release = Release {
+            version: "0.1.0.r30".into(),
+            appimage: Download { name: name.into(), size: 1, sha256: "0".repeat(64) },
+        };
+        let error = download(&exec, &release, &target).unwrap_err().to_string();
+        assert!(error.contains("last1.fun/last1-panel") && error.contains("404"), "{error}");
+        assert_eq!(fs::read(&target).unwrap(), b"ancienne");
     }
 
     #[test]
