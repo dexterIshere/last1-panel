@@ -225,6 +225,7 @@ fn watch() -> ExitCode {
     std::thread::spawn(share_reports);
     std::thread::spawn(watch_updates);
     std::thread::spawn(watch_shaders);
+    std::thread::spawn(watch_pcie_link);
     let tray = last1_panel_core::tray::spawn();
     std::thread::sleep(Duration::from_secs(3));
     apply_until_ready(20);
@@ -272,6 +273,41 @@ fn watch_updates() {
         let exec = SystemExec { timeout: Duration::from_secs(300), ..SystemExec::default() };
         last1_panel_core::system::packages::refresh(&exec, &cache);
         std::thread::sleep(Duration::from_secs(6 * 3600));
+    }
+}
+
+/// Liaison PCI Express des cartes graphiques pendant les parties : au repos,
+/// le pilote peut la réduire ; le diagnostic juge sur celle mesurée en jeu.
+/// Relevée toutes les 20 s pendant une partie Steam ; la plus large de la
+/// dernière partie est gardée (paths::pcie_in_game_file).
+fn watch_pcie_link() {
+    use last1_panel_core::games::steam;
+    use last1_panel_core::system::diagnostic::link_width;
+    let file = last1_panel_core::paths::pcie_in_game_file();
+    let mut playing = false;
+    let mut widest: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
+    loop {
+        std::thread::sleep(Duration::from_secs(20));
+        if !steam::game_running(std::path::Path::new("/proc")) {
+            playing = false;
+            continue;
+        }
+        if !playing {
+            playing = true;
+            widest.clear();
+        }
+        for gpu in gpu::detect(&SysPaths::default()).iter().filter(|g| matches!(g.vendor, Vendor::Nvidia | Vendor::Amd))
+        {
+            if let Some(width) = link_width(std::path::Path::new("/sys"), gpu) {
+                let entry = widest.entry(gpu.pci_slot.clone()).or_insert(width);
+                *entry = (*entry).max(width);
+            }
+        }
+        let text: String = widest.iter().map(|(slot, width)| format!("{slot} {width}\n")).collect();
+        if let Some(dir) = file.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&file, text);
     }
 }
 

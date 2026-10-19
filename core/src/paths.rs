@@ -32,6 +32,12 @@ pub fn cache_dir() -> PathBuf {
     xdg("XDG_CACHE_HOME", ".cache").join("last1-panel")
 }
 
+/// Liaison PCI Express mesurée pendant la dernière partie (cli.rs,
+/// watch_pcie_link) : « emplacement largeur » par carte.
+pub fn pcie_in_game_file() -> PathBuf {
+    cache_dir().join("pcie-in-game.txt")
+}
+
 /// Dernier jeu lancé par Last1 Panel (cli.rs, log_launch) : son SteamAppId,
 /// ses variables et sa commande.
 pub fn last_launch_file() -> PathBuf {

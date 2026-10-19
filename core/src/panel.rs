@@ -352,6 +352,14 @@ impl Panel {
                 .ok()
                 .map(|version| version.trim().to_string())
                 .filter(|version| !version.is_empty()),
+            pcie_in_game: fs::read_to_string(crate::paths::pcie_in_game_file())
+                .unwrap_or_default()
+                .lines()
+                .filter_map(|line| {
+                    let (slot, width) = line.split_once(' ')?;
+                    Some((slot.to_string(), width.trim().parse().ok()?))
+                })
+                .collect(),
             gamemode_allowed: crate::system::diagnostic::gamemode_allowed(
                 Path::new("/etc/group"),
                 &std::env::var("USER").unwrap_or_default(),
