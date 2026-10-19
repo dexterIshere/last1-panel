@@ -106,6 +106,10 @@ pub struct Sources<'a> {
     pub recent_games: Vec<String>,
     /// Dernier jeu lancé par Last1 Panel (paths::last_launch_file).
     pub last_launch: Option<LastLaunch>,
+    /// Version de Last1 Panel (update::installed_version).
+    pub version: String,
+    /// Version de go-to-linux (/usr/local/lib/gtl/VERSION).
+    pub go_to_linux_version: Option<String>,
     /// Le compte peut se servir de GameMode (gamemode_allowed).
     pub gamemode_allowed: bool,
     /// Shaders compilés par Steam en ce moment (games/shaders.rs).
@@ -257,6 +261,11 @@ fn check(id: &'static str, level: Level, title: String, detail: String) -> Check
 
 pub fn run(src: &Sources) -> Report {
     let mut facts: Vec<(String, String)> = Vec::new();
+    // En tête du rapport : on voit tout de suite si le PC est à jour.
+    facts.push(("Last1 Panel".to_string(), src.version.clone()));
+    if let Some(version) = &src.go_to_linux_version {
+        facts.push(("go-to-linux".to_string(), version.clone()));
+    }
     let mut checks = Vec::new();
     let unknown = || "?".to_string();
 
@@ -1266,6 +1275,8 @@ mod tests {
             default_proton: Some("proton-cachyos-slr".into()),
             recent_games: vec!["ARC Raiders (proton_experimental)".into()],
             last_launch: None,
+            version: "0.1.0.r56".into(),
+            go_to_linux_version: Some("2026.10.19-cf9724f".into()),
             gamemode_allowed: true,
             precache: Some(crate::games::shaders::Precache {
                 game: Some("ARC Raiders".into()),
@@ -1325,6 +1336,14 @@ mod tests {
             ]
         );
         assert!(report.text.contains("AMD Ryzen 9 7950X3D") && report.text.contains("balanced"));
+        // Versions en tête : on voit tout de suite si le PC est à jour.
+        assert!(
+            report.text.starts_with(
+                "Last1 Panel — diagnostic des performances\n\nLast1 Panel : 0.1.0.r56\ngo-to-linux : 2026.10.19-cf9724f\n"
+            ),
+            "{}",
+            report.text
+        );
         assert!(report.checks.iter().any(|c| c.title == "Steam compile les shaders de ARC Raiders (42 %)"));
         assert!(
             report.text.contains("proton-cachyos-slr") && report.text.contains("lavd") && report.text.contains("[!!]")
@@ -1364,6 +1383,8 @@ mod tests {
                 measured: true,
                 logged: true,
             }),
+            version: "0.1.0.r56".into(),
+            go_to_linux_version: None,
             gamemode_allowed: true,
             precache: None,
             sessions: vec![GameSession {
@@ -1432,6 +1453,8 @@ mod tests {
                 default_proton: None,
                 recent_games: Vec::new(),
                 last_launch: None,
+                version: "0.1.0.r56".into(),
+                go_to_linux_version: None,
                 gamemode_allowed: true,
                 precache: None,
                 sessions: Vec::new(),
@@ -1517,6 +1540,8 @@ mod tests {
             default_proton: None,
             recent_games: Vec::new(),
             last_launch: None,
+            version: "0.1.0.r56".into(),
+            go_to_linux_version: None,
             gamemode_allowed: true,
             precache: None,
             sessions: Vec::new(),
@@ -1564,6 +1589,8 @@ mod tests {
                 default_proton: None,
                 recent_games: Vec::new(),
                 last_launch: None,
+                version: "0.1.0.r56".into(),
+                go_to_linux_version: None,
                 gamemode_allowed: allowed,
                 precache: None,
                 sessions: Vec::new(),
@@ -1641,6 +1668,8 @@ mod tests {
                 default_proton: None,
                 recent_games: Vec::new(),
                 last_launch: None,
+                version: "0.1.0.r56".into(),
+                go_to_linux_version: None,
                 gamemode_allowed: true,
                 precache: None,
                 sessions: Vec::new(),
@@ -1704,6 +1733,8 @@ mod tests {
                 default_proton: None,
                 recent_games: Vec::new(),
                 last_launch: None,
+                version: "0.1.0.r56".into(),
+                go_to_linux_version: None,
                 gamemode_allowed: true,
                 precache: None,
                 sessions: Vec::new(),

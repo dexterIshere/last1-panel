@@ -346,6 +346,12 @@ impl Panel {
                 steam.as_deref(),
             ),
             precache: crate::games::shaders::running(Path::new("/proc"), steam.as_deref()),
+            version: crate::update::installed_version(self.exec.as_ref())
+                .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
+            go_to_linux_version: fs::read_to_string("/usr/local/lib/gtl/VERSION")
+                .ok()
+                .map(|version| version.trim().to_string())
+                .filter(|version| !version.is_empty()),
             gamemode_allowed: crate::system::diagnostic::gamemode_allowed(
                 Path::new("/etc/group"),
                 &std::env::var("USER").unwrap_or_default(),
