@@ -77,10 +77,28 @@ for f in /sys/bus/platform/drivers/amd_x3d_vcache/*/amd_x3d_mode; do if [ -e "$f
             )),
             // L'ordonnanceur du noyau : plus de sched_ext (scx_loader de
             // CachyOS, ou scx.service d'Arch), ni au démarrage ni maintenant.
+            // Le service qui l'a lancé est lu dans le cgroup de son processus
+            // (scx_loader, scx, ou un service maison) : arrêté, désactivé et
+            // masqué (ni au démarrage, ni par D-Bus, ni relancé). Vérifié :
+            // sinon, l'erreur dit ce qui le relance encore.
             Fix::Scheduler => parts.push(
-                r#"for unit in scx_loader.service scx.service; do systemctl disable --now "$unit" 2>/dev/null || true; done
-pkill -x 'scx_.+' || true"#
-                    .to_string(),
+                r#"units="scx_loader.service scx.service"
+for pid in $(pgrep '^scx_'); do
+  unit=$(sed -n 's|^0::/system.slice/\([^/]*\.service\).*|\1|p' "/proc/$pid/cgroup" 2>/dev/null)
+  if [ -n "$unit" ]; then units="$units $unit"; fi
+done
+for unit in $units; do
+  systemctl disable --now "$unit" 2>/dev/null || true
+  systemctl mask "$unit" 2>/dev/null || true
+done
+pkill '^scx_' || true
+sleep 2
+if [ "$(cat /sys/kernel/sched_ext/state 2>/dev/null)" = enabled ]; then
+  for pid in $(pgrep '^scx_'); do echo "relancé : $(cat /proc/$pid/comm) ($(cat /proc/$pid/cgroup))" >&2; done
+  echo "l'ordonnanceur sched_ext est encore actif (services arrêtés : $units)" >&2
+  exit 1
+fi"#
+                .to_string(),
             ),
             // Sans power-profiles-daemon : le gouverneur, à chaque démarrage
             // (tmpfiles) et tout de suite. Le diagnostic ne le propose pas
@@ -181,6 +199,8 @@ mod tests {
             "/etc/sysctl.d/99-last1-panel-split-lock.conf",
             "/etc/udev/rules.d/99-last1-panel-x3d.rules",
             "systemctl disable --now",
+            "systemctl mask",
+            "/proc/$pid/cgroup",
             "/etc/tmpfiles.d/last1-panel-performance.conf",
             "pacman -S --needed --noconfirm mangohud",
             "/etc/systemd/zram-generator.conf",
@@ -201,6 +221,24 @@ mod tests {
         assert_eq!(root_script(&[Fix::LowLatency, Fix::WrapGames], Path::new("/etc"), false, true, &[]).unwrap(), None);
         // Sans pacman, MangoHud ne s'installe pas d'ici.
         assert!(root_script(&[Fix::InstallMangoHud], Path::new("/etc"), false, false, &[]).is_err());
+    }
+
+    #[test]
+    fn scheduler_service_is_read_from_its_cgroup() {
+        // L'expression sed du script, lancée telle quelle.
+        let script = root_script(&[Fix::Scheduler], Path::new("/etc"), false, true, &[]).unwrap().unwrap();
+        let start = script.find("sed -n '").unwrap() + "sed -n '".len();
+        let expression = &script[start..start + script[start..].find('\'').unwrap()];
+        let dir = tempfile::tempdir().unwrap();
+        let unit = |cgroup: &str| {
+            let file = dir.path().join("cgroup");
+            fs::write(&file, cgroup).unwrap();
+            let output = Command::new("sed").args(["-n", expression]).arg(&file).output().unwrap();
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        };
+        assert_eq!(unit("0::/system.slice/scx_loader.service\n"), "scx_loader.service");
+        assert_eq!(unit("0::/system.slice/scx-lavd.service/payload\n"), "scx-lavd.service");
+        assert_eq!(unit("0::/user.slice/user-1000.slice/session-2.scope\n"), "");
     }
 
     #[test]

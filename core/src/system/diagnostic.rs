@@ -337,7 +337,13 @@ pub fn run(src: &Sources) -> Report {
         });
     }
 
-    // Ordonnanceur sched_ext : aucun gain prouvé, des chutes rapportées.
+    // Ordonnanceur sched_ext : aucun gain prouvé, des chutes rapportées. Le
+    // service qui l'a lancé (cgroup de son processus) est dit, pour le
+    // rapport : c'est lui que le bouton arrête.
+    let launcher = scheduler.as_ref().and_then(|_| scheduler_unit(src.proc_dir));
+    if let Some(unit) = &launcher {
+        facts.push((t("Ordonnanceur lancé par", "Scheduler started by"), unit.clone()));
+    }
     if let Some(name) = &scheduler {
         checks.push(Check {
             fix: Some(Fix::Scheduler),
@@ -356,17 +362,45 @@ pub fn run(src: &Sources) -> Report {
     // NTSync : la synchronisation de Windows faite par le noyau.
     let ntsync = src.dev.join("ntsync");
     checks.push(if !ntsync.exists() {
+        let mut detail = t(
+            "Proton synchronise alors les fils des jeux sans l'aide du noyau : plus de travail pour le processeur.",
+            "Proton then syncs game threads without the kernel's help: more CPU work.",
+        );
+        // Déjà réglé pour chaque démarrage (bouton), mais pas chargé à
+        // celui-ci : pourquoi, d'après modinfo et le journal du démarrage.
+        if Path::new("/etc/modules-load.d/last1-panel-ntsync.conf").exists() {
+            let module = src.exec.run("modinfo", &["-n".into(), "ntsync".into()]).is_ok_and(|o| o.success());
+            let journal = src
+                .exec
+                .run(
+                    "journalctl",
+                    &["-b", "-u", "systemd-modules-load", "--no-pager", "-q", "-o", "cat"].map(String::from),
+                )
+                .map(|o| o.stdout.lines().filter(|l| l.contains("ntsync")).collect::<Vec<_>>().join(" ; "))
+                .unwrap_or_default();
+            detail = format!(
+                "{detail} {}",
+                if !module {
+                    t(
+                        "Réglé pour chaque démarrage, mais ce noyau n'a pas le module ntsync.",
+                        "Set for every boot, but this kernel has no ntsync module.",
+                    )
+                } else if journal.is_empty() {
+                    t(
+                        "Réglé pour chaque démarrage, mais pas chargé à celui-ci.",
+                        "Set for every boot, but not loaded at this one.",
+                    )
+                } else {
+                    t(
+                        &format!("Réglé pour chaque démarrage, mais pas chargé à celui-ci : {journal}"),
+                        &format!("Set for every boot, but not loaded at this one: {journal}"),
+                    )
+                }
+            );
+        }
         Check {
             fix: Some(Fix::Ntsync),
-            ..check(
-                "ntsync",
-                Level::Warning,
-                t("NTSync absent", "NTSync missing"),
-                t(
-                    "Proton synchronise alors les fils des jeux sans l'aide du noyau : plus de travail pour le processeur.",
-                    "Proton then syncs game threads without the kernel's help: more CPU work.",
-                ),
-            )
+            ..check("ntsync", Level::Warning, t("NTSync absent", "NTSync missing"), detail)
         }
     } else if fs::OpenOptions::new().read(true).write(true).open(&ntsync).is_err() {
         Check {
@@ -806,6 +840,25 @@ fn largest_prefetchable_bar(path: &Path) -> Option<(usize, u64)> {
         .max_by_key(|(_, size)| *size)
 }
 
+/// Service qui fait tourner l'ordonnanceur sched_ext (processus « scx_… »),
+/// d'après son cgroup : « scx_loader.service », ou le chemin entier s'il
+/// n'est pas un service du système.
+fn scheduler_unit(proc_dir: &Path) -> Option<String> {
+    fs::read_dir(proc_dir).into_iter().flatten().flatten().find_map(|entry| {
+        let numeric = entry.file_name().to_str().is_some_and(|n| n.chars().all(|c| c.is_ascii_digit()));
+        let comm = read(&entry.path().join("comm"))?;
+        if !numeric || !comm.starts_with("scx_") || comm == "scx_loader" {
+            return None;
+        }
+        let cgroup = read(&entry.path().join("cgroup"))?;
+        let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?.to_string();
+        Some(match path.strip_prefix("/system.slice/").and_then(|rest| rest.split('/').next()) {
+            Some(unit) if unit.ends_with(".service") => unit.to_string(),
+            _ => format!("{comm} ({path})"),
+        })
+    })
+}
+
 fn process_running(proc_dir: &Path, comm: &str) -> bool {
     fs::read_dir(proc_dir).into_iter().flatten().flatten().any(|entry| {
         entry.file_name().to_str().is_some_and(|name| name.chars().all(|c| c.is_ascii_digit()))
@@ -996,6 +1049,8 @@ mod tests {
         let pc = pc();
         write(pc.sys.join("kernel/sched_ext/state"), "enabled\n");
         write(pc.sys.join("kernel/sched_ext/root/ops"), "lavd_1.1.3_x86_64_unknown_linux_gnu\n");
+        write(pc.proc_dir.join("777/comm"), "scx_lavd\n");
+        write(pc.proc_dir.join("777/cgroup"), "0::/system.slice/scx-lavd-maison.service\n");
         write(pc.sys.join("devices/system/cpu/cpu0/cpufreq/scaling_governor"), "powersave\n");
         write(pc.proc_dir.join("sys/kernel/split_lock_mitigate"), "1\n");
         let device = pc.sys.join("bus/pci/devices/0000:01:00.0");
@@ -1032,6 +1087,8 @@ mod tests {
         assert_eq!(fix("ntsync"), Some(Fix::Ntsync));
         assert_eq!(fix("shader-cache"), Some(Fix::ShaderCache));
         assert_eq!(fix("scheduler"), Some(Fix::Scheduler));
+        // Le service qui le lance, pour le rapport.
+        assert!(arch.facts.iter().any(|(_, value)| value == "scx-lavd-maison.service"), "{:?}", arch.facts);
         assert_eq!(fix("split-lock"), Some(Fix::SplitLock));
         // PC fixe sans power-profiles-daemon : le gouverneur, d'un clic.
         assert_eq!(fix("power"), Some(Fix::Performance));
