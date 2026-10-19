@@ -345,6 +345,7 @@ impl Panel {
                 .map(steam::installed_games)
                 .filter(|games| !games.is_empty())
                 .map(|games| (games.iter().filter(|game| game.wrapped).count(), games.len())),
+            go_to_linux: Path::new("/var/lib/gtl").is_dir(),
         })
     }
 

@@ -233,6 +233,8 @@ export interface PerfReport {
   sessions: GameSession[];
   /** Rapport à copier. */
   text: string;
+  /** PC installé par go-to-linux (il pose les optimisations) ; sinon chaque point dit comment le corriger. */
+  goToLinux: boolean;
 }
 
 /** Lien d'un jeu à un profil de couleurs. */

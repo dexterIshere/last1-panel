@@ -61,10 +61,15 @@
 
 <SectionHeader
   title={t("Performances en jeu", "In-game performance")}
-  lead={t(
-    "Ce qui fait perdre des images par seconde sur ce PC par rapport à Windows. Rien n'est changé ici : go-to-linux pose les optimisations du système dès l'installation (« Jeux et performances »).",
-    "What costs frames per second on this PC compared to Windows. Nothing is changed here: go-to-linux sets the system optimizations at install (“Games and performance”).",
-  )}
+  lead={report && !report.goToLinux
+    ? t(
+        "Ce qui fait perdre des images par seconde sur ce PC par rapport à Windows. Chaque point dit comment le corriger : la commande à lancer, ou le réglage du BIOS.",
+        "What costs frames per second on this PC compared to Windows. Each point says how to fix it: the command to run, or the BIOS setting.",
+      )
+    : t(
+        "Ce qui fait perdre des images par seconde sur ce PC par rapport à Windows. Rien n'est changé ici : go-to-linux pose les optimisations du système dès l'installation (« Jeux et performances »).",
+        "What costs frames per second on this PC compared to Windows. Nothing is changed here: go-to-linux sets the system optimizations at install (“Games and performance”).",
+      )}
 >
   {#snippet actions()}
     <button class="btn" onclick={copy} disabled={!report}>
@@ -217,6 +222,8 @@
     flex: 1;
     gap: 2px;
     min-width: 0;
+    /* Les commandes à lancer se sélectionnent et se copient. */
+    user-select: text;
   }
 
   .sessions {

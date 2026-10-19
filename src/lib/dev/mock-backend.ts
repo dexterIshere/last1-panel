@@ -319,7 +319,7 @@ export function installMockBackend(): void {
         { program: "Cyberpunk2077.exe", started: "2026-10-17 20:12", minutes: 75, fpsAverage: 96, fpsOnePercentLow: 71, cpuLoad: 38, gpuLoad: 98, gpuClock: 2745, limit: "gpu" },
       ];
       const text = ["Last1 Panel — diagnostic des performances", "", ...facts.map(([n, v]) => `${n} : ${v}`), "", ...checks.map((c) => `[${c.level}] ${c.title} — ${c.detail}`)].join("\n");
-      return { checks, facts, sessions, text };
+      return { checks, facts, sessions, text, goToLinux: !params.get("arch") };
     },
     performance_fix: async () => {
       await wait(200);
