@@ -370,6 +370,10 @@ pub fn run(src: &Sources) -> Report {
         // celui-ci : pourquoi, d'après modinfo et le journal du démarrage.
         if Path::new("/etc/modules-load.d/last1-panel-ntsync.conf").exists() {
             let module = src.exec.run("modinfo", &["-n".into(), "ntsync".into()]).is_ok_and(|o| o.success());
+            let blocked = ntsync_blocker(
+                &["/etc/modprobe.d", "/usr/lib/modprobe.d", "/run/modprobe.d"].map(Path::new),
+                &read(&src.proc_dir.join("cmdline")).unwrap_or_default(),
+            );
             let journal = src
                 .exec
                 .run(
@@ -384,6 +388,11 @@ pub fn run(src: &Sources) -> Report {
                     t(
                         "Réglé pour chaque démarrage, mais ce noyau n'a pas le module ntsync.",
                         "Set for every boot, but this kernel has no ntsync module.",
+                    )
+                } else if let Some(blocker) = &blocked {
+                    t(
+                        &format!("Bloqué au démarrage par {blocker} : le bouton pose un service de démarrage qui le charge quand même."),
+                        &format!("Blocked at boot by {blocker}: the button sets a boot service that loads it anyway."),
                     )
                 } else if journal.is_empty() {
                     t(
@@ -850,6 +859,31 @@ fn largest_prefetchable_bar(path: &Path) -> Option<(usize, u64)> {
         .max_by_key(|(_, size)| *size)
 }
 
+/// Ce qui empêche ntsync de se charger au démarrage : un fichier de
+/// modprobe.d (« blacklist ntsync », « install ntsync … »), ou la ligne de
+/// commande du noyau (module_blacklist=, modprobe.blacklist=).
+fn ntsync_blocker(dirs: &[&Path], cmdline: &str) -> Option<String> {
+    for dir in dirs {
+        let mut files: Vec<_> = fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
+        files.sort();
+        for file in files {
+            let text = fs::read_to_string(&file).unwrap_or_default();
+            let blocks = text.lines().any(|line| {
+                let words: Vec<&str> = line.split_whitespace().collect();
+                matches!(words.as_slice(), ["blacklist", "ntsync", ..] | ["install", "ntsync", ..])
+            });
+            if blocks {
+                return Some(file.display().to_string());
+            }
+        }
+    }
+    cmdline
+        .split_whitespace()
+        .filter_map(|arg| arg.strip_prefix("module_blacklist=").or_else(|| arg.strip_prefix("modprobe.blacklist=")))
+        .any(|list| list.split(',').any(|name| name == "ntsync"))
+        .then(|| t("la ligne de commande du noyau", "the kernel command line"))
+}
+
 /// Service qui fait tourner l'ordonnanceur sched_ext (processus « scx_… »),
 /// d'après son cgroup : « scx_loader.service », ou le chemin entier s'il
 /// n'est pas un service du système.
@@ -1248,6 +1282,19 @@ mod tests {
         assert_eq!(game_env(&pc.proc_dir, "__GL_SHADER_DISK_CACHE_SIZE"), None);
         fs::remove_dir_all(pc.proc_dir.join("1200")).unwrap();
         assert_eq!(game_env(&pc.proc_dir, "__GL_SHADER_DISK_CACHE_SIZE").as_deref(), Some("12000000000"));
+    }
+
+    #[test]
+    fn finds_what_blocks_ntsync_at_boot() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path().join("a/10-sons.conf"), "blacklist pcspkr\n");
+        assert_eq!(ntsync_blocker(&[&dir.path().join("a")], "quiet splash"), None);
+        write(dir.path().join("b/50-wine.conf"), "# vieux guide\nblacklist ntsync\n");
+        let found = ntsync_blocker(&[&dir.path().join("a"), &dir.path().join("b")], "").unwrap();
+        assert!(found.ends_with("b/50-wine.conf"), "{found}");
+        assert!(ntsync_blocker(&[], "root=/dev/sda2 module_blacklist=nouveau,ntsync").is_some());
+        assert!(ntsync_blocker(&[], "modprobe.blacklist=ntsync").is_some());
+        assert_eq!(ntsync_blocker(&[], "module_blacklist=nouveau"), None);
     }
 
     #[test]

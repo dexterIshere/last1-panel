@@ -11,6 +11,24 @@ use std::path::Path;
 
 const ZRAM_GENERATOR: &str = "/usr/lib/systemd/system-generators/zram-generator";
 
+/// Service de démarrage de NTSync (voir Fix::Ntsync).
+const NTSYNC_UNIT: &str = "[Unit]
+Description=Last1 Panel : NTSync pour les jeux (Proton)
+DefaultDependencies=no
+After=systemd-modules-load.service
+Before=sysinit.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=modprobe --ignore-install ntsync
+ExecStartPost=-chmod 0666 /dev/ntsync
+
+[Install]
+WantedBy=sysinit.target
+";
+
 /// Script d'administrateur pour `fixes` (rien s'il n'y a rien à faire en
 /// administrateur). `etc` : /etc, ou un dossier de test. `power_profiles` :
 /// power-profiles-daemon présent (le mode performance passe alors par lui,
@@ -41,12 +59,20 @@ pub fn root_script(
     for fix in fixes {
         match fix {
             // Chargé à chaque démarrage, ouvert à tous les comptes (Proton
-            // l'ouvre sous le compte du joueur).
+            // l'ouvre sous le compte du joueur). Par un service à nous, qui
+            // le demande nommément : systemd-modules-load respecte les
+            // « blacklist ntsync » de modprobe.d et le saute alors sans rien
+            // dire (module-util.c, KMOD_PROBE_APPLY_BLACKLIST) ; modprobe
+            // --ignore-install passe aussi les « install ntsync /bin/false ».
             Fix::Ntsync => parts.push(format!(
-                r#"mkdir -p {etc}/modules-load.d {etc}/udev/rules.d
+                r#"mkdir -p {etc}/modules-load.d {etc}/udev/rules.d {etc}/systemd/system
 echo ntsync > {etc}/modules-load.d/last1-panel-ntsync.conf
 echo 'KERNEL=="ntsync", MODE="0666"' > {etc}/udev/rules.d/99-last1-panel-ntsync.rules
-modprobe ntsync
+cat > {etc}/systemd/system/last1-panel-ntsync.service <<'UNIT'
+{NTSYNC_UNIT}UNIT
+systemctl daemon-reload
+systemctl enable last1-panel-ntsync.service
+modprobe --ignore-install ntsync
 chmod 0666 /dev/ntsync"#
             )),
             // 12 Go pour NVIDIA et pour Mesa (AMD, Intel), comme go-to-linux ;
@@ -194,6 +220,9 @@ mod tests {
         for expected in [
             "/etc/modules-load.d/last1-panel-ntsync.conf",
             "/etc/udev/rules.d/99-last1-panel-ntsync.rules",
+            "/etc/systemd/system/last1-panel-ntsync.service",
+            "systemctl enable last1-panel-ntsync.service",
+            "ExecStart=modprobe --ignore-install ntsync",
             "__GL_SHADER_DISK_CACHE_SIZE=12000000000",
             "/etc/environment.d/90-last1-panel-shader-cache.conf",
             "/etc/sysctl.d/99-last1-panel-split-lock.conf",
@@ -221,6 +250,32 @@ mod tests {
         assert_eq!(root_script(&[Fix::LowLatency, Fix::WrapGames], Path::new("/etc"), false, true, &[]).unwrap(), None);
         // Sans pacman, MangoHud ne s'installe pas d'ici.
         assert!(root_script(&[Fix::InstallMangoHud], Path::new("/etc"), false, false, &[]).is_err());
+    }
+
+    #[test]
+    fn ntsync_boot_service_is_written() {
+        // Le script lancé pour de vrai, avec de faux systemctl, modprobe et
+        // chmod (notés dans calls) : le service écrit, puis activé.
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        for tool in ["systemctl", "modprobe", "chmod"] {
+            let path = bin.join(tool);
+            fs::write(&path, format!("#!/bin/sh\necho \"{tool} $*\" >> {}/calls\n", dir.path().display())).unwrap();
+            fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        }
+        let etc = dir.path().join("etc");
+        let script = root_script(&[Fix::Ntsync], &etc, false, true, &[]).unwrap().unwrap();
+        let path = format!("{}:/usr/bin:/bin", bin.display());
+        assert!(Command::new("/bin/sh").args(["-c", &script]).env("PATH", path).status().unwrap().success());
+        let unit = fs::read_to_string(etc.join("systemd/system/last1-panel-ntsync.service")).unwrap();
+        assert_eq!(unit, NTSYNC_UNIT);
+        assert_eq!(fs::read_to_string(etc.join("modules-load.d/last1-panel-ntsync.conf")).unwrap(), "ntsync\n");
+        let calls = fs::read_to_string(dir.path().join("calls")).unwrap();
+        assert_eq!(
+            calls,
+            "systemctl daemon-reload\nsystemctl enable last1-panel-ntsync.service\nmodprobe --ignore-install ntsync\nchmod 0666 /dev/ntsync\n"
+        );
     }
 
     #[test]
