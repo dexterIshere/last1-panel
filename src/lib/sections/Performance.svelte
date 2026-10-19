@@ -40,6 +40,16 @@
     try {
       notices = await api.performanceFix(kinds);
       await load();
+      // Relu après coup : un réglage qui n'a pas pris le dit, jamais rien
+      // de muet.
+      const stuck = kinds.filter((kind) => kind !== "restart" && report?.checks.some((c) => c.fix === kind));
+      if (stuck.length > 0) {
+        notices = [];
+        error = t(
+          `Pas pris effet : ${stuck.map(fixLabel).join(", ")}. Le rapport de ce PC (« Copier le rapport ») dit pourquoi.`,
+          `Did not take effect: ${stuck.map(fixLabel).join(", ")}. This PC's report (“Copy the report”) says why.`,
+        );
+      }
     } catch (e) {
       error = errorMessage(e);
     }

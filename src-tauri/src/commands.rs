@@ -388,6 +388,12 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
             SystemExec::default().run_ok("systemctl", &["reboot".into()])?;
         }
         let mut notices = Vec::new();
+        if fixes.contains(&Fix::Zram) {
+            notices.push(t(
+                "Mémoire compressée activée : les programmes en arrière-plan restent en mémoire, même après un redémarrage.",
+                "Compressed memory on: background programs stay in memory, even after a restart.",
+            ));
+        }
         if fixes.contains(&Fix::ShaderCache) {
             notices.push(t(
                 "Cache des shaders agrandi : il vaudra après une déconnexion-reconnexion (ou un redémarrage).",

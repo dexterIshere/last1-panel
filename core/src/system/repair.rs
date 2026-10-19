@@ -78,7 +78,9 @@ for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do if [ -e "$f" 
             }
             // Mémoire compressée, comme CachyOS (zram de la taille de la RAM,
             // zstd, avant l'échange sur disque) ; la configuration de
-            // zram-generator déjà là est gardée.
+            // zram-generator déjà là est gardée. Le service de préparation ne
+            // fait que créer le périphérique : c'est dev-zram0.swap qui le met
+            // en service (swapon). Vérifié à la fin : sinon, une erreur.
             Fix::Zram => {
                 if !pacman && !Path::new(ZRAM_GENERATOR).exists() {
                     return Err(CoreError::message(t(
@@ -93,7 +95,8 @@ mkdir -p {etc}/sysctl.d
 printf '%s\n' 'vm.swappiness = 150' 'vm.page-cluster = 0' > {etc}/sysctl.d/99-last1-panel-zram.conf
 sysctl -q -p {etc}/sysctl.d/99-last1-panel-zram.conf
 systemctl daemon-reload
-systemctl start systemd-zram-setup@zram0.service"#
+systemctl start dev-zram0.swap || systemctl start swap.target
+if ! grep -q '^/dev/zram' /proc/swaps; then echo "zram ne s'est pas activé (zramctl, journalctl -b -u systemd-zram-setup@zram0)" >&2; exit 1; fi"#
                 ));
             }
             Fix::Performance | Fix::LowLatency | Fix::WrapGames | Fix::Restart => {}
@@ -140,7 +143,7 @@ mod tests {
             "/etc/tmpfiles.d/last1-panel-performance.conf",
             "pacman -S --needed --noconfirm mangohud",
             "/etc/systemd/zram-generator.conf",
-            "systemd-zram-setup@zram0.service",
+            "systemctl start dev-zram0.swap",
         ] {
             assert!(script.contains(expected), "{expected}\n{script}");
         }

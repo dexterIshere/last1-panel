@@ -522,25 +522,22 @@ pub fn run(src: &Sources) -> Report {
     if zram_kib >= 1_048_576 {
         facts.push((t("Mémoire compressée (zram)", "Compressed memory (zram)"), format!("{} Go", gib(zram_kib))));
     }
-    if disk_kib > 1_048_576 {
+    // zram en service : le disque ne sert que quand il est plein (ou garde
+    // ce qui y était avant) ; rien à faire, un fait.
+    if disk_kib > 1_048_576 && zram_on {
+        facts.push((t("Mémoire d'échange sur le disque", "Swap on disk"), format!("{} Go", gib(disk_kib))));
+    } else if disk_kib > 1_048_576 {
         let used = gib(disk_kib);
         checks.push(Check {
-            fix: (!zram_on && src.can_zram).then_some(Fix::Zram),
+            fix: src.can_zram.then_some(Fix::Zram),
             ..check(
                 "swap",
                 Level::Info,
                 t("Conseil : mémoire bien remplie pendant les parties", "Tip: memory is quite full while playing"),
-                if zram_on {
-                    t(
-                        &format!("{used} Go de programmes en arrière-plan sont sur le disque pour laisser la mémoire au jeu ; si une partie saccade, fermer le navigateur peut aider."),
-                        &format!("{used} GB of background programs are on the disk to leave memory to the game; if a game stutters, closing the browser can help."),
-                    )
-                } else {
-                    t(
-                        &format!("{used} Go de programmes en arrière-plan sont sur le disque pour laisser la mémoire au jeu. La mémoire compressée (zram, comme CachyOS) les garderait en mémoire, bien plus vite à reprendre."),
-                        &format!("{used} GB of background programs are on the disk to leave memory to the game. Compressed memory (zram, like CachyOS) would keep them in memory, much faster to bring back."),
-                    )
-                },
+                t(
+                    &format!("{used} Go de programmes en arrière-plan sont sur le disque pour laisser la mémoire au jeu. La mémoire compressée (zram, comme CachyOS) les garderait en mémoire, bien plus vite à reprendre."),
+                    &format!("{used} GB of background programs are on the disk to leave memory to the game. Compressed memory (zram, like CachyOS) would keep them in memory, much faster to bring back."),
+                ),
             )
         });
     }
@@ -864,14 +861,15 @@ mod tests {
         let cachyos = report(None);
         assert!(cachyos.checks.iter().all(|c| c.id != "swap"));
         assert!(cachyos.facts.iter().any(|(name, value)| name.contains("zram") && value == "6 Go"));
-        // zram plein, le disque prend le relais : un conseil, sans bouton.
+        // zram en service, et ce qui était déjà sur le disque y reste : plus
+        // rien à faire (le bouton a marché), un fait.
         write(
             pc.proc_dir.join("swaps"),
-            "Filename\tType\tSize\tUsed\tPriority\n/dev/zram0 partition\t16318460\t16318460\t100\n/swap/swapfile file\t8388604\t2097152\t10\n",
+            "Filename\tType\tSize\tUsed\tPriority\n/dev/zram0 partition\t16318460\t0\t100\n/swap/swapfile file\t8388604\t7340032\t-2\n",
         );
-        let swap = report(None).checks.into_iter().find(|c| c.id == "swap").unwrap();
-        assert_eq!((swap.level, swap.fix), (Level::Info, None));
-        assert!(swap.title.starts_with("Conseil"));
+        let after = report(None);
+        assert!(after.checks.iter().all(|c| c.id != "swap"));
+        assert!(after.facts.iter().any(|(name, value)| name.contains("disque") && value == "7 Go"));
         // La carte ne se redimensionne pas : rien à régler dans le BIOS.
         let rebar = arch.checks.iter().find(|c| c.id == "rebar").unwrap();
         assert_eq!(rebar.level, Level::Ok);
