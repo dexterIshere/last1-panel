@@ -4,11 +4,12 @@
 //! charge du processeur et de la carte, et ce qui limite le jeu. C'est ce
 //! qui dit, sur les PC des joueurs, pourquoi un jeu perd des images.
 
+use crate::system::game_context::{self, GameContext};
 use serde::Serialize;
 use std::fs;
 use std::path::Path;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameSession {
     /// Programme mesuré (exécutable Windows sous Proton : « PioneerGame.exe »).
@@ -27,6 +28,19 @@ pub struct GameSession {
     /// « loading » (presque que du chargement : écran de compilation des
     /// shaders, menus figés), « ? ».
     pub limit: &'static str,
+    /// Carte qui a dessiné le jeu, d'après MangoHud (en tête de son journal).
+    pub gpu_name: Option<String>,
+    /// Puissance de la carte (W) : moyenne et la plus haute ; 0 : inconnue.
+    pub gpu_power: f64,
+    pub gpu_power_max: f64,
+    /// Températures les plus hautes (°C) ; 0 : inconnues.
+    pub gpu_temp_max: f64,
+    pub cpu_temp_max: f64,
+    /// Fréquence moyenne du processeur (MHz) ; 0 : inconnue.
+    pub cpu_mhz: f64,
+    /// Ce qui entourait la partie (secteur, modes de puissance, freins de
+    /// la carte…), relevé par le service de la session (game_context.rs).
+    pub context: Option<GameContext>,
 }
 
 /// Les `count` dernières parties d'au moins une minute, de la plus récente à
@@ -47,7 +61,9 @@ pub fn recent(dir: &Path, count: usize) -> Vec<GameSession> {
         .iter()
         .filter_map(|path| {
             let name = path.file_stem()?.to_string_lossy().into_owned();
-            summarize(&name, &fs::read_to_string(path).ok()?)
+            let mut session = summarize(&name, &fs::read_to_string(path).ok()?)?;
+            session.context = game_context::load(path);
+            Some(session)
         })
         .filter(|session| session.minutes >= 1.0)
         .take(count)
@@ -69,6 +85,7 @@ pub fn prune(dir: &Path, keep: usize) {
     logs.sort_by_key(|path| std::cmp::Reverse(date_of(path).unwrap_or_default()));
     for old in logs.iter().skip(keep) {
         let _ = fs::remove_file(old);
+        let _ = fs::remove_file(game_context::file_for(old));
         let _ = fs::remove_file(old.with_file_name(format!(
             "{}_summary.csv",
             old.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
@@ -89,6 +106,10 @@ struct Row {
     cpu: Option<f64>,
     gpu: Option<f64>,
     clock: Option<f64>,
+    gpu_power: Option<f64>,
+    gpu_temp: Option<f64>,
+    cpu_temp: Option<f64>,
+    cpu_mhz: Option<f64>,
 }
 
 impl Row {
@@ -101,8 +122,24 @@ impl Row {
 
 /// Résumé d'un journal ; `name` : son nom sans « .csv ».
 pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
+    // En tête : « os,cpu,gpu,… » puis ses valeurs : la carte qui a dessiné.
     let mut lines = text.lines();
-    let header: Vec<&str> = lines.by_ref().find(|line| line.starts_with("fps,"))?.split(',').collect();
+    let mut gpu_name = None;
+    let mut previous: Option<&str> = None;
+    let header: Vec<&str> = loop {
+        let line = lines.next()?;
+        if line.starts_with("fps,") {
+            break line.split(',').collect();
+        }
+        if let Some(names) = previous.filter(|p| p.starts_with("os,")) {
+            let position = names.split(',').position(|name| name.trim() == "gpu");
+            gpu_name = position
+                .and_then(|i| line.split(',').nth(i))
+                .map(|name| name.trim().to_string())
+                .filter(|name| !name.is_empty());
+        }
+        previous = Some(line);
+    };
     let column = |key: &str| header.iter().position(|h| h.trim() == key);
     let (fps_col, frametime_col) = (column("fps")?, column("frametime")?);
     let (cpu_col, gpu_col, clock_col, elapsed_col) =
@@ -117,7 +154,19 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         if fps <= 0.0 || frametime <= 0.0 {
             continue;
         }
-        rows.push(Row { fps, frametime, cpu: at(cpu_col), gpu: at(gpu_col), clock: at(clock_col) });
+        // 0 : valeur que MangoHud n'a pas pu lire.
+        let known = |col: Option<usize>| at(col).filter(|v| *v > 0.0);
+        rows.push(Row {
+            fps,
+            frametime,
+            cpu: at(cpu_col),
+            gpu: at(gpu_col),
+            clock: at(clock_col),
+            gpu_power: known(column("gpu_power")),
+            gpu_temp: known(column("gpu_temp")),
+            cpu_temp: known(column("cpu_temp")),
+            cpu_mhz: known(column("cpu_mhz")),
+        });
         if let Some(e) = at(elapsed_col) {
             elapsed_ns = elapsed_ns.max(e);
         }
@@ -135,6 +184,9 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     let cpu: Vec<f64> = used.iter().filter_map(|row| row.cpu).collect();
     let gpu: Vec<f64> = used.iter().filter_map(|row| row.gpu).collect();
     let clock: Vec<f64> = used.iter().filter_map(|row| row.clock).collect();
+    let gpu_power: Vec<f64> = used.iter().filter_map(|row| row.gpu_power).collect();
+    let cpu_mhz: Vec<f64> = used.iter().filter_map(|row| row.cpu_mhz).collect();
+    let highest = |values: Vec<f64>| values.into_iter().fold(0.0_f64, f64::max);
     let mean = |v: &[f64]| if v.is_empty() { 0.0 } else { v.iter().sum::<f64>() / v.len() as f64 };
     // 1 % les plus lentes : le temps d'image au 99e centile.
     frametimes.sort_by(f64::total_cmp);
@@ -167,6 +219,13 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         gpu_load: round(gpu_load),
         gpu_clock: mean(&clock).round(),
         limit,
+        gpu_name,
+        gpu_power: round(mean(&gpu_power)),
+        gpu_power_max: round(highest(gpu_power.clone())),
+        gpu_temp_max: highest(used.iter().filter_map(|row| row.gpu_temp).collect()),
+        cpu_temp_max: highest(used.iter().filter_map(|row| row.cpu_temp).collect()),
+        cpu_mhz: mean(&cpu_mhz).round(),
+        context: None,
     })
 }
 
@@ -201,6 +260,11 @@ mod tests {
         assert_eq!(session.fps_one_percent_low, 20.0);
         assert_eq!((session.cpu_load, session.gpu_load, session.gpu_clock), (45.0, 60.0, 2610.0));
         assert_eq!(session.limit, "cpu");
+        // Ce que MangoHud mesure aussi : la carte qui a dessiné, sa puissance,
+        // les températures, la fréquence du processeur.
+        assert_eq!(session.gpu_name.as_deref(), Some("GeForce RTX 4070"));
+        assert_eq!((session.gpu_power, session.gpu_power_max), (180.0, 180.0));
+        assert_eq!((session.gpu_temp_max, session.cpu_temp_max, session.cpu_mhz), (66.0, 70.0, 5100.0));
     }
 
     #[test]

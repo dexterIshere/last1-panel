@@ -225,7 +225,7 @@ fn watch() -> ExitCode {
     std::thread::spawn(watch_updates);
     std::thread::spawn(watch_shaders);
     std::thread::spawn(watch_own_update);
-    std::thread::spawn(watch_pcie_link);
+    std::thread::spawn(watch_game);
     let tray = last1_panel_core::tray::spawn();
     std::thread::sleep(Duration::from_secs(3));
     apply_until_ready(20);
@@ -316,15 +316,22 @@ fn restart_after_update() -> ! {
     std::process::exit(75);
 }
 
-/// Liaison PCI Express des cartes graphiques pendant les parties : au repos,
-/// le pilote peut la réduire ; le diagnostic juge sur celle mesurée en jeu.
-/// Relevée toutes les 20 s pendant une partie Steam ; la plus large de la
-/// dernière partie est gardée (paths::pcie_in_game_file).
-fn watch_pcie_link() {
+/// Pendant les parties Steam : la liaison PCI Express des cartes (toutes
+/// les 20 s ; au repos, le pilote peut la réduire, le diagnostic juge sur
+/// celle mesurée en jeu, la plus large gardée), et une fois par minute ce qui
+/// entoure la partie et que MangoHud ne voit pas (system/game_context.rs),
+/// gardé à côté de son journal.
+fn watch_game() {
+    use last1_panel_core::exec::SystemExec;
     use last1_panel_core::games::steam;
     use last1_panel_core::system::diagnostic::link_now;
+    use last1_panel_core::system::game_context;
     let file = last1_panel_core::paths::pcie_in_game_file();
+    let logs = last1_panel_core::paths::game_logs_dir();
+    let sys = std::path::Path::new("/sys");
+    let exec = SystemExec { timeout: Duration::from_secs(10), ..SystemExec::default() };
     let mut playing = false;
+    let mut tick: u32 = 0;
     // Par carte : la plus large, la plus rapide.
     let mut best: std::collections::BTreeMap<String, (u32, Option<f64>)> = std::collections::BTreeMap::new();
     loop {
@@ -336,9 +343,12 @@ fn watch_pcie_link() {
         if !playing {
             playing = true;
             best.clear();
+            tick = 0;
         }
-        for gpu in gpu::detect(&SysPaths::default()).iter().filter(|g| g.discrete()) {
-            if let Some((width, speed)) = link_now(std::path::Path::new("/sys"), gpu) {
+        tick += 1;
+        let gpus = gpu::detect(&SysPaths::default());
+        for gpu in gpus.iter().filter(|g| g.discrete()) {
+            if let Some((width, speed)) = link_now(sys, gpu) {
                 let entry = best.entry(gpu.pci_slot.clone()).or_insert((width, speed));
                 entry.0 = entry.0.max(width);
                 entry.1 = match (entry.1, speed) {
@@ -358,6 +368,14 @@ fn watch_pcie_link() {
             let _ = std::fs::create_dir_all(dir);
         }
         let _ = std::fs::write(&file, text);
+        // Une fois par minute : le relevé de la partie, à côté de son journal.
+        if tick % 3 == 1
+            && let Some(log) = game_context::current_log(&logs)
+        {
+            let mut context = game_context::load(&log).unwrap_or_default();
+            context.add(&game_context::sample(sys, &exec, &gpus));
+            game_context::save(&log, &context);
+        }
     }
 }
 

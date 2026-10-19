@@ -1271,9 +1271,87 @@ fn text(facts: &[(String, String)], checks: &[Check], sessions: &[GameSession]) 
                 s.gpu_load,
                 s.gpu_clock
             ));
+            let details = session_details(s);
+            if !details.is_empty() {
+                text.push_str(&format!("    {}\n", details.join(" ; ")));
+            }
         }
     }
     text
+}
+
+/// Ce qui explique une partie, au-delà des images par seconde : la carte
+/// qui l'a dessinée, puissance et températures (MangoHud), et ce que le
+/// service a relevé autour (secteur, modes, freins de la carte…).
+fn session_details(s: &GameSession) -> Vec<String> {
+    let mut details = Vec::new();
+    if let Some(gpu) = &s.gpu_name {
+        details.push(t(&format!("dessinée par {gpu}"), &format!("drawn by {gpu}")));
+    }
+    if s.gpu_power > 0.0 {
+        details.push(t(
+            &format!("carte {} W (au plus {} W)", s.gpu_power, s.gpu_power_max),
+            &format!("card {} W (at most {} W)", s.gpu_power, s.gpu_power_max),
+        ));
+    }
+    if s.gpu_temp_max > 0.0 {
+        details.push(t(&format!("carte jusqu'à {} °C", s.gpu_temp_max), &format!("card up to {} °C", s.gpu_temp_max)));
+    }
+    if s.cpu_temp_max > 0.0 || s.cpu_mhz > 0.0 {
+        details.push(t(
+            &format!("processeur jusqu'à {} °C, {} MHz en moyenne", s.cpu_temp_max, s.cpu_mhz),
+            &format!("CPU up to {} °C, {} MHz on average", s.cpu_temp_max, s.cpu_mhz),
+        ));
+    }
+    let Some(c) = &s.context else { return details };
+    if c.on_battery {
+        details.push(t("sur batterie", "on battery"));
+    }
+    if !c.platform_profiles.is_empty() {
+        details.push(t(
+            &format!("mode du PC {}", c.platform_profiles.join("/")),
+            &format!("PC mode {}", c.platform_profiles.join("/")),
+        ));
+    }
+    if !c.cpu_preferences.is_empty() {
+        details.push(t(
+            &format!("processeur en {}", c.cpu_preferences.join("/")),
+            &format!("CPU at {}", c.cpu_preferences.join("/")),
+        ));
+    }
+    if let (Some(limit), Some(max)) = (c.gpu_power_limit, c.gpu_power_limit_max) {
+        details.push(t(
+            &format!("limite de la carte {limit} W sur {max} W possibles"),
+            &format!("card limit {limit} W of {max} W possible"),
+        ));
+    }
+    if !c.gpu_throttle.is_empty() {
+        let names: Vec<String> = c
+            .gpu_throttle
+            .iter()
+            .map(|reason| match reason.as_str() {
+                "power" => t("limite de puissance", "power limit"),
+                "thermal" => t("chaleur", "heat"),
+                "power-brake" => t("frein du chargeur", "charger brake"),
+                "hw-slowdown" => t("ralentissement matériel", "hardware slowdown"),
+                other => other.to_string(),
+            })
+            .collect();
+        details.push(t(
+            &format!("carte freinée : {}", names.join(", ")),
+            &format!("card held back: {}", names.join(", ")),
+        ));
+    }
+    if c.nvidia_powerd == Some(false) {
+        details.push(t("Dynamic Boost (nvidia-powerd) arrêté", "Dynamic Boost (nvidia-powerd) stopped"));
+    }
+    if c.through_other_gpu {
+        details.push(t(
+            "image affichée par une autre puce (portable hybride)",
+            "image shown through another chip (hybrid laptop)",
+        ));
+    }
+    details
 }
 
 /// Plus grande fenêtre préchargeable de la carte (sa mémoire vue par le
@@ -1443,6 +1521,7 @@ mod tests {
                 gpu_load: 60.0,
                 gpu_clock: 2610.0,
                 limit: "cpu",
+                ..Default::default()
             }],
             mangohud: false,
             wrapped_games: Some((0, 3)),
@@ -1547,6 +1626,7 @@ mod tests {
                 gpu_load: 98.0,
                 gpu_clock: 2745.0,
                 limit: "gpu",
+                ..Default::default()
             }],
             mangohud: true,
             wrapped_games: Some((1, 1)),
@@ -1716,6 +1796,48 @@ mod tests {
         let restart = find("driver-restart").unwrap();
         assert_eq!((restart.level, restart.fix), (Level::Info, Some(Fix::Restart)));
         assert!(!report.text.contains("go-to-linux"));
+    }
+
+    #[test]
+    fn game_details_explain_a_laptop_session() {
+        let session = GameSession {
+            program: "PioneerGame.exe".into(),
+            started: "2026-10-19 20:00".into(),
+            minutes: 40.0,
+            fps_average: 77.0,
+            fps_one_percent_low: 52.0,
+            cpu_load: 41.0,
+            gpu_load: 98.0,
+            gpu_clock: 1395.0,
+            limit: "gpu",
+            gpu_name: Some("GeForce RTX 3070 Laptop GPU".into()),
+            gpu_power: 79.4,
+            gpu_power_max: 80.1,
+            gpu_temp_max: 86.0,
+            cpu_temp_max: 97.0,
+            cpu_mhz: 3100.0,
+            context: Some(crate::system::game_context::GameContext {
+                samples: 40,
+                on_battery: false,
+                platform_profiles: vec!["balanced".into()],
+                cpu_preferences: vec!["balance_performance".into()],
+                gpu_power_limit: Some(80.0),
+                gpu_power_limit_max: Some(125.0),
+                gpu_throttle: vec!["power".into()],
+                nvidia_powerd: Some(false),
+                through_other_gpu: true,
+            }),
+        };
+        let line = session_details(&session).join(" ; ");
+        assert_eq!(
+            line,
+            "dessinée par GeForce RTX 3070 Laptop GPU ; carte 79.4 W (au plus 80.1 W) ; carte jusqu'à 86 °C ; \
+             processeur jusqu'à 97 °C, 3100 MHz en moyenne ; mode du PC balanced ; processeur en balance_performance ; \
+             limite de la carte 80 W sur 125 W possibles ; carte freinée : limite de puissance ; \
+             Dynamic Boost (nvidia-powerd) arrêté ; image affichée par une autre puce (portable hybride)"
+        );
+        // Rien de relevé : rien d'inventé.
+        assert!(session_details(&GameSession::default()).is_empty());
     }
 
     #[test]

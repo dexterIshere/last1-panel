@@ -246,6 +246,7 @@ mod tests {
                     gpu_load: 60.0,
                     gpu_clock: 1900.0,
                     limit: "cpu",
+                    ..Default::default()
                 })
                 .collect(),
             text: "nelly".into(),
