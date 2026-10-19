@@ -150,7 +150,13 @@ pub fn run(src: &Sources) -> Report {
         t("Ordonnanceur", "Scheduler"),
         scheduler.clone().unwrap_or_else(|| t("celui du noyau", "the kernel's")),
     ));
-    facts.push((t("Noyau", "Kernel"), read(&src.proc_dir.join("sys/kernel/osrelease")).unwrap_or_else(unknown)));
+    let osrelease = read(&src.proc_dir.join("sys/kernel/osrelease"));
+    // « 7.2.7-arch1-1 » : (7, 2).
+    let kernel = osrelease.as_deref().and_then(|release| {
+        let mut numbers = release.split(|c: char| !c.is_ascii_digit()).map(|n| n.parse::<u32>().ok());
+        Some((numbers.next()??, numbers.next()??))
+    });
+    facts.push((t("Noyau", "Kernel"), osrelease.unwrap_or_else(unknown)));
     facts.push((t("Bureau", "Desktop"), format!("{:?}", src.desktop)));
     for gpu in src.gpus {
         facts.push((
@@ -398,13 +404,17 @@ pub fn run(src: &Sources) -> Report {
         if let Some((bar, largest)) = largest_prefetchable_bar(&device.join("resource")) {
             let mib = largest / (1024 * 1024);
             // Tailles que la carte accepte pour cette fenêtre (bit n : 2^n Mo,
-            // noyau 6.1 et plus) ; sans ce fichier, elle ne se redimensionne
-            // pas (GeForce RTX 20 et plus anciennes) : rien à régler.
-            let resizable = read(&device.join(format!("resource{bar}_resize")))
-                .and_then(|hex| u64::from_str_radix(hex.trim_start_matches("0x"), 16).ok())
-                .filter(|sizes| *sizes != 0)
-                .map(|sizes| 1u64 << (63 - sizes.leading_zeros()))
-                .is_some_and(|max_mib| max_mib > mib);
+            // lisible par tous depuis le noyau 6.1) ; sans ce fichier, elle ne
+            // se redimensionne pas (GeForce RTX 20 et plus anciennes) : rien à
+            // régler. Noyau plus ancien : on ne sait pas, l'alerte reste.
+            let resizable = match read(&device.join(format!("resource{bar}_resize"))) {
+                Some(hex) => u64::from_str_radix(hex.trim_start_matches("0x"), 16)
+                    .ok()
+                    .filter(|sizes| *sizes != 0)
+                    .map(|sizes| 1u64 << (63 - sizes.leading_zeros()))
+                    .is_some_and(|max_mib| max_mib > mib),
+                None => kernel.is_some_and(|version| version < (6, 1)),
+            };
             checks.push(if mib <= 256 && !resizable {
                 check(
                     "rebar",
@@ -798,6 +808,11 @@ mod tests {
         // La carte ne se redimensionne pas : rien à régler dans le BIOS.
         let rebar = arch.checks.iter().find(|c| c.id == "rebar").unwrap();
         assert_eq!(rebar.level, Level::Ok);
+        // Noyau d'avant 6.1, sans ce fichier pour aucune carte : l'alerte reste.
+        write(pc.proc_dir.join("sys/kernel/osrelease"), "5.15.0-91-generic\n");
+        assert_eq!(report(false).checks.iter().find(|c| c.id == "rebar").unwrap().level, Level::Warning);
+        write(pc.proc_dir.join("sys/kernel/osrelease"), "7.2.7-arch1-1\n");
+        assert_eq!(report(false).checks.iter().find(|c| c.id == "rebar").unwrap().level, Level::Ok);
         // Jusqu'à 256 Mo seulement : pareil.
         write(device.join("resource1_resize"), "00000000000001c0\n");
         assert_eq!(report(false).checks.iter().find(|c| c.id == "rebar").unwrap().level, Level::Ok);
