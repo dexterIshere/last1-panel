@@ -13,6 +13,10 @@ export interface Gpu {
   driver: string | null;
   driverVersion: string | null;
   bootVga: boolean;
+  /** Puce intégrée au processeur. */
+  integrated: boolean;
+  /** La carte des jeux (core/src/system/gpu.rs, choose_games). */
+  games: boolean;
 }
 
 export interface Features {

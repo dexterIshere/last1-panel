@@ -25,7 +25,7 @@ use last1_panel_core::i18n::{self, t};
 use last1_panel_core::panel::Panel;
 use last1_panel_core::settings::Settings;
 use last1_panel_core::system::desktop;
-use last1_panel_core::system::gpu::{self, SysPaths, Vendor};
+use last1_panel_core::system::gpu::{self, SysPaths};
 use last1_panel_core::update;
 use std::io::{BufRead, BufReader};
 use std::os::unix::process::CommandExt;
@@ -78,11 +78,8 @@ fn run(command: &[String]) -> ExitCode {
         None => settings.games.global.clone(),
     };
     let gpus = gpu::detect(&SysPaths::default());
-    let nvidia = gpus.iter().any(|g| g.vendor == Vendor::Nvidia);
     let context = Context {
         proton: launch::is_proton(command),
-        nvidia,
-        amd: !nvidia && gpus.iter().any(|g| g.vendor == Vendor::Amd),
         tools: ["game-performance", "powerprofilesctl", "gamemoderun", "dlss-swapper", "mangohud"]
             .iter()
             .filter(|tool| last1_panel_core::exec::which(tool).is_some())
@@ -94,7 +91,9 @@ fn run(command: &[String]) -> ExitCode {
         hdr_screen: Panel::session()
             .outputs()
             .is_ok_and(|outputs| outputs.iter().any(|output| output.enabled && output.hdr == Some(true))),
-    };
+        ..Context::default()
+    }
+    .with_gpus(&gpus);
     let mut plan = launch::plan(&profile, &context);
     // Profil de couleurs du jeu, dans sa seule fenêtre (vkBasalt) ; en cas
     // d'échec, le jeu part avec les couleurs de l'écran.
@@ -306,8 +305,7 @@ fn watch_pcie_link() {
             playing = true;
             best.clear();
         }
-        for gpu in gpu::detect(&SysPaths::default()).iter().filter(|g| matches!(g.vendor, Vendor::Nvidia | Vendor::Amd))
-        {
+        for gpu in gpu::detect(&SysPaths::default()).iter().filter(|g| g.discrete()) {
             if let Some((width, speed)) = link_now(std::path::Path::new("/sys"), gpu) {
                 let entry = best.entry(gpu.pci_slot.clone()).or_insert((width, speed));
                 entry.0 = entry.0.max(width);

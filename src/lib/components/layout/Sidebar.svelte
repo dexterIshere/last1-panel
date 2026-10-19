@@ -73,6 +73,9 @@
       <div class="pc__gpu">
         <span class="badge" class:badge--info={gpu.vendor === "nvidia"}>{gpu.vendor === "other" ? "GPU" : gpu.vendor.toUpperCase()}</span>
         <span class="pc__name">{gpu.name ?? gpu.pciSlot}</span>
+        {#if (app.system?.gpus.length ?? 0) > 1}
+          <span class="pc__role">{gpu.games ? t("jeux", "games") : gpu.integrated ? t("intégrée", "integrated") : ""}</span>
+        {/if}
         {#if gpu.driver}<span class="pc__driver mono">{gpu.driver}{gpu.driverVersion ? ` ${gpu.driverVersion}` : ""}</span>{/if}
       </div>
     {/each}
@@ -251,6 +254,11 @@
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .pc__role {
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
   }
 
   .pc__driver {

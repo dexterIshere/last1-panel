@@ -41,8 +41,15 @@ pub struct Gpu {
     pub driver: Option<String>,
     /// Version du pilote NVIDIA (module nvidia), pour nvibrant.
     pub driver_version: Option<String>,
-    /// Carte qui affichait le démarrage (la principale).
+    /// Carte qui affichait le démarrage (la principale : le bureau y est
+    /// dessiné).
     pub boot_vga: bool,
+    /// Puce intégrée au processeur : Intel sur le bus du processeur, AMD que
+    /// son pilote (KFD) décrit à la fois comme processeur et puce graphique.
+    pub integrated: bool,
+    /// La carte des jeux (choose_games) : celle où Last1 Panel les fait
+    /// tourner, qu'il mesure et qu'il vérifie.
+    pub games: bool,
     /// Sorties de la carte (noms des connecteurs : DP-1, HDMI-A-1, eDP-1).
     pub connectors: Vec<Connector>,
 }
@@ -113,12 +120,104 @@ pub fn detect(paths: &SysPaths) -> Vec<Gpu> {
                 driver,
                 driver_version,
                 boot_vga: read_trimmed(&device.join("boot_vga")).as_deref() == Some("1"),
+                integrated: false,
+                games: false,
                 connectors,
             })
         })
         .collect();
+    let apus = amd_apus(&paths.sys);
+    for gpu in &mut gpus {
+        gpu.integrated = match gpu.vendor {
+            // Puce Intel intégrée : sur le bus du processeur (00:02.0) ; une
+            // Arc est derrière un port, sur un autre bus.
+            Vendor::Intel => gpu.pci_slot.split(':').nth(1) == Some("00"),
+            Vendor::Amd => apus.contains(&gpu.pci_slot),
+            Vendor::Nvidia => false,
+            // Carte de machine virtuelle, de serveur : rien pour les jeux.
+            Vendor::Other => true,
+        };
+    }
+    choose_games(&mut gpus);
     gpus.sort_by_key(|gpu| !gpu.boot_vga);
     gpus
+}
+
+impl Gpu {
+    /// Carte à part (pas une puce intégrée).
+    pub fn discrete(&self) -> bool {
+        !self.integrated
+    }
+
+    /// Écrans branchés sur elle.
+    pub fn screens(&self) -> usize {
+        self.connectors.iter().filter(|c| c.connected).count()
+    }
+}
+
+/// La carte des jeux, pour tout PC : une carte à part plutôt qu'une puce
+/// intégrée ; entre cartes à part, celle qui affiche le plus d'écrans, puis
+/// NVIDIA, AMD, Intel, puis la principale. Sans carte à part, la puce
+/// intégrée.
+pub fn choose_games(gpus: &mut [Gpu]) {
+    let rank = |gpu: &Gpu| {
+        let vendor = match gpu.vendor {
+            Vendor::Nvidia => 3,
+            Vendor::Amd => 2,
+            Vendor::Intel => 1,
+            Vendor::Other => 0,
+        };
+        (gpu.discrete(), gpu.screens(), vendor, gpu.boot_vga)
+    };
+    for gpu in gpus.iter_mut() {
+        gpu.games = false;
+    }
+    if let Some(best) = (0..gpus.len()).max_by_key(|&i| rank(&gpus[i])) {
+        gpus[best].games = true;
+    }
+}
+
+/// La carte des jeux.
+pub fn games_gpu(gpus: &[Gpu]) -> Option<&Gpu> {
+    gpus.iter().find(|gpu| gpu.games)
+}
+
+/// La carte des jeux, quand ce n'est pas elle qui dessine le bureau (portable
+/// à deux puces, puce intégrée choisie au démarrage) : les jeux doivent lui
+/// être envoyés, sinon ceux en OpenGL tournent sur l'autre.
+pub fn offload(gpus: &[Gpu]) -> Option<&Gpu> {
+    let games = games_gpu(gpus)?;
+    (!games.boot_vga && gpus.iter().any(|gpu| gpu.boot_vga)).then_some(games)
+}
+
+/// Puces AMD intégrées (APU), par emplacement PCI : le pilote (KFD) les
+/// décrit comme un nœud qui a à la fois des cœurs de processeur et des
+/// unités graphiques ; une carte AMD à part n'a que les secondes.
+fn amd_apus(sys: &Path) -> Vec<String> {
+    let Ok(nodes) = fs::read_dir(sys.join("class/kfd/kfd/topology/nodes")) else { return Vec::new() };
+    nodes
+        .flatten()
+        .filter_map(|node| {
+            let properties = fs::read_to_string(node.path().join("properties")).ok()?;
+            let value = |key: &str| {
+                properties.lines().find_map(|line| {
+                    let (name, value) = line.split_once(' ')?;
+                    (name == key).then(|| value.trim().parse::<u64>().ok()).flatten()
+                })
+            };
+            // location_id : bus << 8 | (appareil << 3 | fonction).
+            let location = value("location_id")?;
+            (value("cpu_cores_count")? > 0 && value("simd_count")? > 0).then(|| {
+                format!(
+                    "{:04x}:{:02x}:{:02x}.{:x}",
+                    value("domain").unwrap_or(0),
+                    location >> 8,
+                    (location & 0xff) >> 3,
+                    location & 7
+                )
+            })
+        })
+        .collect()
 }
 
 /// La carte qui porte la sortie `connector` (DP-1…).
@@ -314,5 +413,133 @@ mod tests {
     fn no_drm_means_no_gpu() {
         let root = tempfile::tempdir().unwrap();
         assert!(detect(&SysPaths { sys: root.path().into(), pci_ids: vec![] }).is_empty());
+    }
+
+    #[test]
+    fn integrated_amd_gpu_is_told_by_its_driver() {
+        // Portable Ryzen : Radeon Vega intégrée (écran du portable) + GTX 1650.
+        let root = fake_sys(&[
+            Card {
+                name: "card0",
+                slot: "0000:05:00.0",
+                vendor: "0x1002",
+                device: "0x15d8",
+                driver: "amdgpu",
+                boot_vga: true,
+                connectors: &[("eDP-1", "connected")],
+            },
+            Card {
+                name: "card1",
+                slot: "0000:01:00.0",
+                vendor: "0x10de",
+                device: "0x2786",
+                driver: "nvidia",
+                boot_vga: false,
+                connectors: &[],
+            },
+        ]);
+        // Nœud du pilote AMD avec cœurs et unités graphiques ; 5 << 8 = 1280.
+        let node = root.path().join("class/kfd/kfd/topology/nodes/1");
+        fs::create_dir_all(&node).unwrap();
+        fs::write(node.join("properties"), "cpu_cores_count 8\nsimd_count 32\nlocation_id 1280\ndomain 0\n").unwrap();
+        let gpus = detect(&paths(&root));
+        let roles: Vec<(&str, bool, bool)> = gpus.iter().map(|g| (g.card.as_str(), g.integrated, g.games)).collect();
+        assert_eq!(roles, [("card0", true, false), ("card1", false, true)]);
+        assert_eq!(offload(&gpus).map(|g| g.card.as_str()), Some("card1"));
+    }
+
+    /// Une carte, sans passer par /sys.
+    fn card(vendor: Vendor, slot: &str, boot_vga: bool, integrated: bool, screens: usize) -> Gpu {
+        Gpu {
+            card: format!("card-{slot}"),
+            pci_slot: slot.into(),
+            vendor,
+            vendor_id: 0,
+            device_id: 0,
+            name: None,
+            driver: None,
+            driver_version: None,
+            boot_vga,
+            integrated,
+            games: false,
+            connectors: (0..screens).map(|i| Connector { name: format!("DP-{i}"), connected: true }).collect(),
+        }
+    }
+
+    #[test]
+    fn games_gpu_for_every_kind_of_pc() {
+        use Vendor::*;
+        // (cartes, carte des jeux, envoyée là depuis le bureau)
+        let cases: Vec<(&str, Vec<Gpu>, &str, bool)> = vec![
+            ("NVIDIA seule", vec![card(Nvidia, "0000:01:00.0", true, false, 1)], "0000:01:00.0", false),
+            ("AMD seule", vec![card(Amd, "0000:03:00.0", true, false, 2)], "0000:03:00.0", false),
+            ("puce Intel seule", vec![card(Intel, "0000:00:02.0", true, true, 1)], "0000:00:02.0", false),
+            (
+                "portable Intel + NVIDIA",
+                vec![card(Intel, "0000:00:02.0", true, true, 1), card(Nvidia, "0000:01:00.0", false, false, 0)],
+                "0000:01:00.0",
+                true,
+            ),
+            (
+                "portable Ryzen + NVIDIA",
+                vec![card(Amd, "0000:05:00.0", true, true, 1), card(Nvidia, "0000:01:00.0", false, false, 0)],
+                "0000:01:00.0",
+                true,
+            ),
+            (
+                "portable Ryzen + Radeon",
+                vec![card(Amd, "0000:06:00.0", true, true, 1), card(Amd, "0000:03:00.0", false, false, 0)],
+                "0000:03:00.0",
+                true,
+            ),
+            (
+                "portable en mode carte seule (MUX)",
+                vec![card(Intel, "0000:00:02.0", false, true, 0), card(Nvidia, "0000:01:00.0", true, false, 1)],
+                "0000:01:00.0",
+                false,
+            ),
+            (
+                "PC fixe, puce Intel active, écrans sur la Radeon",
+                vec![card(Intel, "0000:00:02.0", false, true, 0), card(Amd, "0000:03:00.0", true, false, 2)],
+                "0000:03:00.0",
+                false,
+            ),
+            (
+                "PC fixe, démarrage sur la puce Intel, écran sur la NVIDIA",
+                vec![card(Intel, "0000:00:02.0", true, true, 0), card(Nvidia, "0000:01:00.0", false, false, 1)],
+                "0000:01:00.0",
+                true,
+            ),
+            (
+                "Intel Arc + puce Intel",
+                vec![card(Intel, "0000:00:02.0", true, true, 1), card(Intel, "0000:03:00.0", false, false, 0)],
+                "0000:03:00.0",
+                true,
+            ),
+            (
+                "deux cartes : NVIDIA aux écrans, Radeon sans",
+                vec![card(Nvidia, "0000:01:00.0", true, false, 2), card(Amd, "0000:04:00.0", false, false, 0)],
+                "0000:01:00.0",
+                false,
+            ),
+            (
+                "trois : puce Intel, NVIDIA, Radeon aux écrans",
+                vec![
+                    card(Intel, "0000:00:02.0", false, true, 0),
+                    card(Nvidia, "0000:01:00.0", false, false, 0),
+                    card(Amd, "0000:04:00.0", true, false, 1),
+                ],
+                "0000:04:00.0",
+                false,
+            ),
+            ("machine virtuelle", vec![card(Other, "0000:00:01.0", true, true, 1)], "0000:00:01.0", false),
+        ];
+        for (name, mut gpus, games, sent) in cases {
+            choose_games(&mut gpus);
+            assert_eq!(games_gpu(&gpus).map(|g| g.pci_slot.as_str()), Some(games), "{name}");
+            assert_eq!(gpus.iter().filter(|g| g.games).count(), 1, "{name}");
+            assert_eq!(offload(&gpus).is_some(), sent, "{name}");
+        }
+        assert!(games_gpu(&[]).is_none());
     }
 }

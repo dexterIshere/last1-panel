@@ -49,7 +49,9 @@
     unavailable = null;
     try {
       devices = (await api.gpuDevices()).filter((d) => !d.integrated);
-      selected = devices[0]?.id ?? "";
+      // La carte des jeux d'abord (l'identifiant de LACT finit par son adresse PCI).
+      const games = app.gamesGpu?.pciSlot.toLowerCase();
+      selected = (devices.find((d) => games && d.id.toLowerCase().endsWith(games)) ?? devices[0])?.id ?? "";
       if (selected) await loadDevice(selected);
     } catch (e) {
       unavailable = errorMessage(e);

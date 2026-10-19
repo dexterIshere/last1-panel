@@ -310,6 +310,8 @@ mod tests {
             driver: Some("amdgpu".into()),
             driver_version: None,
             boot_vga: true,
+            integrated: false,
+            games: true,
             connectors: vec![],
         };
         let system = system(dir.path(), &[gpu]);

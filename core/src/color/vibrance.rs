@@ -299,6 +299,8 @@ mod tests {
             driver: Some("nvidia".into()),
             driver_version: Some("595.58.03".into()),
             boot_vga: true,
+            integrated: false,
+            games: true,
             connectors: connectors.iter().map(|(n, c)| Connector { name: n.to_string(), connected: *c }).collect(),
         }
     }

@@ -1,7 +1,7 @@
 // État de la fenêtre : le PC (system_info), la page affichée, la langue.
 
 import { api, errorMessage } from "$lib/api/ipc";
-import type { Sharing, SystemInfo } from "$lib/api/types";
+import type { Gpu, Sharing, SystemInfo } from "$lib/api/types";
 import { i18n, saveLang, savedLang, t, type Lang } from "$lib/i18n.svelte";
 
 export type Section = "colors" | "display" | "gpu" | "games" | "perf";
@@ -40,14 +40,20 @@ class App {
     await api.setSharing(enabled);
   }
 
-  /** La carte NVIDIA du PC, s'il en a une. */
-  get nvidia(): boolean {
-    return this.system?.gpus.some((gpu) => gpu.vendor === "nvidia") ?? false;
+  /** La carte des jeux : celle dont parlent les réglages (Reflex, G-SYNC…),
+   * quel que soit le nombre de cartes du PC. */
+  get gamesGpu(): Gpu | null {
+    return this.system?.gpus.find((gpu) => gpu.games) ?? this.system?.gpus[0] ?? null;
   }
 
-  /** Carte AMD, sans NVIDIA. */
+  /** La carte des jeux est une NVIDIA. */
+  get nvidia(): boolean {
+    return this.gamesGpu?.vendor === "nvidia";
+  }
+
+  /** La carte des jeux est une AMD. */
   get amd(): boolean {
-    return !this.nvidia && (this.system?.gpus.some((gpu) => gpu.vendor === "amd") ?? false);
+    return this.gamesGpu?.vendor === "amd";
   }
 
   /** Nom de la fréquence variable chez le fabricant de la carte. */

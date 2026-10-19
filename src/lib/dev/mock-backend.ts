@@ -42,10 +42,14 @@ export function installMockBackend(): void {
     features: plasma
       ? { primary: true, bitDepths: [0, 8, 10], liveColor: true, readOnly: null }
       : { primary: false, bitDepths: [8, 10], liveColor: false, readOnly: null },
-    gpus: [
+    // ?gpus=hybride : portable Ryzen (Radeon Vega intégrée) + GTX 1650.
+    gpus: params.get("gpus") === "hybride" ? [
+      { card: "card0", pciSlot: "0000:05:00.0", vendor: "amd", name: "Radeon Vega Series / Radeon Vega Mobile Series", driver: "amdgpu", driverVersion: null, bootVga: true, integrated: true, games: false },
+      { card: "card1", pciSlot: "0000:01:00.0", vendor: "nvidia", name: "GeForce GTX 1650 Mobile / Max-Q", driver: "nvidia", driverVersion: "615.78.08", bootVga: false, integrated: false, games: true },
+    ] : [
       amd
-        ? { card: "card1", pciSlot: "0000:03:00.0", vendor: "amd", name: "Radeon RX 7800 XT", driver: "amdgpu", driverVersion: null, bootVga: true }
-        : { card: "card1", pciSlot: "0000:01:00.0", vendor: "nvidia", name: "GeForce RTX 4070", driver: "nvidia", driverVersion: "595.58.03", bootVga: true },
+        ? { card: "card1", pciSlot: "0000:03:00.0", vendor: "amd", name: "Radeon RX 7800 XT", driver: "amdgpu", driverVersion: null, bootVga: true, integrated: false, games: true }
+        : { card: "card1", pciSlot: "0000:01:00.0", vendor: "nvidia", name: "GeForce RTX 4070", driver: "nvidia", driverVersion: "595.58.03", bootVga: true, integrated: false, games: true },
     ],
     tools: { nvibrant: !amd, lact: params.get("lact") !== "absent", lactRunning, pacman: true, mangohud: true, dlssSwapper: true, steam: true },
   };

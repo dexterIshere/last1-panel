@@ -14,13 +14,27 @@
 
 use super::profile::{GameProfile, LowLatency, Toggle};
 
+/// Le jeu envoyé à la carte des jeux quand elle ne dessine pas le bureau.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Offload {
+    /// PRIME de NVIDIA (comme `prime-run`).
+    Nvidia,
+    /// Mesa (AMD, Intel) : DRI_PRIME=pci-0000_03_00_0.
+    Mesa(String),
+}
+
 /// Ce que le lanceur sait du jeu et du PC.
 #[derive(Debug, Clone, Default)]
 pub struct Context {
     /// Jeu lancé par Proton (un argument se termine par « /proton »).
     pub proton: bool,
+    /// Marque de la carte des jeux (system/gpu.rs, choose_games).
     pub nvidia: bool,
     pub amd: bool,
+    /// Carte des jeux à part de celle du bureau (portable à deux puces).
+    pub offload: Option<Offload>,
+    /// Carte des jeux à mesurer (MangoHud pci_dev), quand il y en a plusieurs.
+    pub measured_gpu: Option<String>,
     /// Outils installés : game-performance, powerprofilesctl, gamemoderun,
     /// dlss-swapper, mangohud.
     pub tools: Vec<String>,
@@ -34,6 +48,22 @@ pub struct Context {
 impl Context {
     pub fn has(&self, tool: &str) -> bool {
         self.tools.iter().any(|t| t == tool)
+    }
+
+    /// Ce que le lanceur tire des cartes du PC, quel qu'il soit : la marque
+    /// de la carte des jeux, le jeu envoyé vers elle si elle ne dessine pas
+    /// le bureau, et elle seule mesurée.
+    pub fn with_gpus(mut self, gpus: &[crate::system::gpu::Gpu]) -> Self {
+        use crate::system::gpu::{self, Vendor};
+        let games = gpu::games_gpu(gpus);
+        self.nvidia = games.is_some_and(|g| g.vendor == Vendor::Nvidia);
+        self.amd = games.is_some_and(|g| g.vendor == Vendor::Amd);
+        self.offload = gpu::offload(gpus).map(|g| match g.vendor {
+            Vendor::Nvidia => Offload::Nvidia,
+            _ => Offload::Mesa(format!("pci-{}", g.pci_slot.replace([':', '.'], "_"))),
+        });
+        self.measured_gpu = games.filter(|_| gpus.len() > 1).map(|g| g.pci_slot.clone());
+        self
     }
 }
 
@@ -193,6 +223,18 @@ pub fn plan(profile: &GameProfile, context: &Context) -> Plan {
         false => {}
     }
 
+    // Carte des jeux qui ne dessine pas le bureau : le jeu lui est envoyé
+    // (Vulkan et OpenGL), comme `prime-run`.
+    match &context.offload {
+        Some(Offload::Nvidia) => {
+            plan.set("__NV_PRIME_RENDER_OFFLOAD", "1");
+            plan.set("__GLX_VENDOR_LIBRARY_NAME", "nvidia");
+            plan.set("__VK_LAYER_NV_optimus", "NVIDIA_only");
+        }
+        Some(Offload::Mesa(device)) => plan.set("DRI_PRIME", device.clone()),
+        None => {}
+    }
+
     // Processeur à pleine vitesse le temps de chaque jeu, sans réglage : le
     // profil « performance » de power-profiles-daemon (game-performance de
     // CachyOS, qui échoue sans powerprofilesctl), sinon GameMode.
@@ -211,6 +253,10 @@ pub fn plan(profile: &GameProfile, context: &Context) -> Plan {
             "log_interval=100".to_string(),
             format!("output_folder={dir}"),
         ]);
+        // Plusieurs cartes : les charges et fréquences de celle des jeux.
+        if let Some(slot) = &context.measured_gpu {
+            plan.mangohud.push(format!("pci_dev={slot}"));
+        }
     }
 
     // MangoHud : affiché, ou caché mais limiteur d'images d'un jeu natif, ou
@@ -260,8 +306,7 @@ mod tests {
             nvidia,
             amd: !nvidia,
             tools: tools.iter().map(|t| t.to_string()).collect(),
-            logs: None,
-            hdr_screen: false,
+            ..Context::default()
         }
     }
 
@@ -278,6 +323,51 @@ mod tests {
         // game-performance sans powerprofilesctl échouerait : pas utilisé.
         let plan = plan(&GameProfile::default(), &ctx(true, true, &["mangohud", "dlss-swapper", "game-performance"]));
         assert_eq!(plan, Plan::default());
+    }
+
+    #[test]
+    fn games_go_to_the_games_gpu() {
+        use crate::system::gpu::{Gpu, Vendor, choose_games};
+        let card = |vendor, slot: &str, boot_vga, integrated| Gpu {
+            card: "card".into(),
+            pci_slot: slot.into(),
+            vendor,
+            vendor_id: 0,
+            device_id: 0,
+            name: None,
+            driver: None,
+            driver_version: None,
+            boot_vga,
+            integrated,
+            games: false,
+            connectors: vec![],
+        };
+        // Portable Ryzen + GTX 1650 : le jeu sur la NVIDIA, mesurée elle.
+        let mut gpus =
+            vec![card(Vendor::Amd, "0000:05:00.0", true, true), card(Vendor::Nvidia, "0000:01:00.0", false, false)];
+        choose_games(&mut gpus);
+        let mut context = ctx(true, false, &["mangohud"]).with_gpus(&gpus);
+        assert!(context.nvidia && !context.amd);
+        context.logs = Some("/home/j/.local/share/last1-panel/parties".into());
+        let vars = env(&plan(&GameProfile::default(), &context));
+        assert_eq!(get(&vars, "__NV_PRIME_RENDER_OFFLOAD").as_deref(), Some("1"));
+        assert_eq!(get(&vars, "__VK_LAYER_NV_optimus").as_deref(), Some("NVIDIA_only"));
+        assert!(get(&vars, "MANGOHUD_CONFIG").unwrap().contains("pci_dev=0000:01:00.0"));
+        // Portable Ryzen + Radeon : Mesa, par l'adresse de la carte.
+        let mut gpus =
+            vec![card(Vendor::Amd, "0000:06:00.0", true, true), card(Vendor::Amd, "0000:03:00.0", false, false)];
+        choose_games(&mut gpus);
+        let context = ctx(true, false, &[]).with_gpus(&gpus);
+        assert!(context.amd);
+        assert_eq!(
+            get(&env(&plan(&GameProfile::default(), &context)), "DRI_PRIME").as_deref(),
+            Some("pci-0000_03_00_0")
+        );
+        // Une seule carte : rien de plus.
+        let mut gpus = vec![card(Vendor::Nvidia, "0000:01:00.0", true, false)];
+        choose_games(&mut gpus);
+        let context = ctx(true, false, &[]).with_gpus(&gpus);
+        assert_eq!((context.offload, context.measured_gpu), (None, None));
     }
 
     #[test]
