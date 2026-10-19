@@ -256,36 +256,60 @@ pub enum StreamEnd {
 
 /// Flux des publications de last1.fun : une seule connexion, gardée
 /// ouverte ; il y pousse la version en ligne à la connexion puis à chaque
-/// publication (`data: {"versions":{…}}`), et un signal de vie par minute
-/// (`: ping`). Rien à redemander, aucun programme relancé : curl dort sur la
-/// connexion. Coupée au-delà de 3 min sans rien (connexion morte sans le
-/// dire) ; `on_version` à chaque version reçue.
+/// publication (`data: {"versions":{…}}`), et un signal de vie toutes les
+/// 50 s (`: ping`). Rien à redemander, aucun programme relancé : curl dort
+/// sur la connexion. Rien reçu en 3 min, signal de vie compris : connexion
+/// morte sans le dire, coupée. `on_version` à chaque version reçue.
 pub fn stream_releases(on_version: &mut dyn FnMut(String)) -> StreamEnd {
-    stream_from(&format!("{SITE}/api/public/releases/stream?{PRODUCT}"), "=https", on_version)
+    stream_from(&format!("{SITE}/api/public/releases/stream?{PRODUCT}"), "=https", Duration::from_secs(180), on_version)
 }
 
-fn stream_from(url: &str, proto: &str, on_version: &mut dyn FnMut(String)) -> StreamEnd {
+fn stream_from(url: &str, proto: &str, silence: Duration, on_version: &mut dyn FnMut(String)) -> StreamEnd {
+    // Pas de --speed-limit : les signaux de vie (quelques octets par minute)
+    // passeraient sous n'importe quel débit minimum.
     let mut command = Command::new("curl");
     command
-        .args(["-fsSN", "--proto", proto, "--keepalive-time", "60", "--speed-limit", "1", "--speed-time", "180", url])
+        .args(["-fsSN", "--proto", proto, "--keepalive-time", "60", url])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     crate::exec::without_appimage_env(&mut command);
     let Ok(mut child) = command.spawn() else { return StreamEnd::Unavailable };
-    let mut answered = false;
-    if let Some(stdout) = child.stdout.take() {
-        for line in std::io::BufRead::lines(std::io::BufReader::new(stdout)).map_while(Result::ok) {
-            if let Some(version) = stream_version(&line) {
-                answered = true;
-                on_version(version);
-            } else if line.starts_with(':') {
-                answered = true;
+    // Lignes lues à part : le silence se mesure ici.
+    let (send, lines) = std::sync::mpsc::channel();
+    let reader = child.stdout.take().map(|stdout| {
+        std::thread::spawn(move || {
+            for line in std::io::BufRead::lines(std::io::BufReader::new(stdout)).map_while(Result::ok) {
+                if send.send(line).is_err() {
+                    break;
+                }
             }
+        })
+    });
+    let mut answered = false;
+    loop {
+        match lines.recv_timeout(silence) {
+            Ok(line) => {
+                if let Some(version) = stream_version(&line) {
+                    answered = true;
+                    on_version(version);
+                } else if line.starts_with(':') {
+                    answered = true;
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                let _ = child.kill();
+                break;
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
+    let status = child.wait();
+    if let Some(reader) = reader {
+        let _ = reader.join();
+    }
     // 22 : réponse HTTP en erreur (404 : pas de flux sur ce serveur).
-    match child.wait() {
+    match status {
         Ok(status) if status.code() == Some(22) && !answered => StreamEnd::Unavailable,
         _ => StreamEnd::Closed,
     }
@@ -550,7 +574,9 @@ mod tests {
             }
         });
         let mut versions = Vec::new();
-        let end = stream_from(&format!("http://{address}/stream"), "=http", &mut |version| versions.push(version));
+        let silence = std::time::Duration::from_secs(5);
+        let end =
+            stream_from(&format!("http://{address}/stream"), "=http", silence, &mut |version| versions.push(version));
         server.join().unwrap();
         assert_eq!(end, StreamEnd::Closed);
         assert_eq!(versions, ["0.1.0.r59", "0.1.0.r60"]);
@@ -563,8 +589,38 @@ mod tests {
             let _ = std::io::Read::read(&mut stream, &mut request);
             stream.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
         });
-        let end = stream_from(&format!("http://{address}/stream"), "=http", &mut |_| {});
+        let end = stream_from(&format!("http://{address}/stream"), "=http", silence, &mut |_| {});
         server.join().unwrap();
         assert_eq!(end, StreamEnd::Unavailable);
+        // Signaux de vie lents (8 octets de temps en temps) : la connexion
+        // tient ; puis plus rien : coupée après le silence permis.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut request);
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n").unwrap();
+            stream.write_all(b"data: {\"versions\":{\"last1-panel\":\"0.1.0.r61\"}}\n\n").unwrap();
+            for _ in 0..3 {
+                std::thread::sleep(std::time::Duration::from_millis(700));
+                stream.write_all(b": ping\n\n").unwrap();
+            }
+            // Connexion gardée, muette.
+            std::thread::sleep(std::time::Duration::from_secs(4));
+        });
+        let started = std::time::Instant::now();
+        let mut versions = Vec::new();
+        let silence = std::time::Duration::from_secs(1);
+        let end =
+            stream_from(&format!("http://{address}/stream"), "=http", silence, &mut |version| versions.push(version));
+        let lasted = started.elapsed();
+        assert_eq!((end, versions.as_slice()), (StreamEnd::Closed, ["0.1.0.r61".to_string()].as_slice()));
+        // Les pings (2,1 s) ont tenu la connexion, le silence l'a coupée.
+        assert!(
+            lasted >= std::time::Duration::from_millis(2900) && lasted < std::time::Duration::from_secs(4),
+            "{lasted:?}"
+        );
+        server.join().unwrap();
     }
 }
