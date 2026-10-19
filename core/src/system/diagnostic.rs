@@ -103,6 +103,8 @@ pub struct Sources<'a> {
     pub recent_games: Vec<String>,
     /// Dernier jeu lancé par Last1 Panel (paths::last_launch_file).
     pub last_launch: Option<LastLaunch>,
+    /// Shaders compilés par Steam en ce moment (games/shaders.rs).
+    pub precache: Option<crate::games::shaders::Precache>,
     /// Dernières parties mesurées (journaux de MangoHud, system/sessions.rs).
     pub sessions: Vec<GameSession>,
     /// MangoHud installé (mesure des parties).
@@ -859,14 +861,29 @@ pub fn run(src: &Sources) -> Report {
     }
 
     // Steam compile les shaders en arrière-plan.
-    if process_running(src.proc_dir, "fossilize_repla") {
+    if let Some(precache) = &src.precache {
+        let percent = precache
+            .done
+            .zip(precache.total)
+            .filter(|(_, total)| *total > 0)
+            .map(|(done, total)| format!(" ({} %)", u64::from(done) * 100 / u64::from(total)))
+            .unwrap_or_default();
         checks.push(check(
             "shader-precache",
             Level::Warning,
-            t("Steam compile des shaders en arrière-plan", "Steam is compiling shaders in the background"),
+            match &precache.game {
+                Some(game) => t(
+                    &format!("Steam compile les shaders de {game}{percent}"),
+                    &format!("Steam is compiling the shaders of {game}{percent}"),
+                ),
+                None => t(
+                    &format!("Steam compile des shaders{percent}"),
+                    &format!("Steam is compiling shaders{percent}"),
+                ),
+            },
             t(
-                "Il occupe des cœurs du processeur pendant le jeu : laissez-le finir avant de jouer (les jeux tournent ensuite mieux).",
-                "It takes CPU cores while you play: let it finish before playing (games then run better).",
+                "C'est Steam (« Traitement des shaders Vulkan »), après une mise à jour d'un jeu ou du pilote : il occupe le processeur, les jeux peuvent saccader jusqu'à la fin. Ensuite, ils tournent mieux.",
+                "It's Steam (“Vulkan shader processing”), after a game or driver update: it keeps the CPU busy, games may stutter until it ends. Afterwards, they run better.",
             ),
         ));
     }
@@ -980,13 +997,6 @@ fn scheduler_unit(proc_dir: &Path) -> Option<String> {
     })
 }
 
-fn process_running(proc_dir: &Path, comm: &str) -> bool {
-    fs::read_dir(proc_dir).into_iter().flatten().flatten().any(|entry| {
-        entry.file_name().to_str().is_some_and(|name| name.chars().all(|c| c.is_ascii_digit()))
-            && read(&entry.path().join("comm")).is_some_and(|c| c == comm)
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1038,7 +1048,6 @@ mod tests {
             "Filename\tType\tSize\tUsed\tPriority\n/swap/swapfile                          file\t8388604\t3145728\t-2\n",
         );
         write(pc.proc_dir.join("sys/kernel/split_lock_mitigate"), "1\n");
-        write(pc.proc_dir.join("4242/comm"), "fossilize_repla\n");
         write(pc.sys.join("kernel/sched_ext/state"), "enabled\n");
         write(pc.sys.join("kernel/sched_ext/root/ops"), "lavd\n");
         write(pc.sys.join("bus/platform/drivers/amd_x3d_vcache/AMDI0101:00/amd_x3d_mode"), "frequency\n");
@@ -1068,6 +1077,11 @@ mod tests {
             default_proton: Some("proton-cachyos-slr".into()),
             recent_games: vec!["ARC Raiders (proton_experimental)".into()],
             last_launch: None,
+            precache: Some(crate::games::shaders::Precache {
+                game: Some("ARC Raiders".into()),
+                done: Some(42),
+                total: Some(100),
+            }),
             sessions: vec![GameSession {
                 program: "PioneerGame.exe".into(),
                 started: "2026-10-18 21:04".into(),
@@ -1120,6 +1134,7 @@ mod tests {
             ]
         );
         assert!(report.text.contains("AMD Ryzen 9 7950X3D") && report.text.contains("balanced"));
+        assert!(report.checks.iter().any(|c| c.title == "Steam compile les shaders de ARC Raiders (42 %)"));
         assert!(
             report.text.contains("proton-cachyos-slr") && report.text.contains("lavd") && report.text.contains("[!!]")
         );
@@ -1158,6 +1173,7 @@ mod tests {
                 measured: true,
                 logged: true,
             }),
+            precache: None,
             sessions: vec![GameSession {
                 program: "Cyberpunk2077.exe".into(),
                 started: "2026-10-18 21:04".into(),
@@ -1224,6 +1240,7 @@ mod tests {
                 default_proton: None,
                 recent_games: Vec::new(),
                 last_launch: None,
+                precache: None,
                 sessions: Vec::new(),
                 mangohud: true,
                 wrapped_games: Some((1, 1)),
@@ -1307,6 +1324,7 @@ mod tests {
             default_proton: None,
             recent_games: Vec::new(),
             last_launch: None,
+            precache: None,
             sessions: Vec::new(),
             mangohud: true,
             wrapped_games: Some((1, 1)),
@@ -1346,6 +1364,7 @@ mod tests {
                 default_proton: None,
                 recent_games: Vec::new(),
                 last_launch: None,
+                precache: None,
                 sessions: Vec::new(),
                 mangohud: true,
                 wrapped_games: Some((1, 1)),

@@ -9,6 +9,7 @@ import type {
   ColorProfiles,
   GameLink,
   PerfFix,
+  Precache,
   Sharing,
   PerfReport,
   ColorState,
@@ -67,6 +68,7 @@ export const api = {
   installUpdate: () => invoke<void>("install_update"),
   quit: () => invoke<void>("quit"),
   sharing: () => invoke<Sharing>("sharing"),
+  shaderPrecache: () => invoke<Precache | null>("shader_precache"),
   setSharing: (enabled: boolean) => invoke<void>("set_sharing", { enabled }),
 
   games: () => invoke<GamesInfo>("games"),

@@ -224,6 +224,7 @@ fn watch() -> ExitCode {
     }
     std::thread::spawn(share_reports);
     std::thread::spawn(watch_updates);
+    std::thread::spawn(watch_shaders);
     let tray = last1_panel_core::tray::spawn();
     std::thread::sleep(Duration::from_secs(3));
     apply_until_ready(20);
@@ -271,6 +272,87 @@ fn watch_updates() {
         let exec = SystemExec { timeout: Duration::from_secs(300), ..SystemExec::default() };
         last1_panel_core::system::packages::refresh(&exec, &cache);
         std::thread::sleep(Duration::from_secs(6 * 3600));
+    }
+}
+
+/// Shaders compilés par Steam (games/shaders.rs) : prévenu quand une
+/// compilation dure (les jeux saccadent pendant ce temps), puis quand elle
+/// s'arrête, finie ou interrompue. Regardé toutes les 10 s ; Steam enchaîne
+/// parfois deux processus pour un jeu : arrêtée après 20 s sans compilation.
+fn watch_shaders() {
+    use last1_panel_core::games::{shaders, steam};
+    use last1_panel_core::system::desktop::notify;
+    struct Tracked {
+        game: Option<String>,
+        since: std::time::Instant,
+        notified: bool,
+        /// Dernier avancement lu (0 à 1).
+        ratio: Option<f64>,
+    }
+    let name = |game: &Option<String>| game.clone().unwrap_or_else(|| t("un jeu", "a game"));
+    let percent = |ratio: f64| (ratio * 100.0).floor() as u32;
+    let mut current: Option<Tracked> = None;
+    let mut absent = 0;
+    loop {
+        std::thread::sleep(Duration::from_secs(10));
+        let root = steam::find_root(&last1_panel_core::paths::home_dir());
+        let precache = shaders::running(std::path::Path::new("/proc"), root.as_deref());
+        let stopped = match (&precache, &current) {
+            (Some(now), Some(tracked)) if tracked.game == now.game => None,
+            (Some(_), Some(_)) => current.take(),
+            (None, Some(_)) => {
+                absent += 1;
+                if absent >= 2 { current.take() } else { None }
+            }
+            _ => None,
+        };
+        if let Some(tracked) = stopped.filter(|tracked| tracked.notified) {
+            let game = name(&tracked.game);
+            notify(&match tracked.ratio {
+                Some(ratio) if ratio < 0.95 => t(
+                    &format!(
+                        "Steam a interrompu la compilation des shaders de {game} ({} %) : il la reprendra plus tard.",
+                        percent(ratio)
+                    ),
+                    &format!(
+                        "Steam paused compiling the shaders of {game} ({} %): it will resume later.",
+                        percent(ratio)
+                    ),
+                ),
+                Some(_) => t(
+                    &format!("Shaders de {game} prêts : Steam a fini, les jeux ne saccadent plus à cause de lui."),
+                    &format!("{game} shaders ready: Steam is done, games no longer stutter because of it."),
+                ),
+                None => t(
+                    &format!("Steam ne compile plus les shaders de {game}."),
+                    &format!("Steam is no longer compiling the shaders of {game}."),
+                ),
+            });
+        }
+        let Some(now) = precache else { continue };
+        absent = 0;
+        let tracked = current.get_or_insert_with(|| Tracked {
+            game: now.game.clone(),
+            since: std::time::Instant::now(),
+            notified: false,
+            ratio: None,
+        });
+        if let Some((done, total)) = now.done.zip(now.total).filter(|(_, total)| *total > 0) {
+            tracked.ratio = Some((f64::from(done) / f64::from(total)).min(1.0));
+        }
+        if !tracked.notified && tracked.since.elapsed() >= Duration::from_secs(30) {
+            tracked.notified = true;
+            let progress = tracked.ratio.map(|ratio| format!(" ({} %)", percent(ratio))).unwrap_or_default();
+            let game = name(&tracked.game);
+            notify(&t(
+                &format!(
+                    "Steam compile les shaders de {game}{progress} : les jeux peuvent saccader jusqu'à la fin. L'avancement est dans Last1 Panel."
+                ),
+                &format!(
+                    "Steam is compiling the shaders of {game}{progress}: games may stutter until it ends. Progress is in Last1 Panel."
+                ),
+            ));
+        }
     }
 }
 

@@ -113,6 +113,8 @@ export function installMockBackend(): void {
   let lowLatencyForced = true;
   const perfFixed = new Set<string>();
   let sharingChoice: boolean | null = null;
+  // ?shaders=1 : Steam compile les shaders de Cyberpunk 2077 (90 s).
+  const shadersStart = Date.now();
   let colorProfiles: ColorProfile[] = [
     { id: "p1", name: "Arc Raiders", color: { red: guide(52, 47, 1.47), green: guide(52, 47, 1.47), blue: guide(62, 72, 1.65) }, vibrance: 50 },
   ];
@@ -252,6 +254,12 @@ export function installMockBackend(): void {
     },
     quit: async () => {
       window.location.reload();
+    },
+    shader_precache: () => {
+      const elapsed = (Date.now() - shadersStart) / 1000;
+      if (!params.get("shaders") || elapsed > 90) return null;
+      if (elapsed < 6) return { game: "Cyberpunk 2077", done: null, total: null };
+      return { game: "Cyberpunk 2077", done: Math.min(10_000, Math.round((elapsed - 6) * 120)), total: 10_000 };
     },
     enable_lact: async () => {
       await wait(1200);

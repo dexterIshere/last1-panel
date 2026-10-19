@@ -345,6 +345,7 @@ impl Panel {
                 &crate::paths::game_logs_dir(),
                 steam.as_deref(),
             ),
+            precache: crate::games::shaders::running(Path::new("/proc"), steam.as_deref()),
             mangohud: crate::exec::which("mangohud").is_some(),
             wrapped_games: steam
                 .as_deref()

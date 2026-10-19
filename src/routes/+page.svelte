@@ -6,6 +6,7 @@
   import Games from "$lib/sections/Games.svelte";
   import GpuTuning from "$lib/sections/Gpu.svelte";
   import Performance from "$lib/sections/Performance.svelte";
+  import ShaderBanner from "$lib/components/ShaderBanner.svelte";
   import SharingDialog from "$lib/components/SharingDialog.svelte";
   import { t } from "$lib/i18n.svelte";
   import { app } from "$lib/state/app.svelte";
@@ -34,6 +35,9 @@
   <main class="main">
     {#if app.error}
       <Callout kind="danger" title={t("Last1 Panel n'a pas pu lire ce PC", "Last1 Panel couldn't read this PC")}>{app.error}</Callout>
+    {/if}
+    {#if ready}
+      <ShaderBanner />
     {/if}
     <svelte:boundary>
       {#if ready}

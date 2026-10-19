@@ -72,7 +72,10 @@
     setTimeout(() => (copied = false), 1500);
   }
 
-  const toFix = $derived(report?.checks.filter((c) => c.level === "problem" || c.level === "warning").length ?? 0);
+  /** La compilation des shaders par Steam a son bandeau, à jour en continu
+   * (ShaderBanner) : pas la ligne du rapport, figée à sa lecture. */
+  const checks = $derived(report?.checks.filter((c) => c.id !== "shader-precache") ?? []);
+  const toFix = $derived(checks.filter((c) => c.level === "problem" || c.level === "warning").length);
   /** Tout ce qui se règle d'un clic (le redémarrage reste à part). */
   const fixable = $derived(report?.checks.flatMap((c) => (c.fix && c.fix !== "restart" ? [c.fix] : [])) ?? []);
   let confirmRestart = $state(false);
@@ -128,7 +131,7 @@
   <div class="layout">
     <section class="panel card">
       <ul class="checks">
-        {#each report.checks as check (check.id)}
+        {#each checks as check (check.id)}
           {@const Icon = icon(check)}
           <li class="check check--{check.level}">
             <span class="check__icon"><Icon size={18} /></span>

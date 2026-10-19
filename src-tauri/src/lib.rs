@@ -76,6 +76,7 @@ pub fn run() {
             commands::install_update,
             commands::quit,
             commands::sharing,
+            commands::shader_precache,
             commands::set_sharing,
         ])
         .run(tauri::generate_context!());

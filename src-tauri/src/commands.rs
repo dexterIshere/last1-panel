@@ -262,6 +262,17 @@ pub async fn set_sharing(enabled: bool) -> Result<()> {
     .await
 }
 
+/// Shaders que Steam compile en ce moment, et où il en est (bandeau de toutes
+/// les pages).
+#[tauri::command]
+pub async fn shader_precache() -> Result<Option<last1_panel_core::games::shaders::Precache>> {
+    blocking(|| {
+        let steam = last1_panel_core::games::steam::find_root(&last1_panel_core::paths::home_dir());
+        Ok(last1_panel_core::games::shaders::running(Path::new("/proc"), steam.as_deref()))
+    })
+    .await
+}
+
 /// Ferme Last1 Panel entièrement : l'icône près de l'horloge (service de
 /// session), puis la fenêtre. Tout revient à la prochaine connexion.
 #[tauri::command]

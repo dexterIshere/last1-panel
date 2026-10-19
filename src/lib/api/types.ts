@@ -249,6 +249,15 @@ export interface PerfReport {
 }
 
 /** Partage des rapports de performances avec last1.fun (avec l'accord du joueur). */
+/** Shaders que Steam compile en ce moment (games/shaders.rs). */
+export interface Precache {
+  /** Nom du jeu dans Steam (sinon « AppId N »). */
+  game: string | null;
+  /** Avancement comme Steam le compte ; absents : pas encore commencé. */
+  done: number | null;
+  total: number | null;
+}
+
 export interface Sharing {
   /** Le joueur a répondu. */
   asked: boolean;
