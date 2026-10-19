@@ -7,9 +7,12 @@
 //! désigné que par une empreinte. Au plus un par jour, après des parties, et
 //! seulement s'il a changé ; le service de la session l'envoie (cli.rs).
 
+use crate::exec::Exec;
 use crate::system::diagnostic::Report;
+use crate::system::gpu::Gpu;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -39,6 +42,11 @@ impl State {
         }
         let _ = fs::write(path, serde_json::to_string(self).unwrap_or_default());
     }
+}
+
+/// Empreinte de ce PC (/etc/machine-id).
+pub fn this_pc() -> String {
+    pc_id(&fs::read_to_string("/etc/machine-id").unwrap_or_default())
 }
 
 /// Empreinte du PC : jamais son identifiant (machine-id) lui-même.
@@ -82,14 +90,18 @@ fn replace_word(text: &str, word: &str, mask: &str) -> String {
     out
 }
 
-/// Le rapport à envoyer, s'il est dû : accord donné, des parties mesurées,
-/// un jour depuis le dernier, contenu changé, et pas d'échec récent.
-pub fn due(report: &Report, state: &State, now: i64) -> Option<String> {
-    if report.sessions.is_empty() || now < state.retry_at || now - state.sent_at < EVERY {
+/// Le rapport à envoyer, s'il est dû : un jour depuis le dernier, contenu
+/// changé, pas d'échec récent ; après des parties (« game »), sauf le tout
+/// premier, envoyé dès l'accord pour le matériel (« firstboot »). Rend son
+/// empreinte et son occasion.
+pub fn due(report: &Report, state: &State, now: i64) -> Option<(String, &'static str)> {
+    let first = state.sent_at == 0;
+    if (report.sessions.is_empty() && !first) || now < state.retry_at || now - state.sent_at < EVERY {
         return None;
     }
     let sum = content_sum(report);
-    (sum != state.sum).then_some(sum)
+    let occasion = if report.sessions.is_empty() { "firstboot" } else { "game" };
+    (sum != state.sum).then_some((sum, occasion))
 }
 
 /// Empreinte de ce qui compte (constats, éléments lus, parties) ; le texte à
@@ -99,17 +111,104 @@ pub fn content_sum(report: &Report) -> String {
     Sha256::digest(content.to_string()).iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
+/// Le matériel du PC sous des clés stables (les `facts` du diagnostic sont
+/// traduits) : la table du matériel par PC de last1.fun. `root` : « / », ou
+/// un dossier de test.
+pub fn system(root: &Path, gpus: &[Gpu]) -> BTreeMap<&'static str, String> {
+    let read = |path: &str| fs::read_to_string(root.join(path)).map(|s| s.trim().to_string()).unwrap_or_default();
+    let mut system = BTreeMap::new();
+    let cpuinfo = read("proc/cpuinfo");
+    if let Some(cpu) = cpuinfo
+        .lines()
+        .find_map(|l| l.strip_prefix("model name").map(|v| v.trim_start_matches([' ', '\t', ':']).to_string()))
+    {
+        system.insert("cpu", cpu);
+    }
+    // La carte principale : celle du démarrage, sinon la première.
+    if let Some(gpu) = gpus.iter().find(|g| g.boot_vga).or(gpus.first()) {
+        system
+            .insert("gpu", gpu.name.clone().unwrap_or_else(|| format!("{:04x}:{:04x}", gpu.vendor_id, gpu.device_id)));
+    }
+    if let Some(kib) = read("proc/meminfo")
+        .lines()
+        .find_map(|l| l.strip_prefix("MemTotal:")?.split_whitespace().next()?.parse::<u64>().ok())
+    {
+        system.insert("ram", format!("{} Gio", (kib + 524_288) / 1_048_576));
+    }
+    // Modèle du PC ou de la carte mère, sauf les textes par défaut des fabricants.
+    let machine = read("sys/class/dmi/id/product_name");
+    let placeholder =
+        ["", "To Be Filled By O.E.M.", "System Product Name", "Default string"].contains(&machine.as_str());
+    if !placeholder {
+        system.insert("machine", machine);
+    }
+    let os = os_name(&read("etc/os-release"));
+    if !os.is_empty() {
+        system.insert("os", os);
+    }
+    let kernel = read("proc/sys/kernel/osrelease");
+    if !kernel.is_empty() {
+        system.insert("kernel", kernel);
+    }
+    system
+}
+
+/// Envoie le rapport (`body`) ; vrai s'il est gardé (201) ou si celui du jour
+/// l'est déjà (204). `pending` : fichier du corps le temps de l'envoi.
+pub fn post(exec: &dyn Exec, body: &str, pending: &Path) -> bool {
+    let sent = fs::write(pending, body).is_ok()
+        && exec
+            .run_ok(
+                "curl",
+                &[
+                    "-fsS".to_string(),
+                    "--proto".into(),
+                    "=https".into(),
+                    "--max-time".into(),
+                    "30".into(),
+                    "-H".into(),
+                    "Content-Type: application/json".into(),
+                    "--data-binary".into(),
+                    format!("@{}", pending.display()),
+                    "-o".into(),
+                    "/dev/null".into(),
+                    URL.into(),
+                ],
+            )
+            .is_ok();
+    let _ = fs::remove_file(pending);
+    sent
+}
+
+/// Accord retiré : last1.fun efface tous les rapports de ce PC.
+pub fn withdraw(exec: &dyn Exec, pc: &str) -> bool {
+    let args = ["-fsS", "--proto", "=https", "--max-time", "30", "-X", "DELETE", "-o", "/dev/null"]
+        .map(String::from)
+        .into_iter()
+        .chain([format!("{URL}/{pc}")])
+        .collect::<Vec<_>>();
+    exec.run_ok("curl", &args).is_ok()
+}
+
 /// Corps de la requête (`POST URL`), masqué.
-pub fn body(report: &Report, version: &str, pc: &str, os: &str, kernel: &str, user: &str, host: &str) -> String {
+pub fn body(
+    report: &Report,
+    occasion: &str,
+    version: &str,
+    pc: &str,
+    system: &BTreeMap<&'static str, String>,
+    user: &str,
+    host: &str,
+) -> String {
     let diagnostic = serde_json::json!({ "checks": report.checks, "facts": report.facts, "sessions": report.sessions });
     let body = serde_json::json!({
         "product": "last1-panel",
         "appVersion": version,
-        "occasion": "game",
+        "occasion": occasion,
         "pc": pc,
         "consent": true,
         "diagnostic": diagnostic,
-        "system": { "os": os, "kernel": kernel },
+        "system": system,
     });
     scrub(&body.to_string(), user, host)
 }
@@ -156,15 +255,8 @@ mod tests {
 
     #[test]
     fn nothing_personal_is_sent() {
-        let body = body(
-            &report(1),
-            "0.1.0.r40",
-            &pc_id("0123456789abcdef\n"),
-            "Arch Linux",
-            "7.2.7-arch1-1",
-            "nelly",
-            "nelly-pc",
-        );
+        let system = BTreeMap::from([("os", "Arch Linux".to_string()), ("kernel", "7.2.7-arch1-1".to_string())]);
+        let body = body(&report(1), "game", "0.1.0.r40", &pc_id("0123456789abcdef\n"), &system, "nelly", "nelly-pc");
         assert!(!body.contains("nelly"), "{body}");
         assert!(body.contains("/home/<utilisateur>/Jeux sur <pc>"), "{body}");
         assert_eq!(scrub("maxFrameRate max", "max", ""), "maxFrameRate <utilisateur>");
@@ -182,14 +274,62 @@ mod tests {
     #[test]
     fn at_most_once_a_day_after_games_when_changed() {
         let now = 1_800_000_000;
-        assert_eq!(due(&report(0), &State::default(), now), None, "pas de partie");
-        let sum = due(&report(1), &State::default(), now).unwrap();
+        // Tout premier rapport, dès l'accord : le matériel, sans partie.
+        assert_eq!(due(&report(0), &State::default(), now).unwrap().1, "firstboot");
+        let (sum, occasion) = due(&report(1), &State::default(), now).unwrap();
+        assert_eq!(occasion, "game");
         let sent = State { sent_at: now, sum: sum.clone(), retry_at: 0 };
+        assert_eq!(due(&report(0), &sent, now + EVERY), None, "ensuite, seulement après des parties");
         assert_eq!(due(&report(2), &sent, now + 3600), None, "moins d'un jour");
         assert_eq!(due(&report(1), &sent, now + EVERY), None, "rien de changé");
         assert!(due(&report(2), &sent, now + EVERY).is_some());
         let failed = State { retry_at: now + RETRY, ..State::default() };
         assert_eq!(due(&report(1), &failed, now + 60), None, "échec récent");
+    }
+
+    #[test]
+    fn hardware_under_stable_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |path: &str, text: &str| {
+            let path = dir.path().join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        };
+        write("proc/cpuinfo", "processor\t: 0\nmodel name\t: AMD Ryzen 7 5800X3D 8-Core Processor\n");
+        write("proc/meminfo", "MemTotal:       32768000 kB\n");
+        write("sys/class/dmi/id/product_name", "To Be Filled By O.E.M.\n");
+        write("etc/os-release", "PRETTY_NAME=\"CachyOS\"\n");
+        write("proc/sys/kernel/osrelease", "6.17.2-2-cachyos\n");
+        let gpu = Gpu {
+            card: "card1".into(),
+            pci_slot: "0000:03:00.0".into(),
+            vendor: crate::system::gpu::Vendor::Amd,
+            vendor_id: 0x1002,
+            device_id: 0x744c,
+            name: Some("Radeon RX 7900 XTX".into()),
+            driver: Some("amdgpu".into()),
+            driver_version: None,
+            boot_vga: true,
+            connectors: vec![],
+        };
+        let system = system(dir.path(), &[gpu]);
+        assert_eq!(system["cpu"], "AMD Ryzen 7 5800X3D 8-Core Processor");
+        assert_eq!(system["gpu"], "Radeon RX 7900 XTX");
+        assert_eq!(system["ram"], "31 Gio");
+        assert_eq!(system["os"], "CachyOS");
+        assert_eq!(system["kernel"], "6.17.2-2-cachyos");
+        // Texte par défaut du fabricant : pas de modèle.
+        assert!(!system.contains_key("machine"));
+    }
+
+    #[test]
+    fn withdrawing_erases_this_pc_reports() {
+        let exec = crate::exec::FakeExec::new().on("curl", "");
+        assert!(withdraw(&exec, "0123456789abcdef"));
+        let (program, args) = exec.calls().pop().unwrap();
+        assert_eq!(program, "curl");
+        assert!(args.windows(2).any(|w| w == ["-X", "DELETE"]));
+        assert_eq!(args.last().unwrap(), "https://last1.fun/api/public/performance/0123456789abcdef");
     }
 
     #[test]

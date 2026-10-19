@@ -19,7 +19,7 @@
 //!                                            (go-to-linux)
 
 use last1_panel_core::error::CoreResult;
-use last1_panel_core::exec::{Exec, SystemExec};
+use last1_panel_core::exec::SystemExec;
 use last1_panel_core::games::launch::{self, Context};
 use last1_panel_core::i18n::{self, t};
 use last1_panel_core::panel::Panel;
@@ -270,35 +270,19 @@ fn share_reports() {
             let report = Panel::system().performance_report();
             let mut state = sharing::State::load(&state_path);
             let now = update::now();
-            if let Some(sum) = sharing::due(&report, &state, now) {
+            if let Some((sum, occasion)) = sharing::due(&report, &state, now) {
+                let gpus = gpu::detect(&SysPaths::default());
                 let body = sharing::body(
                     &report,
+                    occasion,
                     update::RELEASE.unwrap_or(env!("CARGO_PKG_VERSION")),
-                    &sharing::pc_id(&read("/etc/machine-id")),
-                    &sharing::os_name(&read("/etc/os-release")),
-                    &read("/proc/sys/kernel/osrelease"),
+                    &sharing::this_pc(),
+                    &sharing::system(std::path::Path::new("/"), &gpus),
                     &std::env::var("USER").unwrap_or_default(),
                     &read("/proc/sys/kernel/hostname"),
                 );
-                let file = state_path.with_extension("pending");
                 let exec = SystemExec { timeout: Duration::from_secs(60), ..SystemExec::default() };
-                let args = [
-                    "-fsS".to_string(),
-                    "--proto".into(),
-                    "=https".into(),
-                    "--max-time".into(),
-                    "30".into(),
-                    "-H".into(),
-                    "Content-Type: application/json".into(),
-                    "--data-binary".into(),
-                    format!("@{}", file.display()),
-                    "-o".into(),
-                    "/dev/null".into(),
-                    sharing::URL.into(),
-                ];
-                let sent = std::fs::write(&file, body).is_ok() && exec.run_ok("curl", &args).is_ok();
-                let _ = std::fs::remove_file(&file);
-                if sent {
+                if sharing::post(&exec, &body, &state_path.with_extension("pending")) {
                     state = sharing::State { sent_at: now, sum, retry_at: 0 };
                 } else {
                     state.retry_at = now + sharing::RETRY;

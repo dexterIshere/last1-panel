@@ -16,6 +16,7 @@ use last1_panel_core::system::desktop::Desktop;
 use last1_panel_core::system::diagnostic::{Fix, Report};
 use last1_panel_core::system::gpu::{Gpu, Vendor};
 use last1_panel_core::system::repair;
+use last1_panel_core::system::sharing;
 use last1_panel_core::tuning::lact::{self, ClockRanges, Device, Lact, OffsetRange, Stats, Tuning};
 use last1_panel_core::update;
 use serde::Serialize;
@@ -242,9 +243,25 @@ pub async fn sharing() -> Result<Sharing> {
     .await
 }
 
+/// Accord donné ou retiré. Retiré : last1.fun efface les rapports de ce PC
+/// (en arrière-plan : sans Internet, l'accord est retiré quand même), et le
+/// prochain « oui » renvoie un rapport sans attendre un jour.
 #[tauri::command]
 pub async fn set_sharing(enabled: bool) -> Result<()> {
-    blocking(move || Settings::update(&Settings::path(), |s| s.share_reports = Some(enabled))).await
+    blocking(move || {
+        let was = Settings::update(&Settings::path(), |s| s.share_reports.replace(enabled))?;
+        if !enabled && was == Some(true) {
+            let _ = std::fs::remove_file(last1_panel_core::paths::cache_dir().join("sharing.json"));
+            std::thread::spawn(|| {
+                let exec = SystemExec { timeout: Duration::from_secs(60), ..SystemExec::default() };
+                if !sharing::withdraw(&exec, &sharing::this_pc()) {
+                    eprintln!("Last1 Panel : rapports pas encore effacés sur last1.fun");
+                }
+            });
+        }
+        Ok(())
+    })
+    .await
 }
 
 /// Ferme Last1 Panel entièrement : l'icône près de l'horloge (service de
