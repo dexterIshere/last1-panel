@@ -322,26 +322,37 @@ fn propose_updates() {
     loop {
         let exec = SystemExec { timeout: Duration::from_secs(90), ..SystemExec::default() };
         let wait = match update::check(&exec, update::now()) {
-            Ok(Some(release)) => {
+            Ok(Some(_)) => {
                 let message = t(
-                    &format!("Mise à jour disponible : version {}. « Mettre à jour » l'installe.", release.version),
-                    &format!("Update available: version {}. \"Update\" installs it.", release.version),
+                    "Une mise à jour de Last1 Panel est disponible. « Mettre à jour » installe la dernière version.",
+                    "A Last1 Panel update is available. \"Update\" installs the latest version.",
                 );
                 if !desktop::ask(&message, &t("Mettre à jour", "Update")) {
                     Duration::from_secs(24 * 3600)
-                } else if let Err(error) = update::install(&release) {
-                    eprintln!("last1-panel-cli : mise à jour : {error}");
-                    desktop::notify(&t(
-                        "La mise à jour n'a pas abouti : réessayez avec « Mettre à jour » dans la fenêtre.",
-                        "The update did not finish: try again with \"Update\" in the window.",
-                    ));
-                    Duration::from_secs(3600)
                 } else {
-                    desktop::notify(&t(
-                        &format!("Last1 Panel est à jour (version {}).", release.version),
-                        &format!("Last1 Panel is up to date (version {}).", release.version),
-                    ));
-                    std::process::exit(75);
+                    // Clic parfois des jours après la recherche : la version en
+                    // ligne est redemandée, jamais celle notée alors (dépassée,
+                    // voire plus ancienne que celle installée depuis par la
+                    // fenêtre ou go-to-linux).
+                    match update_appimage() {
+                        Ok(version) => {
+                            let version = version.unwrap_or_else(|| update::RELEASE.unwrap_or_default().to_string());
+                            desktop::notify(&t(
+                                &format!("Last1 Panel est à jour (version {version})."),
+                                &format!("Last1 Panel is up to date (version {version})."),
+                            ));
+                            // Le service repart sur l'AppImage installée.
+                            std::process::exit(75);
+                        }
+                        Err(error) => {
+                            eprintln!("last1-panel-cli : mise à jour : {error}");
+                            desktop::notify(&t(
+                                "La mise à jour n'a pas abouti : réessayez avec « Mettre à jour » dans la fenêtre.",
+                                "The update did not finish: try again with \"Update\" in the window.",
+                            ));
+                            Duration::from_secs(3600)
+                        }
+                    }
                 }
             }
             Ok(None) => Duration::from_secs(24 * 3600),
