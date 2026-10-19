@@ -583,15 +583,24 @@ pub fn run(src: &Sources) -> Report {
         }
         if !driver_updates.is_empty() {
             checks.push(Check {
-                fix: Some(Fix::SystemUpdate),
+                fix: (!src.go_to_linux).then_some(Fix::SystemUpdate),
                 ..check(
                     "driver-update",
                     Level::Warning,
                     t("Pilote graphique pas à jour", "Graphics driver not up to date"),
-                    t(
-                        &format!("Une version plus récente est dans les dépôts ({}). Elle s'installe avec le reste du système, comme le veut Arch (jamais à moitié).", driver_updates.join(", ")),
-                        &format!("A newer version is in the repositories ({}). It installs with the rest of the system, as Arch requires (never halfway).", driver_updates.join(", ")),
-                    ),
+                    if src.go_to_linux {
+                        // go-to-linux la propose lui-même (bulle « Mettre à
+                        // jour ») : pas deux propositions pour la même chose.
+                        t(
+                            &format!("Une version plus récente est dans les dépôts ({}) : go-to-linux la propose dans sa bulle « Mettre à jour ».", driver_updates.join(", ")),
+                            &format!("A newer version is in the repositories ({}): go-to-linux offers it in its “Update” bubble.", driver_updates.join(", ")),
+                        )
+                    } else {
+                        t(
+                            &format!("Une version plus récente est dans les dépôts ({}). Elle s'installe avec le reste du système, comme le veut Arch (jamais à moitié).", driver_updates.join(", ")),
+                            &format!("A newer version is in the repositories ({}). It installs with the rest of the system, as Arch requires (never halfway).", driver_updates.join(", ")),
+                        )
+                    },
                 )
             });
         }
@@ -600,16 +609,24 @@ pub fn run(src: &Sources) -> Report {
             && let Some(installed) = packages::installed_version(src.exec, "nvidia-utils")
             && installed != running
         {
+            // Sous go-to-linux, c'est lui qui propose « Redémarrer maintenant ».
             checks.push(Check {
-                fix: Some(Fix::Restart),
+                fix: (!src.go_to_linux).then_some(Fix::Restart),
                 ..check(
                     "driver-restart",
                     Level::Info,
                     t(&format!("Pilote NVIDIA {installed} installé"), &format!("NVIDIA driver {installed} installed")),
-                    t(
-                        &format!("Le PC utilise encore le {running} : il prendra le nouveau au redémarrage."),
-                        &format!("The PC still uses {running}: it will load the new one when it restarts."),
-                    ),
+                    if src.go_to_linux {
+                        t(
+                            &format!("Le PC utilise encore le {running} : il prendra le nouveau au redémarrage, que go-to-linux propose."),
+                            &format!("The PC still uses {running}: it will load the new one at the restart go-to-linux offers."),
+                        )
+                    } else {
+                        t(
+                            &format!("Le PC utilise encore le {running} : il prendra le nouveau au redémarrage."),
+                            &format!("The PC still uses {running}: it will load the new one when it restarts."),
+                        )
+                    },
                 )
             });
         }
@@ -1100,6 +1117,7 @@ mod tests {
         // 600.10 installé, 580.95.05 chargé : redémarrer.
         let restart = find("driver-restart").unwrap();
         assert_eq!((restart.level, restart.fix), (Level::Info, Some(Fix::Restart)));
+        assert!(!report.text.contains("go-to-linux"));
     }
 
     #[test]
