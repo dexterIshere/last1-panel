@@ -174,15 +174,16 @@ fn game_logs() -> Option<String> {
 /// Dernier lancement noté dans ~/.cache/last1-panel/last-launch.txt (pour
 /// vérifier ce qui a été appliqué à un jeu).
 fn log_launch(command: &[String], env: &[(String, String)], wrappers: &[String]) {
-    let home = last1_panel_core::paths::home_dir();
-    let dir = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".cache"));
-    let dir = dir.join("last1-panel");
+    let file = last1_panel_core::paths::last_launch_file();
     let mut text = format!("SteamAppId={}\n", std::env::var("SteamAppId").unwrap_or_default());
     for (name, value) in env {
         text.push_str(&format!("{name}={value}\n"));
     }
     text.push_str(&format!("{}\n", wrappers.iter().chain(command).cloned().collect::<Vec<_>>().join(" ")));
-    let _ = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join("last-launch.txt"), text));
+    if let Some(dir) = file.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(file, text);
 }
 
 fn apply(args: &[String]) -> ExitCode {

@@ -101,6 +101,8 @@ pub struct Sources<'a> {
     pub default_proton: Option<String>,
     /// Derniers jeux lancés et leur Proton (« ARC Raiders (proton_experimental) »).
     pub recent_games: Vec<String>,
+    /// Dernier jeu lancé par Last1 Panel (paths::last_launch_file).
+    pub last_launch: Option<LastLaunch>,
     /// Dernières parties mesurées (journaux de MangoHud, system/sessions.rs).
     pub sessions: Vec<GameSession>,
     /// MangoHud installé (mesure des parties).
@@ -158,6 +160,28 @@ pub(crate) fn environment_value(text: &str, name: &str) -> Option<String> {
 
 fn read(path: &Path) -> Option<String> {
     fs::read_to_string(path).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+/// Dernier jeu lancé par Last1 Panel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LastLaunch {
+    pub name: String,
+    /// Il y a combien de secondes.
+    pub seconds: u64,
+    /// MangoHud devait le mesurer (« autostart_log=1 » dans MANGOHUD_CONFIG).
+    pub measured: bool,
+    /// Un journal de MangoHud a été écrit depuis (il l'écrit pendant la partie).
+    pub logged: bool,
+}
+
+/// « il y a 5 min ».
+fn ago(seconds: u64) -> String {
+    match seconds {
+        0..60 => t("à l'instant", "just now"),
+        60..3600 => t(&format!("il y a {} min", seconds / 60), &format!("{} min ago", seconds / 60)),
+        3600..86400 => t(&format!("il y a {} h", seconds / 3600), &format!("{} h ago", seconds / 3600)),
+        _ => t(&format!("il y a {} j", seconds / 86400), &format!("{} days ago", seconds / 86400)),
+    }
 }
 
 fn check(id: &'static str, level: Level, title: String, detail: String) -> Check {
@@ -235,6 +259,15 @@ pub fn run(src: &Sources) -> Report {
     }
     if !src.recent_games.is_empty() {
         facts.push((t("Derniers jeux lancés", "Last games played"), src.recent_games.join(", ")));
+    }
+    if src.wrapped_games.is_some() || src.last_launch.is_some() {
+        facts.push((
+            t("Dernier jeu lancé par Last1 Panel", "Last game launched by Last1 Panel"),
+            src.last_launch
+                .as_ref()
+                .map(|last| format!("{}, {}", last.name, ago(last.seconds)))
+                .unwrap_or_else(|| t("aucun pour l'instant", "none yet")),
+        ));
     }
 
     // Mode d'énergie : « performance » en permanence (PC fixe installé par
@@ -700,15 +733,48 @@ pub fn run(src: &Sources) -> Report {
             ),
             fix: Some(Fix::WrapGames),
         },
+        // MangoHud écrit son journal dès les premières images : deux minutes
+        // après le lancement sans journal, la mesure n'a pas pris.
+        _ if let Some(last) = src.last_launch.as_ref().filter(|l| l.measured && !l.logged && l.seconds >= 120) => check(
+            "measure",
+            Level::Warning,
+            t("Dernière partie non mesurée", "Last game not measured"),
+            t(
+                &format!(
+                    "{} est passé par Last1 Panel ({}), mais MangoHud n'a rien enregistré : il ne mesure que les jeux qui affichent par Vulkan ou OpenGL (un lanceur seul n'en fait pas partie).",
+                    last.name,
+                    ago(last.seconds)
+                ),
+                &format!(
+                    "{} went through Last1 Panel ({}), but MangoHud recorded nothing: it only measures games that draw with Vulkan or OpenGL (a launcher alone does not).",
+                    last.name,
+                    ago(last.seconds)
+                ),
+            ),
+        ),
         // Tout est prêt, mais « mesurées » seulement quand une partie l'a été.
         _ if src.sessions.is_empty() => check(
             "measure",
             Level::Info,
             t("Aucune partie mesurée pour l'instant", "No game measured yet"),
-            t(
-                "MangoHud enregistrera la prochaine partie lancée par Last1 Panel (une minute au moins), sans rien afficher : elle apparaîtra ici.",
-                "MangoHud will record the next game launched by Last1 Panel (one minute at least), without showing anything: it will appear here.",
-            ),
+            match &src.last_launch {
+                Some(last) => t(
+                    &format!(
+                        "{} est passé par Last1 Panel ({}) : MangoHud l'enregistre sans rien afficher, sa partie apparaîtra ici après une minute de jeu.",
+                        last.name,
+                        ago(last.seconds)
+                    ),
+                    &format!(
+                        "{} went through Last1 Panel ({}): MangoHud records it without showing anything, the game will appear here after one minute of play.",
+                        last.name,
+                        ago(last.seconds)
+                    ),
+                ),
+                None => t(
+                    "Aucun jeu n'est encore passé par Last1 Panel. MangoHud enregistrera le prochain (une minute au moins), sans rien afficher : il apparaîtra ici.",
+                    "No game has gone through Last1 Panel yet. MangoHud will record the next one (one minute at least), without showing anything: it will appear here.",
+                ),
+            },
         ),
         _ => check(
             "measure",
@@ -990,6 +1056,7 @@ mod tests {
             desktop: Desktop::Hyprland,
             default_proton: Some("proton-cachyos-slr".into()),
             recent_games: vec!["ARC Raiders (proton_experimental)".into()],
+            last_launch: None,
             sessions: vec![GameSession {
                 program: "PioneerGame.exe".into(),
                 started: "2026-10-18 21:04".into(),
@@ -1062,7 +1129,7 @@ mod tests {
         );
         let exec = FakeExec::new().on("powerprofilesctl", "performance\n");
         let env = |name: &str| (name == "__GL_SHADER_DISK_CACHE_SIZE").then(|| "12000000000".to_string());
-        let report = run(&Sources {
+        let mut sources = Sources {
             sys: &pc.sys,
             dev: &pc.dev,
             proc_dir: &pc.proc_dir,
@@ -1074,6 +1141,12 @@ mod tests {
             desktop: Desktop::Plasma,
             default_proton: None,
             recent_games: Vec::new(),
+            last_launch: Some(LastLaunch {
+                name: "Cyberpunk 2077".into(),
+                seconds: 3 * 3600,
+                measured: true,
+                logged: true,
+            }),
             sessions: vec![GameSession {
                 program: "Cyberpunk2077.exe".into(),
                 started: "2026-10-18 21:04".into(),
@@ -1091,9 +1164,21 @@ mod tests {
             can_zram: true,
             pacman: false,
             updates: Vec::new(),
-        });
+        };
+        let report = run(&sources);
         assert!(report.checks.iter().all(|c| c.level == Level::Ok), "{:#?}", report.checks);
         assert!(report.checks.iter().any(|c| c.id == "rebar" && c.detail.contains("16384")));
+        assert!(report.text.contains("Cyberpunk 2077, il y a 3 h"), "{}", report.text);
+        // Lancé par Last1 Panel il y a 5 min, sans journal de MangoHud : dit.
+        sources.last_launch =
+            Some(LastLaunch { name: "ARC Raiders".into(), seconds: 300, measured: true, logged: false });
+        let measure = run(&sources).checks.into_iter().find(|c| c.id == "measure").unwrap();
+        assert_eq!(measure.level, Level::Warning);
+        assert!(measure.detail.contains("ARC Raiders") && measure.detail.contains("il y a 5 min"));
+        // Le jeu vient de démarrer : pas encore d'alerte.
+        sources.last_launch =
+            Some(LastLaunch { name: "ARC Raiders".into(), seconds: 30, measured: true, logged: false });
+        assert!(run(&sources).checks.iter().all(|c| c.level == Level::Ok));
     }
 
     #[test]
@@ -1127,6 +1212,7 @@ mod tests {
                 desktop: Desktop::Hyprland,
                 default_proton: None,
                 recent_games: Vec::new(),
+                last_launch: None,
                 sessions: Vec::new(),
                 mangohud: true,
                 wrapped_games: Some((1, 1)),
@@ -1209,6 +1295,7 @@ mod tests {
             desktop: Desktop::Hyprland,
             default_proton: None,
             recent_games: Vec::new(),
+            last_launch: None,
             sessions: Vec::new(),
             mangohud: true,
             wrapped_games: Some((1, 1)),
@@ -1247,6 +1334,7 @@ mod tests {
                 desktop: Desktop::Plasma,
                 default_proton: None,
                 recent_games: Vec::new(),
+                last_launch: None,
                 sessions: Vec::new(),
                 mangohud: true,
                 wrapped_games: Some((1, 1)),

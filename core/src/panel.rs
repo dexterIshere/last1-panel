@@ -340,6 +340,11 @@ impl Panel {
             default_proton,
             recent_games,
             sessions: crate::system::sessions::recent(&crate::paths::game_logs_dir(), 10),
+            last_launch: last_launch(
+                &crate::paths::last_launch_file(),
+                &crate::paths::game_logs_dir(),
+                steam.as_deref(),
+            ),
             mangohud: crate::exec::which("mangohud").is_some(),
             wrapped_games: steam
                 .as_deref()
@@ -434,6 +439,42 @@ fn vibrance_values(settings: &Settings, gpu: &Gpu) -> BTreeMap<String, f64> {
             Some((c.name.clone(), saved.vibrance?))
         })
         .collect()
+}
+
+/// Dernier jeu lancé par Last1 Panel (fichier écrit par la CLI à chaque
+/// lancement) : son nom dans Steam, et si MangoHud a écrit un journal depuis.
+fn last_launch(file: &Path, logs: &Path, steam: Option<&Path>) -> Option<crate::system::diagnostic::LastLaunch> {
+    let text = fs::read_to_string(file).ok()?;
+    let launched = fs::metadata(file).and_then(|m| m.modified()).ok()?;
+    let app_id =
+        text.lines().find_map(|line| line.strip_prefix("SteamAppId=")).and_then(|id| id.trim().parse::<u32>().ok());
+    let name = steam
+        .zip(app_id)
+        .and_then(|(root, id)| crate::games::steam::installed_games(root).into_iter().find(|g| g.app_id == id))
+        .map(|game| game.name)
+        .or_else(|| {
+            // Hors Steam : l'exécutable Windows de la commande (dernière ligne).
+            text.lines()
+                .last()?
+                .split_whitespace()
+                .rev()
+                .find(|arg| arg.to_ascii_lowercase().ends_with(".exe"))
+                .map(|exe| Path::new(exe).file_name().map_or(exe.to_string(), |n| n.to_string_lossy().into_owned()))
+        })
+        .or_else(|| app_id.map(|id| format!("AppId {id}")))
+        .unwrap_or_else(|| t("un jeu", "a game"));
+    let logged = fs::read_dir(logs).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            entry.path().extension().is_some_and(|ext| ext == "csv")
+                && entry.metadata().and_then(|m| m.modified()).is_ok_and(|at| at >= launched)
+        })
+    });
+    Some(crate::system::diagnostic::LastLaunch {
+        name,
+        seconds: std::time::SystemTime::now().duration_since(launched).unwrap_or_default().as_secs(),
+        measured: text.lines().any(|line| line.starts_with("MANGOHUD_CONFIG=") && line.contains("autostart_log=1")),
+        logged,
+    })
 }
 
 /// Rang de la carte parmi les cartes NVIDIA (variable NVIDIA_GPU de nvibrant).
@@ -581,6 +622,35 @@ mod tests {
         panel.display().unwrap().set_profile("DP-1", &ProfileState::default()).unwrap();
         assert!(panel.apply_saved().is_empty());
         assert!(panel.display().unwrap().profile("DP-1").unwrap().icc.is_some_and(|p| panel.is_ours(&p)));
+    }
+
+    #[test]
+    fn last_launch_is_named_and_checked_against_the_logs() {
+        let dir = tempfile::tempdir().unwrap();
+        let steam = dir.path().join("Steam");
+        fs::create_dir_all(steam.join("steamapps")).unwrap();
+        fs::write(
+            steam.join("steamapps/appmanifest_1091500.acf"),
+            "\"AppState\"\n{\n\t\"appid\"\t\t\"1091500\"\n\t\"name\"\t\t\"Cyberpunk 2077\"\n}\n",
+        )
+        .unwrap();
+        let file = dir.path().join("last-launch.txt");
+        let logs = dir.path().join("parties");
+        fs::create_dir_all(&logs).unwrap();
+        fs::write(
+            &file,
+            "SteamAppId=1091500\nMANGOHUD_CONFIG=autostart_log=1,log_interval=100\nmangohud /proton waitforexitandrun /jeu/bin/x64/Cyberpunk2077.exe\n",
+        )
+        .unwrap();
+        let last = last_launch(&file, &logs, Some(&steam)).unwrap();
+        assert_eq!((last.name.as_str(), last.measured, last.logged), ("Cyberpunk 2077", true, false));
+        assert!(last.seconds < 60);
+        // Journal écrit pendant la partie.
+        fs::write(logs.join("Cyberpunk2077.exe_2026-10-19_20-00-00.csv"), "fps\n").unwrap();
+        assert!(last_launch(&file, &logs, Some(&steam)).unwrap().logged);
+        // Jeu absent de Steam : son exécutable.
+        assert_eq!(last_launch(&file, &logs, None).unwrap().name, "Cyberpunk2077.exe");
+        assert!(last_launch(&dir.path().join("absent"), &logs, None).is_none());
     }
 
     #[test]

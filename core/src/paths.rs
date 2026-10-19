@@ -32,6 +32,12 @@ pub fn cache_dir() -> PathBuf {
     xdg("XDG_CACHE_HOME", ".cache").join("last1-panel")
 }
 
+/// Dernier jeu lancé par Last1 Panel (cli.rs, log_launch) : son SteamAppId,
+/// ses variables et sa commande.
+pub fn last_launch_file() -> PathBuf {
+    cache_dir().join("last-launch.txt")
+}
+
 /// ~/.local/share/last1-panel/parties : journaux de MangoHud (un CSV par
 /// partie), lus par le diagnostic des performances. go-to-linux y fait
 /// écrire MangoHud ; ailleurs, `output_folder` de MangoHud à régler ici.
