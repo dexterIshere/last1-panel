@@ -52,8 +52,12 @@ est installé (`/usr/bin/last1-panel`), l'AppImage lui laisse la place.
 ## Réglages 3D des jeux
 
 Chaque jeu Steam réglé dans Last1 Panel est lancé par
-`last1-panel-cli run %command%` (option de lancement mise par Last1 Panel,
-Steam fermé). Le détail des variables posées est dans
+`$(command -v last1-panel-cli && echo run) %command%` (option de lancement
+mise par Last1 Panel, Steam fermé). Steam la passe à `/bin/sh` : si Last1
+Panel est désinstallé, il ne reste que `%command%` et le jeu démarre tel quel.
+Sous go-to-linux, `last1-panel-cli fix wrap-games` la pose sur tous les jeux
+installés, Steam fermé (code 3 s'il est lancé : rien n'est écrit). Le détail
+des variables posées est dans
 [docs/DESIGN.md](docs/DESIGN.md#réglages-3d--ce-que-pose-le-lanceur).
 
 « DLSS : dernière version » fait utiliser au jeu une autre version du DLSS que

@@ -1,10 +1,10 @@
 //! Steam : jeux installés et options de lancement.
 //!
 //! Nos réglages passent par l'option de lancement
-//! `last1-panel-cli run %command%` (chemin complet de l'outil quand il vient
-//! de l'AppImage, hors du PATH), écrite dans localconfig.vdf de chaque compte
-//! Steam du PC. Steam réécrit ce fichier en quittant : on n'y touche que
-//! Steam fermé.
+//! `$(command -v last1-panel-cli && echo run) %command%` (chemin complet de
+//! l'outil quand il vient de l'AppImage, hors du PATH), écrite dans
+//! localconfig.vdf de chaque compte Steam du PC. Steam réécrit ce fichier en
+//! quittant : on n'y touche que Steam fermé.
 
 use super::vdf;
 use crate::error::{CoreError, CoreResult};
@@ -19,30 +19,50 @@ use std::time::{Duration, Instant};
 const CLI: &str = "last1-panel-cli";
 const COMMAND: &str = "%command%";
 
-/// Ce que notre option de lancement ajoute devant la commande du jeu :
-/// `last1-panel-cli run` avec le paquet, le chemin complet de l'outil posé
-/// par l'AppImage sinon.
+/// Ce que notre option de lancement ajoute devant la commande du jeu. Steam
+/// passe l'option à /bin/sh : `$(command -v last1-panel-cli && echo run)`
+/// devient `/usr/bin/last1-panel-cli run`, ou rien du tout si l'outil n'est
+/// plus là (Last1 Panel désinstallé) : le jeu démarre alors tel quel.
+/// Chemin complet de l'outil posé par l'AppImage.
 pub fn wrapper() -> String {
     wrapper_for(&paths::cli())
 }
 
+const GUARD: (&str, &str) = ("$(command -v ", " && echo run)");
+
 fn wrapper_for(cli: &Path) -> String {
     if cli == Path::new(paths::SYSTEM_CLI) {
-        return format!("{CLI} run");
+        return format!("{}{CLI}{}", GUARD.0, GUARD.1);
     }
     let text = cli.to_string_lossy();
     if text.chars().all(|c| c.is_ascii_alphanumeric() || "/._-+".contains(c)) {
-        format!("{text} run")
+        format!("{}{text}{}", GUARD.0, GUARD.1)
     } else {
-        // Options exécutées par le shell : chemin entre apostrophes.
+        // Le shell couperait un chemin avec espace sorti de $(…) : forme
+        // simple, chemin entre apostrophes.
         format!("'{}' run", text.replace('\'', r"'\''"))
     }
 }
 
 /// Position de notre outil dans les options (début et fin, « run » compris),
-/// quel que soit son chemin : `last1-panel-cli run`, `/chemin/last1-panel-cli
-/// run` ou `'/chemin avec espace/last1-panel-cli' run`.
+/// quel que soit son chemin : `$(command -v last1-panel-cli && echo run)`,
+/// `$(command -v /chemin/last1-panel-cli && echo run)`, et les formes
+/// d'avant, `last1-panel-cli run`, `/chemin/last1-panel-cli run` ou
+/// `'/chemin avec espace/last1-panel-cli' run`.
 fn wrapper_span(options: &str) -> Option<(usize, usize)> {
+    let ends_word = |tail: &str| tail.is_empty() || tail.starts_with(char::is_whitespace);
+    for (start, _) in options.match_indices(GUARD.0) {
+        let after = &options[start + GUARD.0.len()..];
+        let Some(length) = after.find(GUARD.1) else { continue };
+        let tool = &after[..length];
+        let end = start + GUARD.0.len() + length + GUARD.1.len();
+        if (tool == CLI || tool.ends_with(&format!("/{CLI}")))
+            && !tool.contains(char::is_whitespace)
+            && ends_word(&options[end..])
+        {
+            return Some((start, end));
+        }
+    }
     for (index, _) in options.match_indices(CLI) {
         let after = &options[index + CLI.len()..];
         let quote = after.starts_with('\'');
@@ -332,6 +352,7 @@ pub fn set_wrapped(root: &Path, proc_dir: &Path, app_ids: &[u32], wrapped: bool)
         let mut file =
             vdf::parse(&text).map_err(|error| CoreError::Unreadable("localconfig.vdf".into(), error.to_string()))?;
         let apps = file.path_mut(&APPS_PATH);
+        let before = changed;
         for app_id in app_ids {
             let app = apps.block_mut(&app_id.to_string());
             let current = app.text("LaunchOptions").unwrap_or_default().to_string();
@@ -341,7 +362,10 @@ pub fn set_wrapped(root: &Path, proc_dir: &Path, app_ids: &[u32], wrapped: bool)
                 changed += 1;
             }
         }
-        write_atomic(&path, &vdf::serialize(&file))?;
+        // Rien de changé pour ce compte : le fichier reste tel quel.
+        if changed > before {
+            write_atomic(&path, &vdf::serialize(&file))?;
+        }
     }
     Ok(changed)
 }
@@ -431,11 +455,12 @@ mod tests {
     #[test]
     fn wrap_keeps_existing_options() {
         let package = wrapper_for(Path::new(paths::SYSTEM_CLI));
-        assert_eq!(package, "last1-panel-cli run");
+        assert_eq!(package, "$(command -v last1-panel-cli && echo run)");
         let wrap = |options: &str| wrap_with(options, &package);
-        assert_eq!(wrap(""), "last1-panel-cli run %command%");
-        assert_eq!(wrap("PROTON_LOG=1 %command% -dx12"), "PROTON_LOG=1 last1-panel-cli run %command% -dx12");
-        assert_eq!(wrap("-novid -high"), "last1-panel-cli run %command% -novid -high");
+        let tool = "$(command -v last1-panel-cli && echo run) %command%";
+        assert_eq!(wrap(""), tool);
+        assert_eq!(wrap("PROTON_LOG=1 %command% -dx12"), format!("PROTON_LOG=1 {tool} -dx12"));
+        assert_eq!(wrap("-novid -high"), format!("{tool} -novid -high"));
         let once = wrap("gamemoderun %command%");
         assert_eq!(wrap(&once), once);
         assert_eq!(unwrap(&wrap("PROTON_LOG=1 %command% -dx12")), "PROTON_LOG=1 %command% -dx12");
@@ -445,24 +470,50 @@ mod tests {
         assert_eq!(unwrap(&wrap(r#"%command% -name "a  b""#)), r#"%command% -name "a  b""#);
         // Un autre outil qui finit pareil n'est pas le nôtre.
         assert!(!is_wrapped("my-last1-panel-cli run %command%"));
+        assert!(!is_wrapped("$(command -v my-last1-panel-cli && echo run) %command%"));
+        // Forme d'avant (sans repli) : reconnue, et remplacée.
+        assert!(is_wrapped("PROTON_LOG=1 last1-panel-cli run %command% -dx12"));
+        assert_eq!(wrap("PROTON_LOG=1 last1-panel-cli run %command% -dx12"), format!("PROTON_LOG=1 {tool} -dx12"));
     }
 
     #[test]
     fn appimage_tool_is_called_by_its_full_path() {
         let appimage = wrapper_for(Path::new("/home/nelly/.local/lib/last1-panel/last1-panel-cli"));
-        assert_eq!(appimage, "/home/nelly/.local/lib/last1-panel/last1-panel-cli run");
+        assert_eq!(appimage, "$(command -v /home/nelly/.local/lib/last1-panel/last1-panel-cli && echo run)");
         let options = wrap_with("PROTON_LOG=1 %command% -dx12", &appimage);
-        assert_eq!(options, "PROTON_LOG=1 /home/nelly/.local/lib/last1-panel/last1-panel-cli run %command% -dx12");
+        assert_eq!(options, format!("PROTON_LOG=1 {appimage} %command% -dx12"));
         assert!(is_wrapped(&options));
         assert_eq!(unwrap(&options), "PROTON_LOG=1 %command% -dx12");
         // Passage au paquet : le chemin de l'AppImage est remplacé.
-        assert_eq!(wrap_with(&options, "last1-panel-cli run"), "PROTON_LOG=1 last1-panel-cli run %command% -dx12");
+        let package = wrapper_for(Path::new(paths::SYSTEM_CLI));
+        assert_eq!(wrap_with(&options, &package), format!("PROTON_LOG=1 {package} %command% -dx12"));
+        // Ancienne forme de l'AppImage aussi.
+        let old = "PROTON_LOG=1 /home/nelly/.local/lib/last1-panel/last1-panel-cli run %command% -dx12";
+        assert_eq!(wrap_with(old, &package), format!("PROTON_LOG=1 {package} %command% -dx12"));
 
         let spaced = wrapper_for(Path::new("/home/N l/.local/lib/last1-panel/last1-panel-cli"));
         assert_eq!(spaced, "'/home/N l/.local/lib/last1-panel/last1-panel-cli' run");
         let options = wrap_with("%command% -novid", &spaced);
         assert!(is_wrapped(&options));
         assert_eq!(unwrap(&options), "%command% -novid");
+    }
+
+    #[test]
+    fn game_starts_even_without_the_tool() {
+        // Ce que fait /bin/sh de l'option de Steam, outil présent puis absent.
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let options = format!("FOO=1 {} echo jeu -dx12", wrapper_for(&bin.join(CLI)));
+        let shell = |options: &str| {
+            let output = std::process::Command::new("/bin/sh").args(["-c", options]).output().unwrap();
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        };
+        assert_eq!(shell(&options), "jeu -dx12");
+        let tool = bin.join(CLI);
+        fs::write(&tool, "#!/bin/sh\necho \"outil $* FOO=$FOO\"\n").unwrap();
+        fs::set_permissions(&tool, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        assert_eq!(shell(&options), "outil run echo jeu -dx12 FOO=1");
     }
 
     #[test]
@@ -498,6 +549,10 @@ mod tests {
         let expected = format!("PROTON_LOG=1 {} %command% -dx12", wrapper());
         assert_eq!(app.text("LaunchOptions"), Some(expected.as_str()));
         assert!(path.with_extension("vdf.last1-panel.bak").is_file());
+        // Déjà en place : rien n'est réécrit.
+        let written = fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(set_wrapped(&root, proc_dir.path(), &[1091500, 570], true).unwrap(), 0);
+        assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), written);
 
         set_wrapped(&root, proc_dir.path(), &[1091500, 570], false).unwrap();
         let games = installed_games(&root);

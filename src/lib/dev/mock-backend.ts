@@ -120,7 +120,7 @@ export function installMockBackend(): void {
     perGame: { "1091500": profile({ dlssLatest: true, fpsLimit: 117 }) },
   };
   const games = [
-    { appId: 1091500, name: "Cyberpunk 2077", installDir: "/mnt/windows-d/SteamLibrary/steamapps/common/Cyberpunk 2077", launchOptions: "last1-panel-cli run %command%", wrapped: true },
+    { appId: 1091500, name: "Cyberpunk 2077", installDir: "/mnt/windows-d/SteamLibrary/steamapps/common/Cyberpunk 2077", launchOptions: "$(command -v last1-panel-cli && echo run) %command%", wrapped: true },
     { appId: 570, name: "Dota 2", installDir: "~/.local/share/Steam/steamapps/common/dota 2 beta", launchOptions: "", wrapped: false },
     { appId: 1245620, name: "ELDEN RING", installDir: "/mnt/windows-d/SteamLibrary/steamapps/common/ELDEN RING", launchOptions: "PROTON_LOG=1 %command%", wrapped: false },
     { appId: 2694490, name: "Path of Exile 2", installDir: "", launchOptions: "", wrapped: false },
@@ -256,7 +256,7 @@ export function installMockBackend(): void {
       steamRunning,
       games,
       settings: structuredClone(gameSettings),
-      launchOption: "last1-panel-cli run %command%",
+      launchOption: "$(command -v last1-panel-cli && echo run) %command%",
       colorProfiles: structuredClone(colorProfiles),
       colorLayer: params.get("vkbasalt") !== "absent",
     }),
@@ -332,7 +332,7 @@ export function installMockBackend(): void {
       if (!args.profile || !game || game.wrapped) return { needsSteamClosed: false };
       if (steamRunning) return { needsSteamClosed: true };
       game.wrapped = true;
-      game.launchOptions = `last1-panel-cli run ${game.launchOptions || "%command%"}`;
+      game.launchOptions = `$(command -v last1-panel-cli && echo run) ${game.launchOptions || "%command%"}`;
       return { needsSteamClosed: false };
     },
     close_steam_and_wrap: async (args) => {
@@ -340,7 +340,7 @@ export function installMockBackend(): void {
       const ids = args.appIds as number[];
       for (const game of games.filter((g) => ids.includes(g.appId) && !g.wrapped)) {
         game.wrapped = true;
-        game.launchOptions = `last1-panel-cli run ${game.launchOptions || "%command%"}`;
+        game.launchOptions = `$(command -v last1-panel-cli && echo run) ${game.launchOptions || "%command%"}`;
       }
       return ids.length;
     },
@@ -352,7 +352,7 @@ export function installMockBackend(): void {
       for (const game of games) {
         if (!ids.includes(game.appId) || game.wrapped === args.wrapped) continue;
         game.wrapped = args.wrapped as boolean;
-        game.launchOptions = game.wrapped ? `last1-panel-cli run ${game.launchOptions || "%command%"}` : game.launchOptions.replace("last1-panel-cli run ", "");
+        game.launchOptions = game.wrapped ? `$(command -v last1-panel-cli && echo run) ${game.launchOptions || "%command%"}` : game.launchOptions.replace("$(command -v last1-panel-cli && echo run) ", "");
         count++;
       }
       return count;

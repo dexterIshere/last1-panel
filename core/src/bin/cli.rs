@@ -1,7 +1,8 @@
 //! last1-panel-cli : ce qui tourne sans la fenêtre.
 //!
 //!   last1-panel-cli run <commande du jeu…>   lanceur des jeux (option Steam
-//!                                            « last1-panel-cli run %command% »)
+//!                                            « $(command -v last1-panel-cli
+//!                                            && echo run) %command% »)
 //!   last1-panel-cli apply [--delay S]        réglages remis maintenant
 //!                                            (vibrance, profils de couleur)
 //!   last1-panel-cli watch                    service de la session : réglages
@@ -13,6 +14,9 @@
 //!   last1-panel-cli diagnostic [--json]      performances en jeu : ce qui
 //!                                            freine ce PC (rapport à copier,
 //!                                            ou JSON pour go-to-linux)
+//!   last1-panel-cli fix wrap-games           option de lancement sur tous
+//!                                            les jeux Steam, Steam fermé
+//!                                            (go-to-linux)
 
 use last1_panel_core::error::CoreResult;
 use last1_panel_core::exec::SystemExec;
@@ -47,12 +51,13 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+        Some("fix") if args.get(1).is_some_and(|a| a == "wrap-games") => wrap_games(),
         _ => {
             eprintln!(
                 "{}",
                 t(
-                    "Utilisation : last1-panel-cli run <commande du jeu…> | apply [--delay secondes] | watch | update | diagnostic [--json]",
-                    "Usage: last1-panel-cli run <game command…> | apply [--delay seconds] | watch | update | diagnostic [--json]",
+                    "Utilisation : last1-panel-cli run <commande du jeu…> | apply [--delay secondes] | watch | update | diagnostic [--json] | fix wrap-games",
+                    "Usage: last1-panel-cli run <game command…> | apply [--delay seconds] | watch | update | diagnostic [--json] | fix wrap-games",
                 )
             );
             ExitCode::from(2)
@@ -106,6 +111,51 @@ fn run(command: &[String]) -> ExitCode {
     let error = Command::new(program).args(rest).envs(env.iter().map(|(k, v)| (k, v))).exec();
     eprintln!("last1-panel-cli : {program} : {error}");
     ExitCode::from(127)
+}
+
+/// Notre option de lancement sur tous les jeux Steam installés, pour tous les
+/// comptes, sans jamais fermer Steam : go-to-linux l'appelle au démarrage du
+/// PC puis tant que Steam est fermé. Sortie : le nombre d'options changées.
+/// Code 0 : fait, ou rien à faire ; 3 : Steam est lancé, rien n'est écrit ;
+/// 1 : erreur.
+fn wrap_games() -> ExitCode {
+    use last1_panel_core::games::steam;
+    let proc_dir = std::path::Path::new("/proc");
+    let nothing = |why: String| {
+        eprintln!("{why}");
+        println!("0");
+        ExitCode::SUCCESS
+    };
+    let Some(root) = steam::find_root(&last1_panel_core::paths::home_dir()) else {
+        return nothing(t("Steam n'est pas installé : rien à faire.", "Steam is not installed: nothing to do."));
+    };
+    if steam::is_flatpak(&root) {
+        return nothing(t(
+            "Steam est en Flatpak : un jeu ne pourrait pas lancer Last1 Panel depuis son bac à sable.",
+            "Steam is a Flatpak: a game could not start Last1 Panel from its sandbox.",
+        ));
+    }
+    if steam::local_configs(&root).is_empty() {
+        return nothing(t(
+            "Aucun compte Steam sur ce PC : rien à faire.",
+            "No Steam account on this PC: nothing to do.",
+        ));
+    }
+    if steam::is_running(proc_dir) {
+        eprintln!("{}", t("Steam est lancé : rien n'est écrit.", "Steam is running: nothing is written."));
+        return ExitCode::from(3);
+    }
+    let ids: Vec<u32> = steam::installed_games(&root).iter().map(|game| game.app_id).collect();
+    match steam::set_wrapped(&root, proc_dir, &ids, true) {
+        Ok(changed) => {
+            println!("{changed}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("last1-panel-cli fix wrap-games : {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 /// Dossier des mesures des parties, créé, les 30 derniers journaux gardés.

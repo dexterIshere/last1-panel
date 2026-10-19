@@ -1,5 +1,5 @@
-//! Lanceur des jeux : `last1-panel-cli run %command%` dans les options de
-//! lancement Steam. Il lit nos réglages, pose les variables que lisent
+//! Lanceur des jeux : `$(command -v last1-panel-cli && echo run) %command%`
+//! dans les options de lancement Steam (games/steam.rs). Il lit nos réglages, pose les variables que lisent
 //! Proton, DXVK, VKD3D-Proton, dxvk-nvapi, les pilotes et MangoHud, chaîne
 //! les outils de CachyOS (game-performance, dlss-swapper) puis lance le jeu.
 //!
