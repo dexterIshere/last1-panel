@@ -1,5 +1,5 @@
-<!-- Performances : diagnostic de ce qui freine les jeux sur ce PC (lecture seule ;
-     les optimisations du système sont posées par go-to-linux). -->
+<!-- Performances : diagnostic de ce qui freine les jeux sur ce PC, et le bouton
+     qui règle chaque point réglable (« Tout régler » : un seul mot de passe). -->
 <script lang="ts">
   import { api, errorMessage } from "$lib/api/ipc";
   import type { PerfCheck, PerfFix, PerfReport } from "$lib/api/types";
@@ -7,12 +7,14 @@
   import Callout from "$lib/components/ui/Callout.svelte";
   import Spinner from "$lib/components/ui/Spinner.svelte";
   import { t } from "$lib/i18n.svelte";
-  import { Check, CircleAlert, Copy, Info, RefreshCw, TriangleAlert } from "@lucide/svelte";
+  import { Check, CircleAlert, Copy, Info, RefreshCw, TriangleAlert, Wrench } from "@lucide/svelte";
 
   let report = $state<PerfReport | null>(null);
   let loading = $state(true);
-  let fixing = $state<PerfFix | null>(null);
+  /** Corrections en cours (une, ou toutes). */
+  let fixing = $state<PerfFix[]>([]);
   let error = $state<string | null>(null);
+  let notices = $state<string[]>([]);
   let copied = $state(false);
 
   async function load() {
@@ -30,16 +32,17 @@
     load();
   });
 
-  async function fix(kind: PerfFix) {
-    fixing = kind;
+  async function fix(kinds: PerfFix[]) {
+    fixing = kinds;
     error = null;
+    notices = [];
     try {
-      await api.performanceFix(kind);
+      notices = await api.performanceFix(kinds);
       await load();
     } catch (e) {
       error = errorMessage(e);
     }
-    fixing = null;
+    fixing = [];
   }
 
   async function copy() {
@@ -50,38 +53,47 @@
   }
 
   const toFix = $derived(report?.checks.filter((c) => c.level === "problem" || c.level === "warning").length ?? 0);
+  /** Tout ce qui se règle d'un clic. */
+  const fixable = $derived(report?.checks.flatMap((c) => (c.fix ? [c.fix] : [])) ?? []);
   const fixLabel = (kind: PerfFix) =>
     ({
       "low-latency": t("Rendre la latence aux jeux", "Give latency back to games"),
       "install-mango-hud": t("Installer MangoHud", "Install MangoHud"),
       "wrap-games": t("Activer pour tous les jeux", "Turn on for all games"),
+      performance: t("Passer en mode performance", "Switch to performance mode"),
+      ntsync: t("Activer NTSync", "Turn on NTSync"),
+      "shader-cache": t("Agrandir à 12 Go", "Enlarge to 12 GB"),
+      "split-lock": t("Arrêter ce frein", "Stop this slowdown"),
+      "x3d-cache": t("Mettre les jeux sur la 3D V-Cache", "Put games on the 3D V-Cache"),
+      scheduler: t("Revenir à l'ordonnanceur du noyau", "Go back to the kernel's scheduler"),
     })[kind];
   const icon = (check: PerfCheck) => ({ problem: CircleAlert, warning: TriangleAlert, info: Info, ok: Check })[check.level];
 </script>
 
 <SectionHeader
   title={t("Performances en jeu", "In-game performance")}
-  lead={report && !report.goToLinux
-    ? t(
-        "Ce qui fait perdre des images par seconde sur ce PC par rapport à Windows. Chaque point dit comment le corriger : la commande à lancer, ou le réglage du BIOS.",
-        "What costs frames per second on this PC compared to Windows. Each point says how to fix it: the command to run, or the BIOS setting.",
-      )
-    : t(
-        "Ce qui fait perdre des images par seconde sur ce PC par rapport à Windows. Rien n'est changé ici : go-to-linux pose les optimisations du système dès l'installation (« Jeux et performances »).",
-        "What costs frames per second on this PC compared to Windows. Nothing is changed here: go-to-linux sets the system optimizations at install (“Games and performance”).",
-      )}
+  lead={t(
+    "Ce qui fait perdre des images par seconde sur ce PC par rapport à Windows, et le bouton qui le règle. Le mot de passe du PC est demandé une fois.",
+    "What costs frames per second on this PC compared to Windows, and the button that fixes it. The PC's password is asked once.",
+  )}
 >
   {#snippet actions()}
+    {#if fixable.length > 1}
+      <button class="btn btn--primary" onclick={() => fix(fixable)} disabled={fixing.length > 0}>
+        {#if fixing.length > 1}<Spinner />{:else}<Wrench size={16} />{/if}{t(`Tout régler (${fixable.length})`, `Fix everything (${fixable.length})`)}
+      </button>
+    {/if}
     <button class="btn" onclick={copy} disabled={!report}>
       {#if copied}<Check size={16} />{:else}<Copy size={16} />{/if}{t("Copier le rapport", "Copy the report")}
     </button>
-    <button class="btn btn--primary" onclick={load} disabled={loading}>
+    <button class="btn" onclick={load} disabled={loading}>
       {#if loading}<Spinner />{:else}<RefreshCw size={16} />{/if}{t("Relancer", "Run again")}
     </button>
   {/snippet}
 </SectionHeader>
 
-{#if error}<Callout kind="danger" title={t("Diagnostic impossible", "Diagnostic failed")}>{error}</Callout>{/if}
+{#if error}<Callout kind="danger">{error}</Callout>{/if}
+{#each notices as notice (notice)}<Callout kind="info">{notice}</Callout>{/each}
 
 {#if report}
   {#if toFix === 0}
@@ -99,8 +111,8 @@
               <span class="field__hint">{check.detail}</span>
             </div>
             {#if check.fix}
-              <button class="btn" onclick={() => fix(check.fix!)} disabled={fixing !== null}>
-                {#if fixing === check.fix}<Spinner />{/if}{fixLabel(check.fix)}
+              <button class="btn" onclick={() => fix([check.fix!])} disabled={fixing.length > 0}>
+                {#if fixing.includes(check.fix)}<Spinner />{/if}{fixLabel(check.fix)}
               </button>
             {/if}
           </li>

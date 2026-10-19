@@ -202,7 +202,16 @@ export interface ColorProfile {
 
 /** Diagnostic des performances en jeu (core/src/system/diagnostic.rs). */
 export type PerfLevel = "problem" | "warning" | "info" | "ok";
-export type PerfFix = "low-latency" | "install-mango-hud" | "wrap-games";
+export type PerfFix =
+  | "low-latency"
+  | "install-mango-hud"
+  | "wrap-games"
+  | "performance"
+  | "ntsync"
+  | "shader-cache"
+  | "split-lock"
+  | "x3d-cache"
+  | "scheduler";
 
 export interface PerfCheck {
   id: string;

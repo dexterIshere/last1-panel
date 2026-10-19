@@ -55,7 +55,8 @@ export const api = {
   /** Profil de couleurs d'un jeu (null : plus de profil), option de lancement mise si elle manque. */
   linkGameColor: (appId: number, profile: string | null) => invoke<GameLink>("link_game_color", { appId, profile }),
   performanceReport: () => invoke<PerfReport>("performance_report"),
-  performanceFix: (fix: PerfFix) => invoke<void>("performance_fix", { fix }),
+  /** Rend ce qu'il reste à faire au joueur (se reconnecter…). */
+  performanceFix: (fixes: PerfFix[]) => invoke<string[]>("performance_fix", { fixes }),
   /** Steam fermé, option de lancement mise pour ces jeux, Steam rouvert. */
   closeSteamAndWrap: (appIds: number[]) => invoke<number>("close_steam_and_wrap", { appIds }),
   saveColorProfile: (id: string | null, name: string, color: ColorAdjust, vibrance: number) =>

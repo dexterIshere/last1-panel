@@ -98,9 +98,13 @@ PC par rapport à Windows : processeur en mode économie, Ryzen X3D sans sa 3D
 V-Cache, carte graphique mal branchée (x4 au lieu de x16), Resizable BAR
 désactivé, pilote ancien, NTSync absent, cache des shaders trop petit,
 faible latence forcée, mémoire pleine, shaders compilés par Steam pendant le
-jeu. Elle ne change rien au système : go-to-linux pose ces optimisations dès
-l'installation de CachyOS (« Jeux et performances »). « Copier le rapport »
-donne le tout en texte, comme `last1-panel-cli diagnostic`.
+jeu. Chaque point qu'un logiciel peut régler a son bouton, et « Tout régler »
+les fait tous avec un seul mot de passe : mode performance, NTSync, cache des
+shaders de 12 Go, split locks, 3D V-Cache, ordonnanceur du noyau. Ce sont les
+réglages que go-to-linux pose dès l'installation de CachyOS ; Last1 Panel les
+écrit dans ses propres fichiers (`/etc/…/last1-panel…`). Le reste (BIOS,
+emplacement de la carte) est expliqué. « Copier le rapport » donne le tout en
+texte, comme `last1-panel-cli diagnostic`.
 
 Chaque jeu lancé par Last1 Panel est mesuré par MangoHud, caché : images par
 seconde (moyenne et 1 % les plus lentes), charge du processeur et de la carte,

@@ -112,6 +112,7 @@ export function installMockBackend(): void {
   const guide = (b: number, c: number, g: number) => ({ brightness: b, contrast: c, gamma: g });
   let tray = true;
   let lowLatencyForced = true;
+  const perfFixed = new Set<string>();
   let colorProfiles: ColorProfile[] = [
     { id: "p1", name: "Arc Raiders", color: { red: guide(52, 47, 1.47), green: guide(52, 47, 1.47), blue: guide(62, 72, 1.65) }, vibrance: 50 },
   ];
@@ -292,22 +293,31 @@ export function installMockBackend(): void {
     },
     performance_report: async () => {
       await wait(400);
+      const open = (fix: string) => !perfFixed.has(fix);
       const checks = [
-        { id: "x3d", level: "problem", title: "Les jeux tournent sans la 3D V-Cache", detail: "Processeur X3D en mode « frequency » : les jeux partent sur le bloc sans 3D V-Cache, beaucoup d'images en moins quand le processeur limite. go-to-linux le met en mode « cache » à chaque démarrage.", fix: null },
+        ...(open("x3d-cache")
+          ? [{ id: "x3d", level: "problem", title: "Les jeux tournent sans la 3D V-Cache", detail: "Processeur X3D en mode « frequency » : les jeux partent sur le bloc sans 3D V-Cache, beaucoup d'images en moins quand le processeur limite.", fix: "x3d-cache" }]
+          : [{ id: "x3d", level: "ok", title: "Jeux sur la 3D V-Cache", detail: "Mode « cache ».", fix: null }]),
         ...(lowLatencyForced
           ? [{ id: "low-latency", level: "warning", title: "Mode de faible latence forcé (Last1 Panel)", detail: "Une seule image préparée d'avance : quand le processeur et la carte prennent chacun autant de temps (jeux Unreal Engine 5), ils s'attendent l'un l'autre et les images par seconde chutent.", fix: "low-latency" }]
           : []),
+        ...(open("ntsync")
+          ? [{ id: "ntsync", level: "warning", title: "NTSync absent", detail: "Proton synchronise alors les fils des jeux sans l'aide du noyau : plus de travail pour le processeur.", fix: "ntsync" }]
+          : [{ id: "ntsync", level: "ok", title: "NTSync", detail: "Disponible pour Proton.", fix: null }]),
+        ...(open("shader-cache")
+          ? [{ id: "shader-cache", level: "warning", title: "Cache des shaders limité à 1 Go", detail: "Les shaders d'un gros jeu (Unreal Engine 5) n'y tiennent pas et se recompilent à chaque partie : saccades, chutes d'images par seconde.", fix: "shader-cache" }]
+          : [{ id: "shader-cache", level: "info", title: "Cache des shaders agrandi à la prochaine connexion", detail: "Déconnectez-vous puis reconnectez-vous (ou redémarrez le PC) : Steam et ses jeux le prendront alors.", fix: null }]),
         { id: "rebar", level: "warning", title: "Resizable BAR désactivé", detail: "Le processeur ne voit la mémoire de la carte que par une fenêtre de 256 Mo, ce qui freine les jeux DirectX 12 (VKD3D-Proton). À activer dans le BIOS : Resizable BAR et Above 4G Decoding.", fix: null },
-        { id: "scheduler", level: "info", title: "Ordonnanceur lavd actif", detail: "Conçu pour le Steam Deck : aucun gain d'images par seconde prouvé, et des chutes rapportées. go-to-linux garde l'ordonnanceur de CachyOS et arrête celui-ci à sa mise à jour.", fix: null },
+        ...(open("scheduler")
+          ? [{ id: "scheduler", level: "info", title: "Ordonnanceur lavd actif", detail: "Conçu pour le Steam Deck : aucun gain d'images par seconde prouvé, et des chutes rapportées. go-to-linux garde celui du noyau.", fix: "scheduler" }]
+          : []),
         { id: "power", level: "ok", title: "Mode performance", detail: "Processeur à pleine vitesse.", fix: null },
-        { id: "ntsync", level: "ok", title: "NTSync", detail: "Disponible pour Proton.", fix: null },
-        { id: "shader-cache", level: "ok", title: "Cache des shaders agrandi", detail: "__GL_SHADER_DISK_CACHE_SIZE=12000000000", fix: null },
       ];
       const facts: [string, string][] = [
         ["Processeur", "AMD Ryzen 9 7950X3D 16-Core Processor"],
         ["Fréquence du processeur", "amd-pstate-epp / powersave / performance"],
         ["Profil d'énergie", "performance"],
-        ["Ordonnanceur", "lavd"],
+        ["Ordonnanceur", open("scheduler") ? "lavd" : "celui du noyau"],
         ["Noyau", "6.17.2-2-cachyos"],
         ["Carte card1", "GeForce RTX 4070 (nvidia 595.58.03)"],
         ["Proton par défaut (Steam)", "proton-cachyos-slr"],
@@ -321,9 +331,12 @@ export function installMockBackend(): void {
       const text = ["Last1 Panel — diagnostic des performances", "", ...facts.map(([n, v]) => `${n} : ${v}`), "", ...checks.map((c) => `[${c.level}] ${c.title} — ${c.detail}`)].join("\n");
       return { checks, facts, sessions, text, goToLinux: !params.get("arch") };
     },
-    performance_fix: async () => {
-      await wait(200);
-      lowLatencyForced = false;
+    performance_fix: async (args) => {
+      await wait(600);
+      const fixes = args.fixes as string[];
+      for (const fix of fixes) perfFixed.add(fix);
+      if (fixes.includes("low-latency")) lowLatencyForced = false;
+      return fixes.includes("shader-cache") ? ["Cache des shaders agrandi : il vaudra après une déconnexion-reconnexion (ou un redémarrage)."] : [];
     },
     link_game_color: async (args) => {
       await wait(200);

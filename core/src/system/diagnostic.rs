@@ -1,9 +1,9 @@
 //! Diagnostic des performances en jeu : ce qui, sur ce PC, fait perdre des
 //! images par seconde par rapport à Windows. Il lit le système tel quel
 //! (sysfs, /proc, /dev, variables de la session, réglages de Last1 Panel) et
-//! ne change rien : les optimisations du système sont l'affaire de
-//! go-to-linux (« Jeux et performances »), qui les pose dès l'installation.
-//! Seul réglage de Last1 Panel corrigé d'ici : la faible latence forcée.
+//! ne change rien tout seul. go-to-linux (« Jeux et performances ») pose les
+//! optimisations du système dès l'installation ; ailleurs, ou s'il en manque
+//! une, chaque point réglable a son bouton (Fix, system/repair.rs).
 
 use crate::exec::Exec;
 use crate::games::profile::LowLatency;
@@ -25,7 +25,8 @@ pub enum Level {
     Ok,
 }
 
-/// Ce que Last1 Panel corrige lui-même (ses propres réglages).
+/// Ce que Last1 Panel corrige d'un clic : ses propres réglages, et ceux du
+/// système (mot de passe demandé une fois).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Fix {
@@ -36,6 +37,15 @@ pub enum Fix {
     /// Option de lancement de Last1 Panel pour tous les jeux Steam (Steam
     /// fermé le temps de l'écrire, puis rouvert).
     WrapGames,
+    /// Réglages du système, comme go-to-linux les pose (system/repair.rs) :
+    /// mode performance, module ntsync, cache des shaders de 12 Go, split
+    /// locks non freinés, jeux sur la 3D V-Cache, ordonnanceur du noyau.
+    Performance,
+    Ntsync,
+    ShaderCache,
+    SplitLock,
+    X3dCache,
+    Scheduler,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -72,6 +82,8 @@ pub struct Sources<'a> {
     pub exec: &'a dyn Exec,
     /// Variables de la session (celles dont Steam et ses jeux héritent).
     pub env: &'a dyn Fn(&str) -> Option<String>,
+    /// Variables de la prochaine connexion (/etc/environment).
+    pub next_login_env: &'a dyn Fn(&str) -> Option<String>,
     pub settings: &'a Settings,
     pub gpus: &'a [Gpu],
     pub desktop: Desktop,
@@ -96,7 +108,7 @@ pub fn etc_environment(name: &str) -> Option<String> {
     environment_value(&fs::read_to_string("/etc/environment").ok()?, name)
 }
 
-fn environment_value(text: &str, name: &str) -> Option<String> {
+pub(crate) fn environment_value(text: &str, name: &str) -> Option<String> {
     text.lines().rev().find_map(|line| {
         let (key, value) = line.trim().strip_prefix("export ").unwrap_or(line.trim()).split_once('=')?;
         (key.trim() == name).then(|| value.trim().trim_matches('"').to_string()).filter(|v| !v.is_empty())
@@ -115,8 +127,6 @@ pub fn run(src: &Sources) -> Report {
     let mut facts: Vec<(String, String)> = Vec::new();
     let mut checks = Vec::new();
     let unknown = || "?".to_string();
-    // Remède : go-to-linux s'en charge, sinon ce qu'il faut faire sur ce PC.
-    let remedy = |by_gtl: String, here: String| if src.go_to_linux { by_gtl } else { here };
 
     // Processeur.
     let cpu = read(&src.proc_dir.join("cpuinfo")).and_then(|text| {
@@ -191,6 +201,13 @@ pub fn run(src: &Sources) -> Report {
         .exec
         .run("systemctl", &["is-active".into(), "gtl-perf.service".into()])
         .is_ok_and(|o| o.stdout.trim() == "active");
+    // Portable : pas de mode performance permanent sans power-profiles-daemon
+    // (qui laisse revenir en arrière depuis le bureau).
+    let battery = fs::read_dir(src.sys.join("class/power_supply"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|entry| read(&entry.path().join("type")).as_deref() == Some("Battery"));
     if saving && during_games {
         checks.push(check(
             "power",
@@ -203,29 +220,22 @@ pub fn run(src: &Sources) -> Report {
         ));
     } else if saving {
         let current = power_profile.as_deref().or(governor.as_deref()).unwrap_or("?");
-        checks.push(check(
-            "power",
-            Level::Warning,
-            t("Processeur en mode économie", "CPU in power-saving mode"),
-            format!(
-                "{} {}",
+        checks.push(Check {
+            fix: (power_profile.is_some() || !battery).then_some(Fix::Performance),
+            ..check(
+                "power",
+                Level::Warning,
+                t("Processeur en mode économie", "CPU in power-saving mode"),
                 t(
                     &format!(
-                        "Mode « {current} ». Sur un PC fixe, le mode performance tient le processeur à pleine vitesse, comme « Performances élevées » sous Windows :"
+                        "Mode « {current} ». Sur un PC fixe, le mode performance tient le processeur à pleine vitesse, comme « Performances élevées » sous Windows."
                     ),
                     &format!(
-                        "“{current}” mode. On a desktop PC, performance mode keeps the CPU at full speed, like Windows' “High performance”:"
+                        "“{current}” mode. On a desktop PC, performance mode keeps the CPU at full speed, like Windows' “High performance”."
                     ),
                 ),
-                remedy(
-                    t(
-                        "go-to-linux le met dès l'installation (« Jeux et performances »).",
-                        "go-to-linux sets it at install (“Games and performance”).",
-                    ),
-                    "powerprofilesctl set performance".into(),
-                )
-            ),
-        ));
+            )
+        });
     } else if power_profile.is_some() || governor.is_some() {
         checks.push(check(
             "power",
@@ -245,143 +255,118 @@ pub fn run(src: &Sources) -> Report {
         checks.push(if mode == "cache" {
             check("x3d", Level::Ok, t("Jeux sur la 3D V-Cache", "Games on the 3D V-Cache"), t("Mode « cache ».", "“cache” mode."))
         } else {
-            check(
-                "x3d",
-                Level::Problem,
-                t("Les jeux tournent sans la 3D V-Cache", "Games run without the 3D V-Cache"),
-                format!(
-                    "{} {}",
+            Check {
+                fix: Some(Fix::X3dCache),
+                ..check(
+                    "x3d",
+                    Level::Problem,
+                    t("Les jeux tournent sans la 3D V-Cache", "Games run without the 3D V-Cache"),
                     t(
                         &format!("Processeur X3D en mode « {mode} » : les jeux partent sur le bloc sans 3D V-Cache, beaucoup d'images en moins quand le processeur limite."),
                         &format!("X3D CPU in “{mode}” mode: games land on the die without 3D V-Cache, many fewer frames when the CPU is the limit."),
                     ),
-                    remedy(
-                        t("go-to-linux le met en mode « cache » à chaque démarrage.", "go-to-linux sets “cache” mode at each boot."),
-                        t(
-                            "À remettre à chaque démarrage : echo cache | sudo tee /sys/bus/platform/drivers/amd_x3d_vcache/*/amd_x3d_mode",
-                            "To set at each boot: echo cache | sudo tee /sys/bus/platform/drivers/amd_x3d_vcache/*/amd_x3d_mode",
-                        ),
-                    )
-                ),
-            )
+                )
+            }
         });
     }
 
     // Le noyau endort les jeux qui font des « split locks ».
     if read(&src.proc_dir.join("sys/kernel/split_lock_mitigate")).is_some_and(|v| v != "0") {
-        checks.push(check(
-            "split-lock",
-            Level::Warning,
-            t("Le noyau ralentit certains jeux exprès", "The kernel slows some games down on purpose"),
-            format!(
-                "{} {}",
+        checks.push(Check {
+            fix: Some(Fix::SplitLock),
+            ..check(
+                "split-lock",
+                Level::Warning,
+                t("Le noyau ralentit certains jeux exprès", "The kernel slows some games down on purpose"),
                 t(
-                    "Les jeux Windows qui font des « split locks » sont endormis à chaque fois (kernel.split_lock_mitigate = 1).",
-                    "Windows games that do “split locks” are put to sleep each time (kernel.split_lock_mitigate = 1).",
+                    "Les jeux Windows qui font des « split locks » sont endormis à chaque fois (kernel.split_lock_mitigate = 1). SteamOS le désactive.",
+                    "Windows games that do “split locks” are put to sleep each time (kernel.split_lock_mitigate = 1). SteamOS turns it off.",
                 ),
-                remedy(
-                    t("go-to-linux le désactive, comme SteamOS.", "go-to-linux turns it off, like SteamOS."),
-                    t(
-                        "À désactiver, comme SteamOS : echo kernel.split_lock_mitigate=0 | sudo tee /etc/sysctl.d/99-split-lock.conf && sudo sysctl --system",
-                        "Turn it off, like SteamOS: echo kernel.split_lock_mitigate=0 | sudo tee /etc/sysctl.d/99-split-lock.conf && sudo sysctl --system",
-                    ),
-                )
-            ),
-        ));
+            )
+        });
     }
 
-    // Ordonnanceur sched_ext : à essayer sans en cas de chutes.
+    // Ordonnanceur sched_ext : aucun gain prouvé, des chutes rapportées.
     if let Some(name) = &scheduler {
-        checks.push(check(
-            "scheduler",
-            Level::Info,
-            t(&format!("Ordonnanceur {name} actif"), &format!("{name} scheduler active")),
-            format!(
-                "{} {}",
+        checks.push(Check {
+            fix: Some(Fix::Scheduler),
+            ..check(
+                "scheduler",
+                Level::Info,
+                t(&format!("Ordonnanceur {name} actif"), &format!("{name} scheduler active")),
                 t(
-                    "Conçu pour le Steam Deck : aucun gain d'images par seconde prouvé, et des chutes rapportées.",
-                    "Designed for the Steam Deck: no proven frame rate gain, and drops reported.",
+                    "Conçu pour le Steam Deck : aucun gain d'images par seconde prouvé, et des chutes rapportées. go-to-linux garde celui du noyau.",
+                    "Designed for the Steam Deck: no proven frame rate gain, and drops reported. go-to-linux keeps the kernel's.",
                 ),
-                remedy(
-                    t(
-                        "go-to-linux garde l'ordonnanceur de CachyOS et arrête celui-ci à sa mise à jour.",
-                        "go-to-linux keeps CachyOS's scheduler and stops this one at its update.",
-                    ),
-                    t(
-                        "Pour revenir à celui du noyau : sudo systemctl disable --now scx_loader.service (ou scx.service)",
-                        "To go back to the kernel's: sudo systemctl disable --now scx_loader.service (or scx.service)",
-                    ),
-                )
-            ),
-        ));
+            )
+        });
     }
 
     // NTSync : la synchronisation de Windows faite par le noyau.
     let ntsync = src.dev.join("ntsync");
     checks.push(if !ntsync.exists() {
-        check(
-            "ntsync",
-            Level::Warning,
-            t("NTSync absent", "NTSync missing"),
-            format!(
-                "{} {}",
+        Check {
+            fix: Some(Fix::Ntsync),
+            ..check(
+                "ntsync",
+                Level::Warning,
+                t("NTSync absent", "NTSync missing"),
                 t(
                     "Proton synchronise alors les fils des jeux sans l'aide du noyau : plus de travail pour le processeur.",
                     "Proton then syncs game threads without the kernel's help: more CPU work.",
                 ),
-                remedy(
-                    t("CachyOS charge le module ntsync d'office : redémarrez le PC.", "CachyOS loads the ntsync module by default: restart the PC."),
-                    t(
-                        "Module à charger à chaque démarrage : echo ntsync | sudo tee /etc/modules-load.d/ntsync.conf && sudo modprobe ntsync",
-                        "Module to load at each boot: echo ntsync | sudo tee /etc/modules-load.d/ntsync.conf && sudo modprobe ntsync",
-                    ),
-                )
-            ),
-        )
+            )
+        }
     } else if fs::OpenOptions::new().read(true).write(true).open(&ntsync).is_err() {
-        check(
-            "ntsync",
-            Level::Warning,
-            t("NTSync inaccessible", "NTSync not accessible"),
-            t("/dev/ntsync existe mais votre compte ne peut pas l'ouvrir : Proton ne s'en sert pas.", "/dev/ntsync exists but your account can't open it: Proton doesn't use it."),
-        )
+        Check {
+            fix: Some(Fix::Ntsync),
+            ..check(
+                "ntsync",
+                Level::Warning,
+                t("NTSync inaccessible", "NTSync not accessible"),
+                t(
+                    "/dev/ntsync existe mais votre compte ne peut pas l'ouvrir : Proton ne s'en sert pas.",
+                    "/dev/ntsync exists but your account can't open it: Proton doesn't use it.",
+                ),
+            )
+        }
     } else {
         check("ntsync", Level::Ok, "NTSync".into(), t("Disponible pour Proton.", "Available to Proton."))
     });
 
-    // Cache des shaders : 1 Go par défaut, trop peu pour un gros jeu.
+    // Cache des shaders : 1 Go par défaut, trop peu pour un gros jeu. Posé
+    // dans /etc/environment mais pas encore dans la session : il vaudra à la
+    // prochaine connexion.
     let nvidia = src.gpus.iter().any(|g| g.vendor == Vendor::Nvidia);
-    let (cache_var, cache_size) =
-        if nvidia { ("__GL_SHADER_DISK_CACHE_SIZE", "12000000000") } else { ("MESA_SHADER_CACHE_MAX_SIZE", "12G") };
-    checks.push(match (src.env)(cache_var) {
-        Some(value) => check(
+    let cache_var = if nvidia { "__GL_SHADER_DISK_CACHE_SIZE" } else { "MESA_SHADER_CACHE_MAX_SIZE" };
+    checks.push(match ((src.env)(cache_var), (src.next_login_env)(cache_var)) {
+        (Some(value), _) => check(
             "shader-cache",
             Level::Ok,
             t("Cache des shaders agrandi", "Larger shader cache"),
             format!("{cache_var}={value}"),
         ),
-        None => check(
+        (None, Some(_)) => check(
             "shader-cache",
-            Level::Warning,
-            t("Cache des shaders limité à 1 Go", "Shader cache limited to 1 GB"),
-            format!(
-                "{} {}",
+            Level::Info,
+            t("Cache des shaders agrandi à la prochaine connexion", "Larger shader cache from the next login"),
+            t(
+                "Déconnectez-vous puis reconnectez-vous (ou redémarrez le PC) : Steam et ses jeux le prendront alors.",
+                "Log out and back in (or restart the PC): Steam and its games will then use it.",
+            ),
+        ),
+        (None, None) => Check {
+            fix: Some(Fix::ShaderCache),
+            ..check(
+                "shader-cache",
+                Level::Warning,
+                t("Cache des shaders limité à 1 Go", "Shader cache limited to 1 GB"),
                 t(
                     "Les shaders d'un gros jeu (Unreal Engine 5) n'y tiennent pas et se recompilent à chaque partie : saccades, chutes d'images par seconde.",
                     "A big game's shaders (Unreal Engine 5) don't fit and are recompiled every session: stutter, frame rate drops.",
                 ),
-                remedy(
-                    t(
-                        &format!("go-to-linux pose {cache_var} dans /etc/environment (12 Go)."),
-                        &format!("go-to-linux sets {cache_var} in /etc/environment (12 GB)."),
-                    ),
-                    t(
-                        &format!("12 Go, puis reconnectez-vous : echo {cache_var}={cache_size} | sudo tee -a /etc/environment"),
-                        &format!("12 GB, then log in again: echo {cache_var}={cache_size} | sudo tee -a /etc/environment"),
-                    ),
-                )
-            ),
-        ),
+            )
+        },
     });
 
     // Carte graphique : liaison PCI Express, Resizable BAR, pilote.
@@ -683,6 +668,7 @@ mod tests {
             proc_dir: &pc.proc_dir,
             exec: &exec,
             env: &|_| None,
+            next_login_env: &|_| None,
             settings: &settings,
             gpus: &[gpu("580.95.05")],
             desktop: Desktop::Hyprland,
@@ -723,7 +709,19 @@ mod tests {
         );
         assert_eq!(ids(Level::Info), ["scheduler"]);
         let fixes: Vec<Fix> = report.checks.iter().filter_map(|c| c.fix).collect();
-        assert_eq!(fixes, [Fix::InstallMangoHud, Fix::LowLatency]);
+        assert_eq!(
+            fixes,
+            [
+                Fix::X3dCache,
+                Fix::Performance,
+                Fix::SplitLock,
+                Fix::Ntsync,
+                Fix::ShaderCache,
+                Fix::InstallMangoHud,
+                Fix::LowLatency,
+                Fix::Scheduler
+            ]
+        );
         assert!(report.text.contains("AMD Ryzen 9 7950X3D") && report.text.contains("balanced"));
         assert!(
             report.text.contains("proton-cachyos-slr") && report.text.contains("lavd") && report.text.contains("[!!]")
@@ -751,6 +749,7 @@ mod tests {
             proc_dir: &pc.proc_dir,
             exec: &exec,
             env: &env,
+            next_login_env: &|_| None,
             settings: &Settings::default(),
             gpus: &[gpu("595.58.03")],
             desktop: Desktop::Plasma,
@@ -766,25 +765,29 @@ mod tests {
     }
 
     #[test]
-    fn without_go_to_linux_each_point_says_how_to_fix_it() {
+    fn each_fixable_point_has_its_button() {
         // Arch Linux, GeForce RTX 2060 : BAR1 de 256 Mo, que la carte ne
         // sait pas agrandir (pas de resource1_resize).
         let pc = pc();
         write(pc.sys.join("kernel/sched_ext/state"), "enabled\n");
         write(pc.sys.join("kernel/sched_ext/root/ops"), "lavd_1.1.3_x86_64_unknown_linux_gnu\n");
+        write(pc.sys.join("devices/system/cpu/cpu0/cpufreq/scaling_governor"), "powersave\n");
+        write(pc.proc_dir.join("sys/kernel/split_lock_mitigate"), "1\n");
         let device = pc.sys.join("bus/pci/devices/0000:01:00.0");
         write(
             device.join("resource"),
             "0x00000000fb000000 0x00000000fbffffff 0x0000000000040200\n0x000000e000000000 0x000000e00fffffff 0x000000000014220c\n",
         );
         let exec = FakeExec::new().without("powerprofilesctl");
-        let report = |go_to_linux: bool| {
+        let report = |next_login: Option<&str>| {
+            let next_login = next_login.map(str::to_string);
             run(&Sources {
                 sys: &pc.sys,
                 dev: &pc.dev,
                 proc_dir: &pc.proc_dir,
                 exec: &exec,
                 env: &|_| None,
+                next_login_env: &|_| next_login.clone(),
                 settings: &Settings::default(),
                 gpus: &[Gpu { name: Some("GeForce RTX 2060 Rev. A".into()), ..gpu("615.71.09") }],
                 desktop: Desktop::Hyprland,
@@ -793,32 +796,38 @@ mod tests {
                 sessions: Vec::new(),
                 mangohud: true,
                 wrapped_games: Some((1, 1)),
-                go_to_linux,
+                go_to_linux: false,
             })
         };
-        let arch = report(false);
-        let detail = |id: &str| arch.checks.iter().find(|c| c.id == id).unwrap().detail.clone();
-        assert!(detail("ntsync").contains("/etc/modules-load.d/ntsync.conf"));
-        assert!(
-            detail("shader-cache").contains("__GL_SHADER_DISK_CACHE_SIZE=12000000000 | sudo tee -a /etc/environment")
-        );
-        assert!(detail("scheduler").contains("systemctl disable --now scx_loader.service"));
-        assert!(arch.checks.iter().all(|c| !c.detail.contains("go-to-linux")), "{:#?}", arch.checks);
-        assert!(!arch.go_to_linux);
+        let arch = report(None);
+        let fix = |id: &str| arch.checks.iter().find(|c| c.id == id).unwrap().fix;
+        assert_eq!(fix("ntsync"), Some(Fix::Ntsync));
+        assert_eq!(fix("shader-cache"), Some(Fix::ShaderCache));
+        assert_eq!(fix("scheduler"), Some(Fix::Scheduler));
+        assert_eq!(fix("split-lock"), Some(Fix::SplitLock));
+        // PC fixe sans power-profiles-daemon : le gouverneur, d'un clic.
+        assert_eq!(fix("power"), Some(Fix::Performance));
+        // Aucune commande à taper.
+        assert!(arch.checks.iter().all(|c| !c.detail.contains("sudo")), "{:#?}", arch.checks);
+        // Portable sans power-profiles-daemon : pas de mode performance
+        // permanent.
+        write(pc.sys.join("class/power_supply/BAT0/type"), "Battery\n");
+        assert_eq!(report(None).checks.iter().find(|c| c.id == "power").unwrap().fix, None);
+        // Cache posé pour la prochaine connexion : plus de bouton, la consigne.
+        let pending = report(Some("12000000000"));
+        let cache = pending.checks.iter().find(|c| c.id == "shader-cache").unwrap();
+        assert_eq!((cache.level, cache.fix), (Level::Info, None));
         // La carte ne se redimensionne pas : rien à régler dans le BIOS.
         let rebar = arch.checks.iter().find(|c| c.id == "rebar").unwrap();
         assert_eq!(rebar.level, Level::Ok);
         // Noyau d'avant 6.1, sans ce fichier pour aucune carte : l'alerte reste.
         write(pc.proc_dir.join("sys/kernel/osrelease"), "5.15.0-91-generic\n");
-        assert_eq!(report(false).checks.iter().find(|c| c.id == "rebar").unwrap().level, Level::Warning);
+        assert_eq!(report(None).checks.iter().find(|c| c.id == "rebar").unwrap().level, Level::Warning);
         write(pc.proc_dir.join("sys/kernel/osrelease"), "7.2.7-arch1-1\n");
-        assert_eq!(report(false).checks.iter().find(|c| c.id == "rebar").unwrap().level, Level::Ok);
+        assert_eq!(report(None).checks.iter().find(|c| c.id == "rebar").unwrap().level, Level::Ok);
         // Jusqu'à 256 Mo seulement : pareil.
         write(device.join("resource1_resize"), "00000000000001c0\n");
-        assert_eq!(report(false).checks.iter().find(|c| c.id == "rebar").unwrap().level, Level::Ok);
-        // Sous go-to-linux, il s'en charge.
-        let gtl = report(true);
-        assert!(gtl.checks.iter().find(|c| c.id == "scheduler").unwrap().detail.contains("go-to-linux"));
+        assert_eq!(report(None).checks.iter().find(|c| c.id == "rebar").unwrap().level, Level::Ok);
     }
 
     #[test]
@@ -831,6 +840,7 @@ mod tests {
                 proc_dir: &pc.proc_dir,
                 exec,
                 env: &|_| None,
+                next_login_env: &|_| None,
                 settings: &Settings::default(),
                 gpus: &[],
                 desktop: Desktop::Plasma,

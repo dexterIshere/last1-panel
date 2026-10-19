@@ -15,6 +15,7 @@ use last1_panel_core::settings::{ColorProfile, GamesSettings, Settings};
 use last1_panel_core::system::desktop::Desktop;
 use last1_panel_core::system::diagnostic::{Fix, Report};
 use last1_panel_core::system::gpu::{Gpu, Vendor};
+use last1_panel_core::system::repair;
 use last1_panel_core::tuning::lact::{self, ClockRanges, Device, Lact, OffsetRange, Stats, Tuning};
 use last1_panel_core::update;
 use serde::Serialize;
@@ -338,31 +339,57 @@ pub async fn performance_report(panel: State<'_, Arc<Panel>>) -> Result<Report> 
     blocking(move || Ok(panel.performance_report())).await
 }
 
-/// Correction proposée par le diagnostic (réglages de Last1 Panel seulement).
+/// Corrections proposées par le diagnostic : une, ou toutes (« Tout
+/// régler »). Celles du système passent par un seul script d'administrateur
+/// (mot de passe demandé une fois) ; puis les réglages de Last1 Panel, puis
+/// les jeux (Steam fermé le temps de l'écrire). Rend ce qu'il reste à faire
+/// au joueur (se reconnecter).
 #[tauri::command]
-pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fix: Fix) -> Result<()> {
+pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> Result<Vec<String>> {
     let panel = panel.inner().clone();
-    blocking(move || match fix {
-        Fix::LowLatency => panel.reset_low_latency(),
-        Fix::InstallMangoHud => {
-            if which("pacman").is_none() {
-                return Err(CoreError::message(t(
-                    "Installez MangoHud avec le gestionnaire de paquets du système.",
-                    "Install MangoHud with the system's package manager.",
-                )));
-            }
-            // lib32-mangohud : jeux 32 bits ; sans le dépôt multilib, MangoHud seul.
-            let script =
-                "pacman -S --needed --noconfirm mangohud lib32-mangohud || pacman -S --needed --noconfirm mangohud";
+    blocking(move || {
+        let power_profiles = which("powerprofilesctl").is_some();
+        let script = repair::root_script(&fixes, Path::new("/etc"), power_profiles, which("pacman").is_some())?;
+        if let Some(script) = script {
             let exec = SystemExec { timeout: Duration::from_secs(1800), ..SystemExec::default() };
-            exec.run_ok("pkexec", &["/bin/sh".into(), "-c".into(), script.into()]).map(|_| ())
+            let output = exec.run("pkexec", &["/bin/sh".into(), "-c".into(), script])?;
+            if repair::refused(output.status) {
+                return Err(CoreError::message(if output.stderr.contains("authentication agent") {
+                    t(
+                        "Ce bureau n'a pas de fenêtre de mot de passe (agent polkit, hyprpolkitagent sous Hyprland) : rien n'a changé.",
+                        "This desktop has no password window (polkit agent, hyprpolkitagent on Hyprland): nothing changed.",
+                    )
+                } else {
+                    t("Mot de passe non donné : rien n'a changé.", "No password given: nothing changed.")
+                }));
+            }
+            if !output.success() {
+                return Err(CoreError::ToolFailed {
+                    program: "pkexec".into(),
+                    detail: output.stderr.trim().to_string(),
+                });
+            }
         }
-        Fix::WrapGames => {
+        if fixes.contains(&Fix::Performance) && power_profiles {
+            SystemExec::default().run_ok("powerprofilesctl", &["set".into(), "performance".into()])?;
+        }
+        if fixes.contains(&Fix::LowLatency) {
+            panel.reset_low_latency()?;
+        }
+        if fixes.contains(&Fix::WrapGames) {
             let root = steam::find_root(&last1_panel_core::paths::home_dir())
                 .ok_or_else(|| CoreError::message(t("Steam n'est pas installé.", "Steam is not installed.")))?;
             let ids: Vec<u32> = steam::installed_games(&root).iter().map(|game| game.app_id).collect();
-            wrap_closing_steam(&ids).map(|_| ())
+            wrap_closing_steam(&ids)?;
         }
+        let mut notices = Vec::new();
+        if fixes.contains(&Fix::ShaderCache) {
+            notices.push(t(
+                "Cache des shaders agrandi : il vaudra après une déconnexion-reconnexion (ou un redémarrage).",
+                "Shader cache enlarged: it applies after logging out and back in (or a restart).",
+            ));
+        }
+        Ok(notices)
     })
     .await
 }
