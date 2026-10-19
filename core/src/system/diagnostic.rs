@@ -1303,6 +1303,9 @@ fn session_details(s: &GameSession) -> Vec<String> {
             &format!("CPU up to {} °C, {} MHz on average", s.cpu_temp_max, s.cpu_mhz),
         ));
     }
+    if s.cpu_power > 0.0 {
+        details.push(t(&format!("processeur {} W", s.cpu_power), &format!("CPU {} W", s.cpu_power)));
+    }
     let Some(c) = &s.context else { return details };
     if c.on_battery {
         details.push(t("sur batterie", "on battery"));
@@ -1340,6 +1343,18 @@ fn session_details(s: &GameSession) -> Vec<String> {
         details.push(t(
             &format!("carte freinée : {}", names.join(", ")),
             &format!("card held back: {}", names.join(", ")),
+        ));
+    }
+    if let Some(limit) = c.cpu_power_limit {
+        let short = c.cpu_power_limit_short.map(|w| format!(", {w} W en pointe")).unwrap_or_default();
+        let short_en = c.cpu_power_limit_short.map(|w| format!(", {w} W peak")).unwrap_or_default();
+        details
+            .push(t(&format!("processeur limité à {limit} W{short}"), &format!("CPU limited to {limit} W{short_en}")));
+    }
+    if c.cpu_thermal_throttles > 0 {
+        details.push(t(
+            &format!("processeur bridé par la chaleur {} fois", c.cpu_thermal_throttles),
+            &format!("CPU throttled by heat {} times", c.cpu_thermal_throttles),
         ));
     }
     if c.nvidia_powerd == Some(false) {
@@ -1816,6 +1831,7 @@ mod tests {
             gpu_temp_max: 86.0,
             cpu_temp_max: 97.0,
             cpu_mhz: 3100.0,
+            cpu_power: 35.2,
             context: Some(crate::system::game_context::GameContext {
                 samples: 40,
                 on_battery: false,
@@ -1826,15 +1842,21 @@ mod tests {
                 gpu_throttle: vec!["power".into()],
                 nvidia_powerd: Some(false),
                 through_other_gpu: true,
+                cpu_power_limit: Some(35.0),
+                cpu_power_limit_short: Some(90.0),
+                cpu_thermal_throttles: 12,
+                cpu_throttle_count_start: Some(3),
             }),
         };
         let line = session_details(&session).join(" ; ");
         assert_eq!(
             line,
             "dessinée par GeForce RTX 3070 Laptop GPU ; carte 79.4 W (au plus 80.1 W) ; carte jusqu'à 86 °C ; \
-             processeur jusqu'à 97 °C, 3100 MHz en moyenne ; mode du PC balanced ; processeur en balance_performance ; \
-             limite de la carte 80 W sur 125 W possibles ; carte freinée : limite de puissance ; \
-             Dynamic Boost (nvidia-powerd) arrêté ; image affichée par une autre puce (portable hybride)"
+             processeur jusqu'à 97 °C, 3100 MHz en moyenne ; processeur 35.2 W ; mode du PC balanced ; \
+             processeur en balance_performance ; limite de la carte 80 W sur 125 W possibles ; \
+             carte freinée : limite de puissance ; processeur limité à 35 W, 90 W en pointe ; \
+             processeur bridé par la chaleur 12 fois ; Dynamic Boost (nvidia-powerd) arrêté ; \
+             image affichée par une autre puce (portable hybride)"
         );
         // Rien de relevé : rien d'inventé.
         assert!(session_details(&GameSession::default()).is_empty());

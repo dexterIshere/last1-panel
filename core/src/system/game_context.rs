@@ -39,6 +39,15 @@ pub struct GameContext {
     /// La carte des jeux ne dessine pas le bureau : l'image passe par une
     /// autre puce pour arriver à l'écran (portable hybride).
     pub through_other_gpu: bool,
+    /// Limites de puissance du processeur (W, RAPL) : longue durée (PL1) et
+    /// courte (PL2). Sur un portable, c'est souvent ce que l'appli du
+    /// fabricant relève sous Windows.
+    pub cpu_power_limit: Option<f64>,
+    pub cpu_power_limit_short: Option<f64>,
+    /// Fois où le processeur s'est bridé à cause de la chaleur pendant la
+    /// partie (compteurs du noyau), et le compteur au premier relevé.
+    pub cpu_thermal_throttles: u64,
+    pub cpu_throttle_count_start: Option<u64>,
 }
 
 /// Un relevé.
@@ -52,6 +61,10 @@ pub struct Sample {
     pub gpu_throttle: Vec<String>,
     pub nvidia_powerd: Option<bool>,
     pub through_other_gpu: bool,
+    pub cpu_power_limit: Option<f64>,
+    pub cpu_power_limit_short: Option<f64>,
+    /// Compteurs de bridage thermique du processeur (cœurs et puce), cumulés.
+    pub cpu_throttle_count: Option<u64>,
 }
 
 impl GameContext {
@@ -80,6 +93,12 @@ impl GameContext {
         }
         self.nvidia_powerd = sample.nvidia_powerd.or(self.nvidia_powerd);
         self.through_other_gpu |= sample.through_other_gpu;
+        self.cpu_power_limit = sample.cpu_power_limit.or(self.cpu_power_limit);
+        self.cpu_power_limit_short = sample.cpu_power_limit_short.or(self.cpu_power_limit_short);
+        if let Some(count) = sample.cpu_throttle_count {
+            let start = *self.cpu_throttle_count_start.get_or_insert(count);
+            self.cpu_thermal_throttles = count.saturating_sub(start);
+        }
     }
 }
 
@@ -141,6 +160,39 @@ pub fn sample(sys: &Path, exec: &dyn Exec, gpus: &[Gpu]) -> Sample {
         through_other_gpu: gpu::offload(gpus).is_some(),
         ..Sample::default()
     };
+    // Limites de puissance du processeur (RAPL), par nom de contrainte.
+    let rapl = sys.join("class/powercap/intel-rapl:0");
+    let limit = |name: &str| {
+        (0..4).find_map(|i| {
+            (read(&rapl.join(format!("constraint_{i}_name"))).as_deref() == Some(name))
+                .then(|| read(&rapl.join(format!("constraint_{i}_power_limit_uw"))))
+                .flatten()
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|uw| *uw > 0.0)
+                .map(|uw| (uw / 1e5).round() / 10.0)
+        })
+    };
+    sample.cpu_power_limit = limit("long_term");
+    sample.cpu_power_limit_short = limit("short_term");
+    // Bridages thermiques : compteurs de chaque cœur, et celui de la puce.
+    let counts: Vec<u64> = fs::read_dir(sys.join("devices/system/cpu"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| {
+            entry.file_name().to_str().is_some_and(|n| n.starts_with("cpu") && n[3..].parse::<u32>().is_ok())
+        })
+        .flat_map(|entry| {
+            let dir = entry.path().join("thermal_throttle");
+            let core = read(&dir.join("core_throttle_count")).and_then(|v| v.parse::<u64>().ok());
+            let package = (entry.file_name() == "cpu0")
+                .then(|| read(&dir.join("package_throttle_count")).and_then(|v| v.parse::<u64>().ok()))
+                .flatten();
+            [core, package]
+        })
+        .flatten()
+        .collect();
+    sample.cpu_throttle_count = (!counts.is_empty()).then(|| counts.iter().sum());
     match games.map(|g| (g.vendor, g.pci_slot.as_str())) {
         Some((Vendor::Nvidia, slot)) => {
             if let Some((limit, max, reasons)) = nvidia_power(exec, slot) {
@@ -269,6 +321,13 @@ mod tests {
         write(sys.join("class/power_supply/BAT1/type"), "Battery\n");
         write(sys.join("firmware/acpi/platform_profile"), "balanced\n");
         write(sys.join("devices/system/cpu/cpu0/cpufreq/energy_performance_preference"), "balance_power\n");
+        write(sys.join("class/powercap/intel-rapl:0/constraint_0_name"), "long_term\n");
+        write(sys.join("class/powercap/intel-rapl:0/constraint_0_power_limit_uw"), "35000000\n");
+        write(sys.join("class/powercap/intel-rapl:0/constraint_1_name"), "short_term\n");
+        write(sys.join("class/powercap/intel-rapl:0/constraint_1_power_limit_uw"), "90000000\n");
+        write(sys.join("devices/system/cpu/cpu0/thermal_throttle/core_throttle_count"), "3\n");
+        write(sys.join("devices/system/cpu/cpu0/thermal_throttle/package_throttle_count"), "10\n");
+        write(sys.join("devices/system/cpu/cpu1/thermal_throttle/core_throttle_count"), "2\n");
         let exec = FakeExec::new()
             .on("nvidia-smi", "00000000:01:00.0, 60.00, 140.00, 0x0000000000000084\n")
             .on("systemctl", "inactive\n");
@@ -288,6 +347,9 @@ mod tests {
                 gpu_throttle: vec!["power".into(), "power-brake".into()],
                 nvidia_powerd: Some(false),
                 through_other_gpu: true,
+                cpu_power_limit: Some(35.0),
+                cpu_power_limit_short: Some(90.0),
+                cpu_throttle_count: Some(15),
             }
         );
         // Deux relevés : rien en double, la limite la plus haute gardée.
@@ -298,6 +360,10 @@ mod tests {
         assert!(context.on_battery);
         assert_eq!(context.gpu_power_limit, Some(95.0));
         assert_eq!(context.platform_profiles, ["balanced"]);
+        // Bridages thermiques comptés depuis le premier relevé.
+        context.add(&Sample { cpu_throttle_count: Some(27), ..sample.clone() });
+        assert_eq!(context.cpu_thermal_throttles, 12);
+        assert_eq!(context.cpu_power_limit, Some(35.0));
         // Branché, PC fixe : jamais « sur batterie ».
         write(sys.join("class/power_supply/ACAD/online"), "1\n");
         assert!(!super::sample(sys, &exec, &gpus).on_battery);

@@ -36,8 +36,10 @@ pub struct GameSession {
     /// Températures les plus hautes (°C) ; 0 : inconnues.
     pub gpu_temp_max: f64,
     pub cpu_temp_max: f64,
-    /// Fréquence moyenne du processeur (MHz) ; 0 : inconnue.
+    /// Fréquence moyenne du processeur (MHz) et sa puissance moyenne (W) ;
+    /// 0 : inconnues.
     pub cpu_mhz: f64,
+    pub cpu_power: f64,
     /// Ce qui entourait la partie (secteur, modes de puissance, freins de
     /// la carte…), relevé par le service de la session (game_context.rs).
     pub context: Option<GameContext>,
@@ -107,6 +109,7 @@ struct Row {
     gpu: Option<f64>,
     clock: Option<f64>,
     gpu_power: Option<f64>,
+    cpu_power: Option<f64>,
     gpu_temp: Option<f64>,
     cpu_temp: Option<f64>,
     cpu_mhz: Option<f64>,
@@ -163,6 +166,7 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
             gpu: at(gpu_col),
             clock: at(clock_col),
             gpu_power: known(column("gpu_power")),
+            cpu_power: known(column("cpu_power")),
             gpu_temp: known(column("gpu_temp")),
             cpu_temp: known(column("cpu_temp")),
             cpu_mhz: known(column("cpu_mhz")),
@@ -225,6 +229,7 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         gpu_temp_max: highest(used.iter().filter_map(|row| row.gpu_temp).collect()),
         cpu_temp_max: highest(used.iter().filter_map(|row| row.cpu_temp).collect()),
         cpu_mhz: mean(&cpu_mhz).round(),
+        cpu_power: round(mean(&used.iter().filter_map(|row| row.cpu_power).collect::<Vec<f64>>())),
         context: None,
     })
 }
