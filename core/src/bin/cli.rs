@@ -89,6 +89,11 @@ fn run(command: &[String]) -> ExitCode {
             .map(|tool| tool.to_string())
             .collect(),
         logs: game_logs(),
+        // Le HDR « Automatique » suit l'écran : lu par le bureau (hyprctl,
+        // kscreen-doctor), dans la session de Steam.
+        hdr_screen: Panel::session()
+            .outputs()
+            .is_ok_and(|outputs| outputs.iter().any(|output| output.enabled && output.hdr == Some(true))),
     };
     let mut plan = launch::plan(&profile, &context);
     // Profil de couleurs du jeu, dans sa seule fenêtre (vkBasalt) ; en cas

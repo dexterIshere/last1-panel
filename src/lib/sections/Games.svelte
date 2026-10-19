@@ -1,7 +1,7 @@
 <!-- Jeux : « Paramètres 3D » globaux et par jeu, appliqués au lancement par last1-panel-cli. -->
 <script lang="ts">
   import { api, errorMessage } from "$lib/api/ipc";
-  import type { GameProfile, GamesInfo, LowLatency, Toggle } from "$lib/api/types";
+  import type { GameProfile, GamesInfo, LowLatency, Output, Toggle } from "$lib/api/types";
   import SectionHeader from "$lib/components/layout/SectionHeader.svelte";
   import Callout from "$lib/components/ui/Callout.svelte";
   import Spinner from "$lib/components/ui/Spinner.svelte";
@@ -50,6 +50,10 @@
 
   const tools = $derived(app.system?.tools);
   const nvidia = $derived(app.nvidia);
+  /** Écrans : en HDR, et capables de l'être (le HDR des jeux en dépend). */
+  let screens = $state<Output[]>([]);
+  const hdrScreen = $derived(screens.some((s) => s.enabled && s.hdr === true));
+  const hdrCapable = $derived(screens.some((s) => s.enabled && s.hdr !== null));
   const games = $derived(info?.games.filter((g) => g.name.toLowerCase().includes(query.trim().toLowerCase())) ?? []);
   const game = $derived(info?.games.find((g) => g.appId === selected) ?? null);
   const dirty = $derived(info ? JSON.stringify(info.settings) !== saved : false);
@@ -61,8 +65,12 @@
     return info.settings.perGame[String(selected)] ?? { ...EMPTY };
   });
 
+  /** HDR du jeu tel qu'il partira : « Activé » ici ou pour tous les jeux. */
+  const hdrWanted = $derived((selected === null ? profile.hdr : (profile.hdr ?? info?.settings.global.hdr ?? null)) === true);
+
   async function load() {
     loading = true;
+    api.outputs().then((list) => (screens = list)).catch(() => undefined);
     try {
       info = await api.games();
       info.settings.global = { ...EMPTY, ...info.settings.global };
@@ -154,8 +162,12 @@
 <SectionHeader
   title={t("Réglages 3D des jeux", "Game 3D settings")}
   lead={t(
-    "Les « Paramètres 3D » du panneau NVIDIA : pour tous les jeux, ou jeu par jeu. Ils s'appliquent au lancement, par l'option Steam de Last1 Panel.",
-    "The NVIDIA Control Panel “3D Settings”: for all games, or game by game. They apply at launch, through Last1 Panel's Steam launch option.",
+    app.amd
+      ? "Les réglages graphiques du logiciel AMD (Adrenalin) : pour tous les jeux, ou jeu par jeu. Ils s'appliquent au lancement, par l'option Steam de Last1 Panel."
+      : "Les « Paramètres 3D » du panneau NVIDIA : pour tous les jeux, ou jeu par jeu. Ils s'appliquent au lancement, par l'option Steam de Last1 Panel.",
+    app.amd
+      ? "The AMD Software (Adrenalin) graphics settings: for all games, or game by game. They apply at launch, through Last1 Panel's Steam launch option."
+      : "The NVIDIA Control Panel “3D Settings”: for all games, or game by game. They apply at launch, through Last1 Panel's Steam launch option.",
   )}
 >
   {#snippet actions()}
@@ -261,7 +273,7 @@
             {#if selected !== null}<option value="0">{t("Sans limite", "Unlimited")}</option>{/if}
             {#each [30, 60, 72, 90, 117, 120, 141, 144, 162, 165, 180, 237, 240] as fps (fps)}<option value={String(fps)}>{fps}</option>{/each}
           </select>
-          <span class="field__hint">{t("Avec G-SYNC, 3 de moins que la fréquence de l'écran.", "With G-SYNC, 3 below the screen's refresh rate.")}</span>
+          <span class="field__hint">{t(`Avec ${app.vrrName}, 3 de moins que la fréquence de l'écran.`, `With ${app.vrrName}, 3 below the screen's refresh rate.`)}</span>
         </label>
 
         <label class="field">
@@ -280,7 +292,10 @@
             <option value="on">{t("Activé", "On")}</option>
             {#if nvidia}<option value="ultra">{t("Ultra (avec NVIDIA Reflex)", "Ultra (with NVIDIA Reflex)")}</option>{/if}
           </select>
-          <span class="field__hint">{t("Une seule image préparée d'avance : moins de latence, mais moins d'images par seconde quand le processeur limite. Inutile pour les jeux avec NVIDIA Reflex.", "Only one frame prepared ahead: less latency, but fewer frames when the CPU is the limit. Not needed for games with NVIDIA Reflex.")}</span>
+          <span class="field__hint">
+            {t("Une seule image préparée d'avance : moins de latence, mais moins d'images par seconde quand le processeur limite.", "Only one frame prepared ahead: less latency, but fewer frames when the CPU is the limit.")}
+            {#if nvidia}{t("Inutile pour les jeux avec NVIDIA Reflex.", "Not needed for games with NVIDIA Reflex.")}{/if}
+          </span>
         </label>
 
         <label class="field">
@@ -329,7 +344,21 @@
           <select value={boolValue(profile.hdr)} onchange={(e) => edit("hdr", fromBool(e.currentTarget.value))}>
             {@render boolOptions(t("Activé", "On"), t("Automatique", "Automatic"))}
           </select>
-          <span class="field__hint">{t("Écran en HDR (Affichage) et Proton CachyOS.", "Screen in HDR (Display) and Proton CachyOS.")}</span>
+          {#if hdrWanted && !hdrScreen}
+            <span class="field__hint">
+              <strong class="risk">{hdrCapable
+                ? t("L'écran n'est pas en HDR : le jeu ne peut pas l'être.", "The screen isn't in HDR: the game can't be.")
+                : t("Aucun écran HDR branché.", "No HDR screen plugged in.")}</strong>
+              {#if hdrCapable}<button class="link" onclick={() => (app.section = "display")}>{t("Mettre l'écran en HDR", "Turn on screen HDR")}</button>{/if}
+            </span>
+          {:else}
+            <span class="field__hint">
+              {t(
+                "« Automatique » : en HDR quand l'écran l'est (Affichage). Proton 10 ou plus récent (Proton CachyOS, GE-Proton).",
+                "“Automatic”: in HDR when the screen is (Display). Proton 10 or newer (Proton CachyOS, GE-Proton).",
+              )}
+            </span>
+          {/if}
         </label>
 
         <label class="field">
@@ -450,6 +479,16 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
+  }
+
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-panel);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
   }
 
   .risk {

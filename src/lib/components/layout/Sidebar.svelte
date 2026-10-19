@@ -11,7 +11,7 @@
 
   const sections = $derived<{ id: Section; title: string; detail: string; icon: typeof Palette }[]>([
     { id: "colors", title: t("Couleurs", "Colors"), detail: t("Gamma, contraste, vibrance", "Gamma, contrast, vibrance"), icon: Palette },
-    { id: "display", title: t("Affichage", "Display"), detail: t("Définition, fréquence, G-SYNC", "Resolution, refresh, G-SYNC"), icon: Monitor },
+    { id: "display", title: t("Affichage", "Display"), detail: t(`Définition, fréquence, ${app.vrrName}`, `Resolution, refresh, ${app.vrrName}`), icon: Monitor },
     { id: "gpu", title: t("Carte graphique", "Graphics card"), detail: t("Puissance, ventilateurs", "Power, fans"), icon: Cpu },
     { id: "games", title: t("Jeux", "Games"), detail: t("Réglages 3D par jeu", "Per-game 3D settings"), icon: Gamepad2 },
     { id: "perf", title: t("Performances", "Performance"), detail: t("Diagnostic en jeu", "In-game diagnostic"), icon: Gauge },

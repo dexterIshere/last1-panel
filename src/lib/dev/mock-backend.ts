@@ -202,7 +202,7 @@ export function installMockBackend(): void {
         output: name,
         adjust: colors[name].adjust,
         vibrance: colors[name].vibrance,
-        vibranceUnavailable: amd ? "Vibrance numérique : cartes NVIDIA seulement pour l'instant." : null,
+        vibranceUnavailable: amd ? "Vibrance du bureau : cartes NVIDIA seulement (Wayland ne la permet pas aux autres). Dans les jeux, elle passe par un profil de couleurs (Couleurs dans le jeu), sur toutes les cartes." : null,
         colorUnavailable: screen?.hdr
           ? "Écran en HDR : luminosité, contraste et gamma ne s'appliquent qu'en SDR (désactivez le HDR dans Affichage)."
           : null,

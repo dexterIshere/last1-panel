@@ -231,8 +231,8 @@ impl Panel {
                 "This screen is driven by the integrated graphics: NVIDIA vibrance does not apply to it.",
             )),
             _ => Some(t(
-                "Vibrance numérique : cartes NVIDIA seulement pour l'instant.",
-                "Digital vibrance: NVIDIA cards only for now.",
+                "Vibrance du bureau : cartes NVIDIA seulement (Wayland ne la permet pas aux autres). Dans les jeux, elle passe par un profil de couleurs (Couleurs dans le jeu), sur toutes les cartes.",
+                "Desktop vibrance: NVIDIA cards only (Wayland doesn't allow it for others). In games, it goes through a color profile (In-game colors), on every card.",
             )),
         }
     }

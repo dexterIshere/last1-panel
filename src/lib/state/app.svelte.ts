@@ -2,7 +2,7 @@
 
 import { api, errorMessage } from "$lib/api/ipc";
 import type { SystemInfo } from "$lib/api/types";
-import { i18n, saveLang, savedLang, type Lang } from "$lib/i18n.svelte";
+import { i18n, saveLang, savedLang, t, type Lang } from "$lib/i18n.svelte";
 
 export type Section = "colors" | "display" | "gpu" | "games" | "perf";
 
@@ -34,6 +34,21 @@ class App {
   /** La carte NVIDIA du PC, s'il en a une. */
   get nvidia(): boolean {
     return this.system?.gpus.some((gpu) => gpu.vendor === "nvidia") ?? false;
+  }
+
+  /** Carte AMD, sans NVIDIA. */
+  get amd(): boolean {
+    return !this.nvidia && (this.system?.gpus.some((gpu) => gpu.vendor === "amd") ?? false);
+  }
+
+  /** Nom de la fréquence variable chez le fabricant de la carte. */
+  get vrrName(): string {
+    return this.nvidia ? "G-SYNC" : this.amd ? "FreeSync" : "VRR";
+  }
+
+  /** Le logiciel du fabricant que Last1 Panel remplace. */
+  get vendorPanel(): string {
+    return this.amd ? t("le logiciel AMD (Adrenalin)", "the AMD Software (Adrenalin)") : t("le panneau NVIDIA", "the NVIDIA Control Panel");
   }
 }
 

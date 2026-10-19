@@ -26,6 +26,8 @@ pub struct Context {
     /// Dossier où MangoHud enregistre chaque partie (images par seconde,
     /// charges), lu par le diagnostic des performances. Absent : pas de mesure.
     pub logs: Option<String>,
+    /// Un écran est en HDR (le HDR « Automatique » des jeux le suit).
+    pub hdr_screen: bool,
 }
 
 impl Context {
@@ -169,15 +171,19 @@ pub fn plan(profile: &GameProfile, context: &Context) -> Plan {
         }
     }
 
-    // HDR : pilote Wayland de Wine (Proton CachyOS, GE-Proton), qui transmet le
-    // HDR au bureau, et HDR de DXVK.
-    match profile.hdr {
-        Some(true) => {
+    // HDR : Proton (10 et plus récents, Proton CachyOS, GE-Proton) le transmet
+    // au bureau par le pilote Wayland de Wine : PROTON_ENABLE_HDR, avec
+    // PROTON_ENABLE_WAYLAND (sans lui, le jeu part par XWayland, sans HDR) ;
+    // DXVK_HDR fait voir l'écran HDR aux jeux DirectX. « Automatique » : en
+    // HDR si un écran l'est.
+    match profile.hdr.unwrap_or(context.hdr_screen) {
+        true => {
             plan.set("PROTON_ENABLE_WAYLAND", "1");
+            plan.set("PROTON_ENABLE_HDR", "1");
             plan.set("DXVK_HDR", "1");
         }
-        Some(false) => plan.set("DXVK_NO_HDR", "1"),
-        None => {}
+        false if profile.hdr == Some(false) => plan.set("DXVK_NO_HDR", "1"),
+        false => {}
     }
 
     if profile.performance_mode == Some(true) {
@@ -231,7 +237,14 @@ mod tests {
     use super::*;
 
     fn ctx(proton: bool, nvidia: bool, tools: &[&str]) -> Context {
-        Context { proton, nvidia, amd: !nvidia, tools: tools.iter().map(|t| t.to_string()).collect(), logs: None }
+        Context {
+            proton,
+            nvidia,
+            amd: !nvidia,
+            tools: tools.iter().map(|t| t.to_string()).collect(),
+            logs: None,
+            hdr_screen: false,
+        }
     }
 
     fn env(plan: &Plan) -> Vec<(String, String)> {
@@ -355,6 +368,25 @@ mod tests {
         );
         assert!(get(&vars, "PROTON_ENABLE_WAYLAND").is_none(), "déjà posée par l'utilisateur");
         assert_eq!(get(&vars, "DXVK_HDR").as_deref(), Some("1"));
+        assert_eq!(get(&vars, "PROTON_ENABLE_HDR").as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn automatic_hdr_follows_the_screen() {
+        let auto = GameProfile::default();
+        let mut context = ctx(true, false, &[]);
+        assert!(get(&env(&plan(&auto, &context)), "PROTON_ENABLE_HDR").is_none());
+        // Écran en HDR : le jeu aussi, par le pilote Wayland de Wine.
+        context.hdr_screen = true;
+        let vars = env(&plan(&auto, &context));
+        for name in ["PROTON_ENABLE_WAYLAND", "PROTON_ENABLE_HDR", "DXVK_HDR"] {
+            assert_eq!(get(&vars, name).as_deref(), Some("1"), "{name}");
+        }
+        // Désactivé pour ce jeu : jamais.
+        let off = GameProfile { hdr: Some(false), ..Default::default() };
+        let vars = env(&plan(&off, &context));
+        assert!(get(&vars, "PROTON_ENABLE_HDR").is_none());
+        assert_eq!(get(&vars, "DXVK_NO_HDR").as_deref(), Some("1"));
     }
 
     #[test]

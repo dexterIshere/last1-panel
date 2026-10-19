@@ -326,8 +326,12 @@
 <SectionHeader
   title={t("Couleurs de l'écran", "Screen colors")}
   lead={t(
-    "Les réglages de « Régler les paramètres de couleur du bureau » du panneau NVIDIA, avec les mêmes valeurs : luminosité et contraste à 50 %, gamma à 1,00.",
-    "The “Adjust desktop color settings” page of the NVIDIA Control Panel, with the same values: brightness and contrast at 50%, gamma at 1.00.",
+    app.amd
+      ? "Les couleurs du bureau, comme dans le logiciel AMD (Adrenalin) : luminosité et contraste à 50 %, gamma à 1,00 par défaut."
+      : "Les réglages de « Régler les paramètres de couleur du bureau » du panneau NVIDIA, avec les mêmes valeurs : luminosité et contraste à 50 %, gamma à 1,00.",
+    app.amd
+      ? "Desktop colors, like in the AMD Software (Adrenalin): brightness and contrast at 50%, gamma at 1.00 by default."
+      : "The “Adjust desktop color settings” page of the NVIDIA Control Panel, with the same values: brightness and contrast at 50%, gamma at 1.00.",
   )}
 >
   {#snippet actions()}
