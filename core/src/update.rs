@@ -245,6 +245,58 @@ pub fn check(exec: &dyn Exec, now: i64) -> CoreResult<Option<Release>> {
     Ok(newer(&release.version, current).then_some(release))
 }
 
+/// Fin du flux des publications.
+#[derive(Debug, PartialEq, Eq)]
+pub enum StreamEnd {
+    /// Connexion fermée (réseau, serveur relancé) : se reconnecter.
+    Closed,
+    /// last1.fun ne l'a pas (ancien serveur) : attente longue à la place.
+    Unavailable,
+}
+
+/// Flux des publications de last1.fun : une seule connexion, gardée
+/// ouverte ; il y pousse la version en ligne à la connexion puis à chaque
+/// publication (`data: {"versions":{…}}`), et un signal de vie par minute
+/// (`: ping`). Rien à redemander, aucun programme relancé : curl dort sur la
+/// connexion. Coupée au-delà de 3 min sans rien (connexion morte sans le
+/// dire) ; `on_version` à chaque version reçue.
+pub fn stream_releases(on_version: &mut dyn FnMut(String)) -> StreamEnd {
+    stream_from(&format!("{SITE}/api/public/releases/stream?{PRODUCT}"), "=https", on_version)
+}
+
+fn stream_from(url: &str, proto: &str, on_version: &mut dyn FnMut(String)) -> StreamEnd {
+    let mut command = Command::new("curl");
+    command
+        .args(["-fsSN", "--proto", proto, "--keepalive-time", "60", "--speed-limit", "1", "--speed-time", "180", url])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    crate::exec::without_appimage_env(&mut command);
+    let Ok(mut child) = command.spawn() else { return StreamEnd::Unavailable };
+    let mut answered = false;
+    if let Some(stdout) = child.stdout.take() {
+        for line in std::io::BufRead::lines(std::io::BufReader::new(stdout)).map_while(Result::ok) {
+            if let Some(version) = stream_version(&line) {
+                answered = true;
+                on_version(version);
+            } else if line.starts_with(':') {
+                answered = true;
+            }
+        }
+    }
+    // 22 : réponse HTTP en erreur (404 : pas de flux sur ce serveur).
+    match child.wait() {
+        Ok(status) if status.code() == Some(22) && !answered => StreamEnd::Unavailable,
+        _ => StreamEnd::Closed,
+    }
+}
+
+/// Version de Last1 Panel d'une ligne du flux (« data: {"versions":…} »).
+fn stream_version(line: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(line.strip_prefix("data:")?.trim()).ok()?;
+    value["versions"][PRODUCT].as_str().map(str::to_string)
+}
+
 /// Attend qu'une version de Last1 Panel autre que `seen` (la dernière en
 /// ligne déjà vue, vide au départ) soit en ligne : last1.fun répond tout de
 /// suite si c'est déjà le cas, sinon dès la publication (attente longue,
@@ -467,5 +519,52 @@ mod tests {
         assert_eq!(wait_for_release(&published, "0.1.0.r58").unwrap().as_deref(), Some("0.1.0.r59"));
         assert_eq!(wait_for_release(&answer("\n204"), "0.1.0.r58").unwrap(), None);
         assert!(wait_for_release(&answer("trop\n429"), "0.1.0.r58").is_err());
+    }
+
+    #[test]
+    fn release_stream_is_read_as_it_comes() {
+        use std::io::{BufRead, BufReader, Write};
+        // Serveur de flux sur la machine : la version à la connexion, un
+        // signal de vie, une publication, puis la connexion fermée.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap() > 2 {
+                line.clear();
+            }
+            let mut stream = stream;
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n")
+                .unwrap();
+            for chunk in [
+                "data: {\"versions\":{\"last1-panel\":\"0.1.0.r59\"}}\n\n",
+                ": ping\n\n",
+                "data: {\"versions\":{\"last1-panel\":\"0.1.0.r60\"}}\n\n",
+            ] {
+                stream.write_all(chunk.as_bytes()).unwrap();
+                stream.flush().unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        });
+        let mut versions = Vec::new();
+        let end = stream_from(&format!("http://{address}/stream"), "=http", &mut |version| versions.push(version));
+        server.join().unwrap();
+        assert_eq!(end, StreamEnd::Closed);
+        assert_eq!(versions, ["0.1.0.r59", "0.1.0.r60"]);
+        // Pas de flux sur ce serveur (404) : l'attente longue à la place.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut request);
+            stream.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+        });
+        let end = stream_from(&format!("http://{address}/stream"), "=http", &mut |_| {});
+        server.join().unwrap();
+        assert_eq!(end, StreamEnd::Unavailable);
     }
 }

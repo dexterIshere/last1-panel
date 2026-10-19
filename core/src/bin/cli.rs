@@ -522,23 +522,49 @@ fn propose_updates() {
     }
 }
 
-/// Publications de Last1 Panel, sues dès qu'elles arrivent (attente longue
-/// sur last1.fun) : la première réponse note la version en ligne, chaque
-/// changement ensuite réveille propose_updates.
+/// Publications de Last1 Panel, sues dès qu'elles arrivent : le flux de
+/// last1.fun (une connexion gardée ouverte, update::stream_releases), sinon
+/// l'attente longue (ancien serveur ; le flux est retenté chaque heure). La
+/// première version reçue est seulement notée, chaque changement ensuite
+/// réveille propose_updates.
 fn watch_releases(published: &mpsc::Sender<()>) {
-    let exec = SystemExec { timeout: Duration::from_secs(110), ..SystemExec::default() };
     let mut seen: Option<String> = None;
+    let mut stop = false;
+    let note = |version: String, seen: &mut Option<String>, stop: &mut bool| {
+        if seen.as_deref() != Some(version.as_str()) {
+            *stop = seen.is_some() && published.send(()).is_err();
+            *seen = Some(version);
+        }
+    };
     loop {
-        match update::wait_for_release(&exec, seen.as_deref().unwrap_or_default()) {
-            Ok(Some(version)) if seen.as_deref() != Some(version.as_str()) => {
-                if seen.is_some() && published.send(()).is_err() {
-                    return;
-                }
-                seen = Some(version);
+        let started = std::time::Instant::now();
+        let end = update::stream_releases(&mut |version| note(version, &mut seen, &mut stop));
+        if stop {
+            return;
+        }
+        match end {
+            // Coupure : on se reconnecte, sans marteler un serveur qui ferme
+            // aussitôt.
+            update::StreamEnd::Closed if started.elapsed() > Duration::from_secs(60) => {
+                std::thread::sleep(Duration::from_secs(5))
             }
-            Ok(Some(_)) => std::thread::sleep(Duration::from_secs(60)),
-            Ok(None) => {}
-            Err(_) => std::thread::sleep(Duration::from_secs(60)),
+            update::StreamEnd::Closed => std::thread::sleep(Duration::from_secs(60)),
+            update::StreamEnd::Unavailable => {
+                let exec = SystemExec { timeout: Duration::from_secs(110), ..SystemExec::default() };
+                let until = std::time::Instant::now() + Duration::from_secs(3600);
+                while std::time::Instant::now() < until {
+                    match update::wait_for_release(&exec, seen.clone().unwrap_or_default().as_str()) {
+                        Ok(Some(version)) if seen.as_deref() != Some(version.as_str()) => {
+                            note(version, &mut seen, &mut stop);
+                            if stop {
+                                return;
+                            }
+                        }
+                        Ok(None) => {}
+                        _ => std::thread::sleep(Duration::from_secs(60)),
+                    }
+                }
+            }
         }
     }
 }
