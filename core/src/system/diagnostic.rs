@@ -249,6 +249,37 @@ fn slot_link(device: &Path, vendor_id: u32) -> Option<SlotLink> {
     })
 }
 
+/// Puces graphiques AMD intégrées au processeur (APU), par emplacement PCI :
+/// le pilote AMD (KFD) les décrit comme un nœud qui a à la fois des cœurs de
+/// processeur et des unités graphiques ; une carte AMD à part n'a que les
+/// secondes.
+fn amd_apus(sys: &Path) -> Vec<String> {
+    let Ok(nodes) = fs::read_dir(sys.join("class/kfd/kfd/topology/nodes")) else { return Vec::new() };
+    nodes
+        .flatten()
+        .filter_map(|node| {
+            let properties = fs::read_to_string(node.path().join("properties")).ok()?;
+            let value = |key: &str| {
+                properties.lines().find_map(|line| {
+                    let (name, value) = line.split_once(' ')?;
+                    (name == key).then(|| value.trim().parse::<u64>().ok()).flatten()
+                })
+            };
+            // location_id : bus << 8 | (appareil << 3 | fonction).
+            let location = value("location_id")?;
+            (value("cpu_cores_count")? > 0 && value("simd_count")? > 0).then(|| {
+                format!(
+                    "{:04x}:{:02x}:{:02x}.{:x}",
+                    value("domain").unwrap_or(0),
+                    location >> 8,
+                    (location & 0xff) >> 3,
+                    location & 7
+                )
+            })
+        })
+        .collect()
+}
+
 /// Largeur et vitesse actuelles de la liaison d'une carte avec la carte
 /// mère (relevées pendant les parties par le service de la session).
 pub fn link_now(sys: &Path, gpu: &Gpu) -> Option<(u32, Option<f64>)> {
@@ -705,8 +736,12 @@ pub fn run(src: &Sources) -> Report {
         },
     });
 
-    // Carte graphique : liaison PCI Express, Resizable BAR, pilote.
-    for gpu in src.gpus.iter().filter(|g| matches!(g.vendor, Vendor::Nvidia | Vendor::Amd)) {
+    // Carte graphique : liaison PCI Express, Resizable BAR, pilote. Pas la
+    // puce AMD intégrée au processeur : ni emplacement ni mémoire à elle.
+    let apus = amd_apus(src.sys);
+    for gpu in
+        src.gpus.iter().filter(|g| matches!(g.vendor, Vendor::Nvidia | Vendor::Amd) && !apus.contains(&g.pci_slot))
+    {
         let device = src.sys.join("bus/pci/devices").join(&gpu.pci_slot);
         // Portable : la carte est soudée, souvent câblée en x8 ; rien à
         // déplacer ni à renfoncer, la liaison n'est qu'un fait.
@@ -731,7 +766,7 @@ pub fn run(src: &Sources) -> Report {
                 link.slot.map_or_else(|| "?".to_string(), |slot| format!("x{slot}"))
             );
             facts.push((
-                t("Liaison PCI Express de la carte graphique", "Graphics card PCI Express link"),
+                format!("{} ({})", t("Liaison PCI Express", "PCI Express link"), gpu.card),
                 match measured {
                     Some(game) if game.width != link.current => t(
                         &format!("x{} au repos, {} en jeu ({sides})", link.current, link_text(game.width, game.speed)),
@@ -960,10 +995,13 @@ pub fn run(src: &Sources) -> Report {
         let driver_updates: Vec<&str> =
             src.updates.iter().map(String::as_str).filter(|name| packages::is_driver(name)).collect();
         if driver_updates.is_empty() && !vulkan.is_empty() {
+            // Celui de la carte des jeux : NVIDIA, sinon AMD hors puce intégrée.
             let driver = src
                 .gpus
                 .iter()
-                .find(|g| matches!(g.vendor, Vendor::Nvidia | Vendor::Amd))
+                .find(|g| g.vendor == Vendor::Nvidia)
+                .or_else(|| src.gpus.iter().find(|g| g.vendor == Vendor::Amd && !apus.contains(&g.pci_slot)))
+                .or_else(|| src.gpus.iter().find(|g| g.vendor == Vendor::Amd))
                 .map(|g| match (&g.driver, &g.driver_version) {
                     (Some(name), Some(version)) => format!("{name} {version}"),
                     (Some(name), None) => name.clone(),
@@ -1830,7 +1868,7 @@ mod tests {
             let fact = report
                 .facts
                 .iter()
-                .find(|(name, _)| name == "Liaison PCI Express de la carte graphique")
+                .find(|(name, _)| name.starts_with("Liaison PCI Express"))
                 .map(|(_, value)| value.clone())
                 .unwrap_or_default();
             (report.checks.iter().find(|c| c.id == "pcie").map(|c| c.level), fact)
@@ -1860,6 +1898,74 @@ mod tests {
             pcie(&desktop, Some((8, Some(16.0)))),
             (Some(Level::Info), "x8 en PCIe 4.0, même en jeu (carte x16, emplacement ?)".to_string())
         );
+    }
+
+    #[test]
+    fn integrated_amd_gpu_is_left_out() {
+        // Portable Ryzen (Radeon Vega intégrée, 0000:05:00.0) + GTX 1650.
+        let pc = pc();
+        for slot in ["0000:01:00.0", "0000:05:00.0"] {
+            let device = pc.sys.join("bus/pci/devices").join(slot);
+            write(device.join("current_link_width"), "16\n");
+            write(device.join("max_link_width"), "16\n");
+            write(device.join("resource"), "0x00000000e0000000 0x00000000efffffff 0x000000000014220c\n");
+        }
+        // Nœud du processeur avec la puce graphique (APU) ; 5 << 8 = 1280.
+        write(
+            pc.sys.join("class/kfd/kfd/topology/nodes/0/properties"),
+            "cpu_cores_count 8\nsimd_count 32\nlocation_id 1280\ndomain 0\n",
+        );
+        assert_eq!(amd_apus(&pc.sys), ["0000:05:00.0"]);
+        let vega = Gpu {
+            card: "card0".into(),
+            pci_slot: "0000:05:00.0".into(),
+            vendor: Vendor::Amd,
+            vendor_id: 0x1002,
+            device_id: 0x15d8,
+            name: Some("Radeon Vega Series / Radeon Vega Mobile Series".into()),
+            driver: Some("amdgpu".into()),
+            driver_version: None,
+            boot_vga: true,
+            connectors: vec![],
+        };
+        let gtx = Gpu { name: Some("GeForce GTX 1650".into()), boot_vga: false, ..gpu("615.78.08") };
+        let exec = FakeExec::new();
+        let report = run(&Sources {
+            sys: &pc.sys,
+            dev: &pc.dev,
+            proc_dir: &pc.proc_dir,
+            exec: &exec,
+            env: &|_| None,
+            next_login_env: &|_| None,
+            settings: &Settings::default(),
+            gpus: &[vega, gtx],
+            desktop: Desktop::Hyprland,
+            default_proton: None,
+            recent_games: Vec::new(),
+            last_launch: None,
+            version: "0.1.0.r61".into(),
+            go_to_linux_version: None,
+            pcie_in_game: Vec::new(),
+            gamemode_allowed: true,
+            precache: None,
+            sessions: Vec::new(),
+            mangohud: true,
+            wrapped_games: Some((1, 1)),
+            go_to_linux: false,
+            can_zram: true,
+            pacman: true,
+            updates: Vec::new(),
+        });
+        // Une seule carte vérifiée : la GTX 1650, et son pilote.
+        assert_eq!(report.checks.iter().filter(|c| c.id == "rebar").count(), 1);
+        assert_eq!(report.facts.iter().filter(|(name, _)| name.starts_with("Liaison PCI Express")).count(), 1);
+        assert!(report.checks.iter().any(|c| c.id == "driver-update" && c.detail.starts_with("nvidia 615.78.08")));
+        // Aucun nom en double : l'interface les range par nom.
+        let mut names: Vec<&String> = report.facts.iter().map(|(name, _)| name).collect();
+        names.sort();
+        let count = names.len();
+        names.dedup();
+        assert_eq!(names.len(), count, "{:?}", report.facts);
     }
 
     #[test]

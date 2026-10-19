@@ -132,7 +132,8 @@
   <div class="layout">
     <section class="panel card">
       <ul class="checks">
-        {#each checks as check (check.id)}
+        <!-- Rang compris : deux cartes peuvent donner deux lignes du même nom. -->
+        {#each checks as check, i (`${check.id}:${i}`)}
           {@const Icon = icon(check)}
           <li class="check check--{check.level}">
             <span class="check__icon"><Icon size={18} /></span>
@@ -187,7 +188,7 @@
     <aside class="panel card facts">
       <h2>{t("Ce PC", "This PC")}</h2>
       <dl>
-        {#each report.facts as [name, value] (name)}
+        {#each report.facts as [name, value], i (`${name}:${i}`)}
           <dt>{name}</dt>
           <dd class="mono">{value}</dd>
         {/each}
