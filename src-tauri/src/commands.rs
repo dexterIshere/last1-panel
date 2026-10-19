@@ -53,7 +53,7 @@ pub struct Tools {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemInfo {
-    version: &'static str,
+    version: String,
     lang: &'static str,
     desktop: Desktop,
     features: Option<Features>,
@@ -66,7 +66,8 @@ pub async fn system_info(panel: State<'_, Arc<Panel>>) -> Result<SystemInfo> {
     let panel = panel.inner().clone();
     blocking(move || {
         Ok(SystemInfo {
-            version: last1_panel_core::update::RELEASE.unwrap_or(env!("CARGO_PKG_VERSION")),
+            version: last1_panel_core::update::installed_version(panel.exec.as_ref())
+                .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
             lang: if i18n::is_english() { "en" } else { "fr" },
             desktop: panel.desktop,
             features: panel.features(),
@@ -182,11 +183,11 @@ pub async fn gpu_confirm(keep: bool) -> Result<()> {
 }
 
 /// Version plus récente publiée sur last1.fun, pour Last1 Panel installé par
-/// l'AppImage (le paquet Arch se met à jour par go-to-linux ou pacman).
+/// l'AppImage ou par go-to-linux (un paquet sans go-to-linux : pacman).
 #[tauri::command]
 pub async fn update_available() -> Result<Option<String>> {
     blocking(|| {
-        if !update::enabled() {
+        if !update::enabled() && !update::by_go_to_linux() {
             return Ok(None);
         }
         let exec = SystemExec { timeout: Duration::from_secs(90), ..SystemExec::default() };
@@ -201,13 +202,22 @@ pub async fn update_available() -> Result<Option<String>> {
 pub async fn install_update(app: tauri::AppHandle) -> Result<()> {
     blocking(|| {
         let exec = SystemExec { timeout: Duration::from_secs(90), ..SystemExec::default() };
-        if let Some(release) = update::check(&exec, update::now())? {
-            update::install(&release)?;
+        let program = if update::by_go_to_linux() {
+            // go-to-linux attend la fin d'une recherche en cours (15 min au plus).
+            let exec = SystemExec { timeout: Duration::from_secs(3600), ..SystemExec::default() };
+            update::update_by_go_to_linux(&exec)?;
             crate::restart_service();
-        }
+            std::path::PathBuf::from(last1_panel_core::paths::SYSTEM_APP)
+        } else {
+            if let Some(release) = update::check(&exec, update::now())? {
+                update::install(&release)?;
+                crate::restart_service();
+            }
+            last1_panel_core::paths::user_appimage()
+        };
         // Nouvelle fenêtre une fois celle-ci fermée (une seule à la fois).
         let mut command = std::process::Command::new("/bin/sh");
-        command.args(["-c", "sleep 1; exec \"$0\""]).arg(last1_panel_core::paths::user_appimage());
+        command.args(["-c", "sleep 1; exec \"$0\""]).arg(program);
         last1_panel_core::exec::without_appimage_env(&mut command);
         std::os::unix::process::CommandExt::process_group(&mut command, 0);
         command.stdin(std::process::Stdio::null()).spawn()?;

@@ -7,7 +7,10 @@
 //! Liste publique de last1.fun, signée (Ed25519, même clé que go-to-linux) :
 //! seulement une version plus récente que celle installée, AppImage
 //! téléchargée, taille et empreinte vérifiées, puis remplacée d'un coup.
-//! Rien quand le paquet Arch est installé : go-to-linux s'en charge.
+//!
+//! Paquet Arch posé par go-to-linux : même liste, comparée à la version du
+//! paquet ; installé par go-to-linux (`update.sh --last1-panel`, sans mot de
+//! passe pour la session active). Paquet sans go-to-linux : pacman.
 
 use crate::error::{CoreError, CoreResult};
 use crate::exec::{Exec, SystemExec};
@@ -72,6 +75,58 @@ fn refused(detail: &str) -> CoreError {
 /// La mise à jour proposée concerne-t-elle cette installation ?
 pub fn enabled() -> bool {
     RELEASE.is_some() && !Path::new(crate::paths::SYSTEM_APP).exists() && crate::paths::user_appimage().is_file()
+}
+
+/// Mise à jour de go-to-linux, pour Last1 Panel seul (`--last1-panel`).
+pub const GTL_UPDATE: &str = "/usr/local/lib/gtl/update.sh";
+
+/// Cette fenêtre est-elle celle du paquet (/usr/bin) ?
+pub fn is_package() -> bool {
+    std::env::current_exe().is_ok_and(|exe| exe.starts_with("/usr/bin"))
+}
+
+/// Paquet posé par go-to-linux, qui sait le mettre à jour.
+pub fn by_go_to_linux() -> bool {
+    is_package() && Path::new("/var/lib/gtl").is_dir() && Path::new(GTL_UPDATE).exists()
+}
+
+/// Version installée : celle du paquet (« 0.1.0.r52-1 » → « 0.1.0.r52 »),
+/// sinon celle de l'AppImage (posée par sa CI).
+pub fn installed_version(exec: &dyn Exec) -> Option<String> {
+    if !is_package() {
+        return RELEASE.map(str::to_string);
+    }
+    // « /usr/bin/last1-panel is owned by last1-panel-bin 0.1.0.r52-1 »
+    let output = exec.run("pacman", &["-Qo".into(), crate::paths::SYSTEM_APP.into()]).ok().filter(|o| o.success())?;
+    package_version(output.stdout.split_whitespace().last()?)
+}
+
+/// Version d'un paquet sans son époque ni sa révision.
+fn package_version(version: &str) -> Option<String> {
+    let version = version.rsplit_once('-').map_or(version, |(v, _)| v);
+    let version = version.split_once(':').map_or(version, |(_, v)| v);
+    (!version.is_empty()).then(|| version.to_string())
+}
+
+/// Last1 Panel mis à jour par go-to-linux. Sa réponse : « updated X »,
+/// « installed X », « up-to-date », « unpublished », « absent » ; vide : un
+/// go-to-linux plus ancien a tout mis à jour (lui, Last1 Panel, le système).
+pub fn update_by_go_to_linux(exec: &dyn Exec) -> CoreResult<()> {
+    let output = exec.run("pkexec", &[GTL_UPDATE.into(), "--last1-panel".into()])?;
+    if output.status == 126 || output.status == 127 {
+        return Err(CoreError::message(crate::i18n::t(
+            "Mise à jour refusée : rien n'a changé.",
+            "Update refused: nothing changed.",
+        )));
+    }
+    let answer = output.stdout.lines().last().unwrap_or_default().trim();
+    if !output.success() || answer == "unpublished" || answer == "absent" {
+        return Err(CoreError::message(crate::i18n::t(
+            "go-to-linux n'a pas pu mettre Last1 Panel à jour (Internet ?). Le détail est dans /var/log/gtl-update.log.",
+            "go-to-linux could not update Last1 Panel (Internet?). Details are in /var/log/gtl-update.log.",
+        )));
+    }
+    Ok(())
 }
 
 /// Heure actuelle, en secondes (expiration de la liste).
@@ -177,7 +232,8 @@ pub fn newer(candidate: &str, current: &str) -> bool {
 
 /// La version en ligne, si elle est plus récente que celle installée.
 pub fn check(exec: &dyn Exec, now: i64) -> CoreResult<Option<Release>> {
-    let Some(current) = RELEASE else { return Ok(None) };
+    let Some(current) = installed_version(exec) else { return Ok(None) };
+    let current = current.as_str();
     let output = exec.run_ok(
         "curl",
         &["-fsS", "--proto", "=https", "--max-time", "60", &format!("{SITE}/api/public/{PRODUCT}/manifest")]
@@ -352,5 +408,12 @@ mod tests {
         assert_eq!(fs::read(&target).unwrap(), b"appimage v2");
         assert_eq!(fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o755);
         assert!(!temporary.exists());
+    }
+
+    #[test]
+    fn package_version_without_epoch_or_release() {
+        assert_eq!(package_version("0.1.0.r52-1").as_deref(), Some("0.1.0.r52"));
+        assert_eq!(package_version("1:0.1.0.r52-3").as_deref(), Some("0.1.0.r52"));
+        assert_eq!(package_version("-1"), None);
     }
 }

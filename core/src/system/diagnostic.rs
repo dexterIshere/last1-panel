@@ -643,6 +643,15 @@ pub fn run(src: &Sources) -> Report {
     // Carte graphique : liaison PCI Express, Resizable BAR, pilote.
     for gpu in src.gpus.iter().filter(|g| matches!(g.vendor, Vendor::Nvidia | Vendor::Amd)) {
         let device = src.sys.join("bus/pci/devices").join(&gpu.pci_slot);
+        // Portable : la carte est soudée, souvent câblée en x8 ; rien à
+        // déplacer ni à renfoncer, la liaison n'est qu'un fait.
+        let laptop = battery
+            || read(&src.sys.join("class/dmi/id/chassis_type"))
+                .is_some_and(|chassis| ["8", "9", "10", "14", "31", "32"].contains(&chassis.as_str()))
+            || gpu
+                .name
+                .as_deref()
+                .is_some_and(|name| ["Mobile", "Max-Q", "Laptop"].iter().any(|word| name.contains(word)));
         if let Some(link) = slot_link(&device, gpu.vendor_id) {
             facts.push((
                 t("Liaison PCI Express de la carte graphique", "Graphics card PCI Express link"),
@@ -657,7 +666,9 @@ pub fn run(src: &Sources) -> Report {
             ));
             let possible = link.slot.map_or(link.card, |slot| slot.min(link.card));
             // Liaison réduite au repos par le pilote AMD : pas un défaut.
-            if link.current < possible && !amd_idle_link(&device) {
+            if laptop {
+                // Le fait seul (plus haut).
+            } else if link.current < possible && !amd_idle_link(&device) {
                 // x4 ou moins : les jeux le sentent nettement.
                 let level = if link.current * 4 <= possible { Level::Problem } else { Level::Warning };
                 checks.push(check(
@@ -678,7 +689,7 @@ pub fn run(src: &Sources) -> Report {
                         ),
                     ),
                 ));
-            } else if link.slot.is_some_and(|slot| slot < link.card) && !battery {
+            } else if link.slot.is_some_and(|slot| slot < link.card) {
                 // PC fixe : emplacement câblé plus étroit que la carte.
                 let slot = link.slot.unwrap_or_default();
                 checks.push(check(
@@ -1606,6 +1617,49 @@ mod tests {
         assert_eq!(slot_link(&link, 0x1002), Some(SlotLink { current: 8, card: 16, slot: Some(8) }));
         // GeForce, sans commutateur : sa propre liaison.
         assert_eq!(slot_link(&gpu, 0x10de), Some(SlotLink { current: 16, card: 16, slot: Some(16) }));
+    }
+
+    #[test]
+    fn laptop_link_is_only_a_fact() {
+        // RTX 3080 Laptop câblée en x8 : un fait, pas de constat.
+        let pc = pc();
+        let device = pc.sys.join("bus/pci/devices/0000:01:00.0");
+        write(device.join("current_link_width"), "8\n");
+        write(device.join("max_link_width"), "16\n");
+        let exec = FakeExec::new();
+        let pcie = |gpu: &Gpu| {
+            let report = run(&Sources {
+                sys: &pc.sys,
+                dev: &pc.dev,
+                proc_dir: &pc.proc_dir,
+                exec: &exec,
+                env: &|_| None,
+                next_login_env: &|_| None,
+                settings: &Settings::default(),
+                gpus: std::slice::from_ref(gpu),
+                desktop: Desktop::Plasma,
+                default_proton: None,
+                recent_games: Vec::new(),
+                last_launch: None,
+                gamemode_allowed: true,
+                precache: None,
+                sessions: Vec::new(),
+                mangohud: true,
+                wrapped_games: Some((1, 1)),
+                go_to_linux: true,
+                can_zram: true,
+                pacman: false,
+                updates: Vec::new(),
+            });
+            let fact = report.facts.iter().any(|(_, value)| value.starts_with("x8 ("));
+            (report.checks.iter().find(|c| c.id == "pcie").map(|c| c.level), fact)
+        };
+        let desktop = gpu("595.58.03");
+        assert_eq!(pcie(&desktop), (Some(Level::Warning), true));
+        let laptop = Gpu { name: Some("GeForce RTX 3080 Laptop GPU".into()), ..desktop.clone() };
+        assert_eq!(pcie(&laptop), (None, true));
+        write(pc.sys.join("class/dmi/id/chassis_type"), "10\n");
+        assert_eq!(pcie(&desktop), (None, true));
     }
 
     #[test]
