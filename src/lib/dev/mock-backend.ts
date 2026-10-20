@@ -7,15 +7,17 @@
 //   ?lact=arrete          service LACT installé mais arrêté
 //   ?lact=absent          LACT pas installé
 //   ?steam=ouvert         Steam lancé (options de lancement bloquées)
-//   ?page=display|gpu|games|perf   page affichée au démarrage
+//   ?page=display|mouse|gpu|games|perf   page affichée au démarrage
 //   ?lang=en              système en anglais
 //   ?maj=1                version plus récente sur last1.fun
+//   ?ratbag=absent|vide   libratbag pas installé, ou aucune souris de jeu
 
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type {
   ColorAdjust,
   ColorProfile,
   GameProfile,
+  GamingMouse,
   GamesSettings,
   Output,
   OutputChange,
@@ -33,7 +35,7 @@ export function installMockBackend(): void {
   let lactRunning = !["arrete", "absent"].includes(params.get("lact") ?? "");
   const steamRunning = params.get("steam") === "ouvert";
   const page = params.get("page");
-  if (page && ["colors", "display", "gpu", "games", "perf"].includes(page)) app.section = page as Section;
+  if (page && ["colors", "display", "mouse", "gpu", "games", "perf"].includes(page)) app.section = page as Section;
 
   const system: SystemInfo = {
     version: "0.1.0",
@@ -116,6 +118,20 @@ export function installMockBackend(): void {
   let tray = true;
   let lowLatencyForced = true;
   const perfFixed = new Set<string>();
+  const pointer = { mice: ["Logitech G502 HERO Gaming Mouse"], acceleration: true, speed: 0, unavailable: null };
+  let ratbagInstalled = params.get("ratbag") !== "absent";
+  const dpiChoices = Array.from({ length: 512 }, (_, i) => 50 + i * 50);
+  const gamingMice: GamingMouse[] = params.get("ratbag") === "vide" ? [] : [
+    {
+      id: "/org/freedesktop/ratbag1/device/hidraw3",
+      name: "Logitech G502 HERO Gaming Mouse",
+      profile: "/org/freedesktop/ratbag1/profile/hidraw3/p0",
+      stages: [400, 800, 1600, 3200, 6400].map((dpi, i) => ({ id: `/org/freedesktop/ratbag1/resolution/hidraw3/p0/r${i}`, dpi, active: i === 1 })),
+      dpiChoices,
+      rate: 500,
+      rateChoices: [125, 250, 500, 1000],
+    },
+  ];
   let sharingChoice: boolean | null = null;
   // ?shaders=1 : Steam compile les shaders de Cyberpunk 2077 (90 s).
   const shadersStart = Date.now();
@@ -210,7 +226,7 @@ export function installMockBackend(): void {
         vibrance: colors[name].vibrance,
         vibranceUnavailable: amd ? "Vibrance du bureau : cartes NVIDIA seulement (Wayland ne la permet pas aux autres). Dans les jeux, elle passe par un profil de couleurs (Couleurs dans le jeu), sur toutes les cartes." : null,
         colorUnavailable: screen?.hdr
-          ? "Écran en HDR : luminosité, contraste et gamma ne s'appliquent qu'en SDR (désactivez le HDR dans Affichage)."
+          ? "Écran en HDR : luminosité, contraste et gamma ne s'appliquent qu'en SDR (désactivez le HDR dans Matériel › Écran)."
           : null,
         replacedProfile: null,
       };
@@ -272,6 +288,26 @@ export function installMockBackend(): void {
         readable: true,
         ...alive,
       };
+    },
+    mouse_state: async () => {
+      await wait(250);
+      return { pointer: structuredClone(pointer), ratbag: { installed: ratbagInstalled, mice: structuredClone(ratbagInstalled ? gamingMice : []) } };
+    },
+    set_pointer: async (args) => {
+      await wait(150);
+      pointer.acceleration = args.acceleration as boolean;
+      pointer.speed = args.speed as number;
+    },
+    set_mouse_hardware: async (args) => {
+      await wait(700);
+      const mouse = gamingMice.find((m) => m.id === args.id)!;
+      const dpis = args.dpis as number[];
+      mouse.stages = mouse.stages.map((stage, i) => ({ ...stage, dpi: dpis[i], active: i === args.active }));
+      mouse.rate = args.rate as number | null;
+    },
+    install_ratbag: async () => {
+      await wait(1500);
+      ratbagInstalled = true;
     },
     enable_lact: async () => {
       await wait(1200);

@@ -15,7 +15,8 @@ tuning, per-game 3D settings. Free software (GPL-3.0), part of the Last1 suite.*
 |---|---|---|
 | Couleurs du bureau : luminosité, contraste, gamma (par canal) | **Couleurs** | profil ICC (courbe VCGT) appliqué par KWin ou Hyprland |
 | Vibrance numérique | **Couleurs** (cartes NVIDIA) | [nvibrant](https://github.com/Tremeschin/nvibrant) (MIT, inclus) |
-| Résolution, fréquence, G-SYNC, HDR, profondeur de couleur, orientation, échelle | **Affichage** | `kscreen-doctor` (Plasma), `hyprctl` (Hyprland) |
+| Résolution, fréquence, G-SYNC, HDR, profondeur de couleur, orientation, échelle | **Matériel › Écran** | `kscreen-doctor` (Plasma), `hyprctl` (Hyprland) |
+| Accélération et vitesse du pointeur ; DPI et fréquence d'une souris de jeu (G HUB) | **Matériel › Souris** | KWin (D-Bus), `hyprctl` ; [libratbag](https://github.com/libratbag/libratbag) (moteur de Piper) |
 | Limite de puissance, fréquences, ventilateurs (MSI Afterburner) | **Carte graphique** | [LACT](https://github.com/ilya-zlobintsev/LACT) |
 | Paramètres 3D par jeu : images/s max, V-Sync, faible latence, filtrage, DLSS | **Jeux** | Proton, DXVK, VKD3D-Proton, dxvk-nvapi, MangoHud |
 | Couleurs propres à un jeu (profils de NVIDIA Profile Inspector, ReShade) | **Couleurs** (profils) et **Jeux** | [vkBasalt](https://github.com/DadSchoorse/vkBasalt) (zlib, inclus), dans la seule fenêtre du jeu |

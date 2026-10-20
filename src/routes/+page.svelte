@@ -4,6 +4,7 @@
   import Colors from "$lib/sections/Colors.svelte";
   import Display from "$lib/sections/Display.svelte";
   import Games from "$lib/sections/Games.svelte";
+  import Mouse from "$lib/sections/Mouse.svelte";
   import GpuTuning from "$lib/sections/Gpu.svelte";
   import Performance from "$lib/sections/Performance.svelte";
   import ShaderBanner from "$lib/components/ShaderBanner.svelte";
@@ -45,6 +46,8 @@
           <Colors />
         {:else if app.section === "display"}
           <Display />
+        {:else if app.section === "mouse"}
+          <Mouse />
         {:else if app.section === "gpu"}
           <GpuTuning />
         {:else if app.section === "perf"}

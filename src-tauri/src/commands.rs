@@ -321,6 +321,51 @@ pub async fn enable_lact() -> Result<()> {
     .await
 }
 
+/// Page Souris : pointeur du bureau et souris réglables (libratbag).
+#[tauri::command]
+pub async fn mouse_state(panel: State<'_, Arc<Panel>>) -> Result<last1_panel_core::panel::MouseState> {
+    let panel = panel.inner().clone();
+    blocking(move || Ok(panel.mouse_state())).await
+}
+
+#[tauri::command]
+pub async fn set_pointer(panel: State<'_, Arc<Panel>>, acceleration: bool, speed: f64) -> Result<()> {
+    let panel = panel.inner().clone();
+    blocking(move || panel.set_pointer(acceleration, speed)).await
+}
+
+/// Paliers de DPI, palier actif et fréquence, écrits dans la souris.
+#[tauri::command]
+pub async fn set_mouse_hardware(
+    panel: State<'_, Arc<Panel>>,
+    id: String,
+    dpis: Vec<u32>,
+    active: usize,
+    rate: Option<u32>,
+) -> Result<()> {
+    let panel = panel.inner().clone();
+    blocking(move || panel.set_mouse_hardware(&id, &dpis, active, rate)).await
+}
+
+/// libratbag (ratbagd, démarré à la demande par D-Bus) installé, mot de
+/// passe demandé par pkexec.
+#[tauri::command]
+pub async fn install_ratbag() -> Result<()> {
+    blocking(|| {
+        if which("pacman").is_none() {
+            return Err(CoreError::message(t(
+                "Installez libratbag avec le gestionnaire de paquets du système, puis rouvrez cette page.",
+                "Install libratbag with the system's package manager, then reopen this page.",
+            )));
+        }
+        let exec = SystemExec { timeout: Duration::from_secs(1800), ..SystemExec::default() };
+        let script = "pacman -S --needed --noconfirm libratbag || pacman -Syu --needed --noconfirm libratbag";
+        exec.run_ok("pkexec", &["/bin/sh".into(), "-c".into(), script.into()])?;
+        Ok(())
+    })
+    .await
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GamesInfo {

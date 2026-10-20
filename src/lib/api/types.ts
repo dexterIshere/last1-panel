@@ -315,3 +315,43 @@ export interface GamesInfo {
   /** Couche Vulkan des couleurs des jeux installée. */
   colorLayer: boolean;
 }
+
+/** Pointeur réglé par le bureau (libinput) : accélération, sensibilité. */
+export interface PointerState {
+  /** Souris branchées (pavés tactiles exclus). */
+  mice: string[];
+  acceleration: boolean;
+  /** Vitesse libinput, de -1 à 1 (0 : celle de la souris). */
+  speed: number;
+  /** Pourquoi le bureau ne se règle pas d'ici. */
+  unavailable: string | null;
+}
+
+export interface DpiStage {
+  id: string;
+  dpi: number;
+  active: boolean;
+}
+
+/** Souris de jeu réglée dans sa mémoire (libratbag). */
+export interface GamingMouse {
+  id: string;
+  name: string;
+  profile: string;
+  stages: DpiStage[];
+  dpiChoices: number[];
+  /** Fréquence d'interrogation (Hz). */
+  rate: number | null;
+  rateChoices: number[];
+}
+
+export interface Ratbag {
+  /** libratbag installé. */
+  installed: boolean;
+  mice: GamingMouse[];
+}
+
+export interface MouseState {
+  pointer: PointerState;
+  ratbag: Ratbag;
+}

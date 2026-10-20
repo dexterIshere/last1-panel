@@ -18,6 +18,7 @@ import type {
   GpuDevice,
   GpuStats,
   GpuTuning,
+  MouseState,
   Output,
   OutputChange,
   SystemInfo,
@@ -75,4 +76,13 @@ export const api = {
   saveGameSettings: (settings: GamesSettings) => invoke<void>("save_game_settings", { settings }),
   /** Met (ou retire) l'option de lancement dans Steam, Steam fermé. */
   setWrapped: (appIds: number[], wrapped: boolean) => invoke<number>("set_wrapped", { appIds, wrapped }),
+
+  mouseState: () => invoke<MouseState>("mouse_state"),
+  /** Accélération et sensibilité (vitesse libinput, -1 à 1), gardées et remises à chaque connexion. */
+  setPointer: (acceleration: boolean, speed: number) => invoke<void>("set_pointer", { acceleration, speed }),
+  /** Écrit dans la souris : paliers de DPI, palier actif (index), fréquence. */
+  setMouseHardware: (id: string, dpis: number[], active: number, rate: number | null) =>
+    invoke<void>("set_mouse_hardware", { id, dpis, active, rate }),
+  /** Installe libratbag (pkexec, mot de passe demandé). */
+  installRatbag: () => invoke<void>("install_ratbag"),
 };

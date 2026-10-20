@@ -30,6 +30,18 @@ pub struct Settings {
     /// Rapports de performances partagés avec last1.fun (system/sharing.rs) :
     /// absent tant que le joueur n'a pas répondu ; jamais envoyé sans « oui ».
     pub share_reports: Option<bool>,
+    /// Pointeur des souris (input/pointer.rs), remis à chaque connexion.
+    pub mouse: MouseSettings,
+}
+
+/// Accélération et sensibilité des souris. Absentes : jamais réglées (le
+/// bureau garde les siennes).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MouseSettings {
+    pub acceleration: Option<bool>,
+    /// Vitesse de libinput, -1 à 1 (0 : normale).
+    pub speed: Option<f64>,
 }
 
 impl Default for Settings {
@@ -41,6 +53,7 @@ impl Default for Settings {
             games: GamesSettings::default(),
             tray: true,
             share_reports: None,
+            mouse: MouseSettings::default(),
         }
     }
 }

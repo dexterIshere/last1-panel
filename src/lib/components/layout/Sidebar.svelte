@@ -5,13 +5,29 @@
   import { api, errorMessage } from "$lib/api/ipc";
   import { i18n, t, type Lang } from "$lib/i18n.svelte";
   import { app, type Section } from "$lib/state/app.svelte";
-  import { Cpu, Gamepad2, Gauge, Monitor, Palette, Power } from "@lucide/svelte";
+  import { Cpu, Gamepad2, Gauge, Monitor, Mouse, Palette, Power, Usb } from "@lucide/svelte";
 
   const LANGS: Lang[] = ["fr", "en"];
 
-  const sections = $derived<{ id: Section; title: string; detail: string; icon: typeof Palette }[]>([
+  interface Page {
+    id: Section;
+    title: string;
+    detail: string;
+    icon: typeof Palette;
+  }
+
+  /** Une page, ou un groupe de pages (Matériel : écran, souris). */
+  const sections = $derived<(Page | { title: string; detail: string; icon: typeof Palette; pages: Page[] })[]>([
     { id: "colors", title: t("Couleurs", "Colors"), detail: t("Gamma, contraste, vibrance", "Gamma, contrast, vibrance"), icon: Palette },
-    { id: "display", title: t("Affichage", "Display"), detail: t(`Définition, fréquence, ${app.vrrName}`, `Resolution, refresh, ${app.vrrName}`), icon: Monitor },
+    {
+      title: t("Matériel", "Hardware"),
+      detail: t("Écran, souris", "Screen, mouse"),
+      icon: Usb,
+      pages: [
+        { id: "display", title: t("Écran", "Screen"), detail: t(`Définition, fréquence, ${app.vrrName}`, `Resolution, refresh, ${app.vrrName}`), icon: Monitor },
+        { id: "mouse", title: t("Souris", "Mouse"), detail: t("Accélération, sensibilité, DPI", "Acceleration, sensitivity, DPI"), icon: Mouse },
+      ],
+    },
     { id: "gpu", title: t("Carte graphique", "Graphics card"), detail: t("Puissance, ventilateurs", "Power, fans"), icon: Cpu },
     { id: "games", title: t("Jeux", "Games"), detail: t("Réglages 3D par jeu", "Per-game 3D settings"), icon: Gamepad2 },
     { id: "perf", title: t("Performances", "Performance"), detail: t("Diagnostic en jeu", "In-game diagnostic"), icon: Gauge },
@@ -53,16 +69,41 @@
 
   <nav aria-label={t("Réglages", "Settings")}>
     <ul class="nav">
-      {#each sections as section (section.id)}
+      {#each sections as section (section.title)}
         {@const Icon = section.icon}
         <li>
-          <button class="nav__item" aria-current={app.section === section.id ? "page" : undefined} onclick={() => (app.section = section.id)}>
-            <span class="nav__icon"><Icon size={18} /></span>
-            <span class="nav__text">
-              <span class="nav__title">{section.title}</span>
-              <span class="nav__detail">{section.detail}</span>
-            </span>
-          </button>
+          {#if "pages" in section}
+            {@const open = section.pages.some((page) => page.id === app.section)}
+            <button class="nav__item" aria-expanded={open} class:nav__item--group={open} onclick={() => (app.section = section.pages[0].id)}>
+              <span class="nav__icon"><Icon size={18} /></span>
+              <span class="nav__text">
+                <span class="nav__title">{section.title}</span>
+                <span class="nav__detail">{section.detail}</span>
+              </span>
+            </button>
+            <ul class="nav nav--sub">
+              {#each section.pages as page (page.id)}
+                {@const PageIcon = page.icon}
+                <li>
+                  <button class="nav__item nav__item--sub" aria-current={app.section === page.id ? "page" : undefined} onclick={() => (app.section = page.id)}>
+                    <span class="nav__icon nav__icon--sub"><PageIcon size={15} /></span>
+                    <span class="nav__text">
+                      <span class="nav__title">{page.title}</span>
+                      <span class="nav__detail">{page.detail}</span>
+                    </span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {:else}
+            <button class="nav__item" aria-current={app.section === section.id ? "page" : undefined} onclick={() => (app.section = section.id)}>
+              <span class="nav__icon"><Icon size={18} /></span>
+              <span class="nav__text">
+                <span class="nav__title">{section.title}</span>
+                <span class="nav__detail">{section.detail}</span>
+              </span>
+            </button>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -213,6 +254,26 @@
     border-color: var(--color-panel-line);
     background: var(--color-panel-soft);
     color: var(--color-panel);
+  }
+
+  .nav__item--group .nav__icon {
+    border-color: var(--color-panel-line);
+    color: var(--color-panel);
+  }
+
+  .nav--sub {
+    margin: var(--space-1) 0 0 var(--space-5);
+    padding-left: var(--space-2);
+    border-left: 1px solid var(--color-border);
+  }
+
+  .nav__item--sub {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .nav__icon--sub {
+    width: 1.5rem;
+    height: 1.5rem;
   }
 
   .nav__text {

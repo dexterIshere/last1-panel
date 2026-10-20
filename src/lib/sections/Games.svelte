@@ -353,8 +353,8 @@
           {:else}
             <span class="field__hint">
               {t(
-                "« Automatique » : en HDR quand l'écran l'est (Affichage). Proton 10 ou plus récent (Proton CachyOS, GE-Proton).",
-                "“Automatic”: in HDR when the screen is (Display). Proton 10 or newer (Proton CachyOS, GE-Proton).",
+                "« Automatique » : en HDR quand l'écran l'est (Matériel › Écran). Proton 10 ou plus récent (Proton CachyOS, GE-Proton).",
+                "“Automatic”: in HDR when the screen is (Hardware › Screen). Proton 10 or newer (Proton CachyOS, GE-Proton).",
               )}
             </span>
           {/if}

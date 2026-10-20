@@ -144,7 +144,7 @@
 </script>
 
 <SectionHeader
-  title={t("Affichage", "Display")}
+  title={t("Écran", "Screen")}
   lead={t(
     "Définition, fréquence, G-SYNC ou FreeSync, HDR et profondeur de couleur, écran par écran. Un changement se confirme : sans réponse, l'écran revient à ses réglages d'avant.",
     "Resolution, refresh rate, G-SYNC or FreeSync, HDR and color depth, screen by screen. Each change must be confirmed: without an answer, the screen goes back to its previous settings.",

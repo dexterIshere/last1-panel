@@ -212,11 +212,18 @@ fn apply_until_ready(tries: u32) -> bool {
     false
 }
 
+#[derive(PartialEq)]
+enum Plugged {
+    Screen,
+    Input,
+}
+
 /// Service de la session (last1-panel-apply.service) : la vibrance NVIDIA
 /// est perdue au redémarrage et quand un écran est rebranché ; elle est
 /// remise à la connexion puis à chaque événement des cartes graphiques
-/// (`udevadm monitor`, sous-système drm). Il tient aussi l'icône près de
-/// l'horloge (tray.rs).
+/// (`udevadm monitor`, sous-système drm). Une souris branchée reçoit
+/// l'accélération et la sensibilité gardées (sous-système input). Il tient
+/// aussi l'icône près de l'horloge (tray.rs).
 fn watch() -> ExitCode {
     if update::enabled() {
         std::thread::spawn(propose_updates);
@@ -230,7 +237,7 @@ fn watch() -> ExitCode {
     std::thread::sleep(Duration::from_secs(3));
     apply_until_ready(20);
     let child = Command::new("udevadm")
-        .args(["monitor", "--kernel", "--subsystem-match=drm"])
+        .args(["monitor", "--kernel", "--subsystem-match=drm", "--subsystem-match=input"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn();
@@ -245,16 +252,32 @@ fn watch() -> ExitCode {
     let stdout = child.stdout.take().expect("stdout demandé");
     std::thread::spawn(move || {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            if line.contains(" change ") && events.send(()).is_err() {
+            // « KERNEL[…] change /devices/…/drm/card1 (drm) »
+            let event = if line.ends_with("(drm)") && line.contains(" change ") {
+                Plugged::Screen
+            } else if line.ends_with("(input)") && line.contains(" add ") {
+                Plugged::Input
+            } else {
+                continue;
+            };
+            if events.send(event).is_err() {
                 break;
             }
         }
     });
     // Un branchement donne plusieurs événements : on attend qu'ils cessent.
-    while received.recv().is_ok() {
-        while received.recv_timeout(Duration::from_secs(2)).is_ok() {}
-        apply_until_ready(5);
-        tray.screens_changed();
+    while let Ok(first) = received.recv() {
+        let mut screens = first == Plugged::Screen;
+        while let Ok(event) = received.recv_timeout(Duration::from_secs(2)) {
+            screens |= event == Plugged::Screen;
+        }
+        if screens {
+            // Le pointeur est remis avec le reste.
+            apply_until_ready(5);
+            tray.screens_changed();
+        } else if let Err(error) = Panel::session().reapply_pointer() {
+            eprintln!("last1-panel-cli watch : {error}");
+        }
     }
     let _ = child.kill();
     ExitCode::SUCCESS

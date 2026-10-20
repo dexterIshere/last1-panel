@@ -77,6 +77,10 @@ pub fn run() {
             commands::quit,
             commands::sharing,
             commands::shader_precache,
+            commands::mouse_state,
+            commands::set_pointer,
+            commands::set_mouse_hardware,
+            commands::install_ratbag,
             commands::set_sharing,
         ])
         .run(tauri::generate_context!());

@@ -22,6 +22,14 @@ use std::sync::{Arc, Mutex};
 
 const ICC_PREFIX: &str = "last1-panel-";
 
+/// Page Souris.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MouseState {
+    pub pointer: crate::input::pointer::PointerState,
+    pub ratbag: crate::input::ratbag::Ratbag,
+}
+
 pub struct Panel {
     pub exec: Arc<dyn Exec>,
     pub desktop: Desktop,
@@ -128,6 +136,53 @@ impl Panel {
         gpu::detect(&self.sys)
     }
 
+    fn pointer(&self) -> crate::input::pointer::Pointer<'_> {
+        crate::input::pointer::Pointer {
+            exec: self.exec.as_ref(),
+            desktop: self.desktop,
+            hypr_dir: crate::paths::user_config_dir().join("hypr"),
+        }
+    }
+
+    /// Page Souris : le pointeur (bureau) et les souris réglables (libratbag).
+    pub fn mouse_state(&self) -> MouseState {
+        MouseState {
+            pointer: self.pointer().state(&self.settings().mouse),
+            ratbag: crate::input::ratbag::RatbagClient { exec: self.exec.as_ref() }.state(),
+        }
+    }
+
+    /// Accélération et sensibilité de toutes les souris, gardées et remises
+    /// à chaque connexion.
+    pub fn set_pointer(&self, acceleration: bool, speed: f64) -> CoreResult<()> {
+        let mouse =
+            crate::settings::MouseSettings { acceleration: Some(acceleration), speed: Some(speed.clamp(-1.0, 1.0)) };
+        self.pointer().apply(&mouse)?;
+        self.update(|settings| settings.mouse = mouse)
+    }
+
+    /// Pointeur gardé remis (une souris vient d'être branchée).
+    pub fn reapply_pointer(&self) -> CoreResult<()> {
+        let mouse = self.settings().mouse;
+        if mouse.acceleration.is_none() {
+            return Ok(());
+        }
+        self.pointer().apply(&mouse)
+    }
+
+    /// Paliers de DPI, palier actif et fréquence d'interrogation, écrits dans
+    /// la souris `id`.
+    pub fn set_mouse_hardware(&self, id: &str, dpis: &[u32], active: usize, rate: Option<u32>) -> CoreResult<()> {
+        let client = crate::input::ratbag::RatbagClient { exec: self.exec.as_ref() };
+        let mouse = client.state().mice.into_iter().find(|mouse| mouse.id == id).ok_or_else(|| {
+            CoreError::message(t(
+                "Souris débranchée : rebranchez-la, puis réessayez.",
+                "Mouse unplugged: plug it back in, then try again.",
+            ))
+        })?;
+        client.apply(&mouse, dpis, active, rate)
+    }
+
     pub fn display(&self) -> CoreResult<&dyn DisplayBackend> {
         self.display.as_deref().ok_or_else(|| {
             CoreError::message(t(
@@ -191,8 +246,8 @@ impl Panel {
         let color_unavailable = match &screen {
             None => Some(t("écran introuvable", "screen not found")),
             Some(screen) if screen.hdr == Some(true) => Some(t(
-                "Écran en HDR : luminosité, contraste et gamma ne s'appliquent qu'en SDR (désactivez le HDR dans Affichage).",
-                "Screen in HDR mode: brightness, contrast and gamma only apply in SDR (turn HDR off in Display).",
+                "Écran en HDR : luminosité, contraste et gamma ne s'appliquent qu'en SDR (désactivez le HDR dans Matériel › Écran).",
+                "Screen in HDR mode: brightness, contrast and gamma only apply in SDR (turn HDR off in Hardware › Screen).",
             )),
             Some(screen) if screen.icc_profile.is_none() => {
                 Some(t("Ce bureau ne gère pas les profils de couleur.", "This desktop does not handle color profiles."))
@@ -419,6 +474,13 @@ impl Panel {
     pub fn apply_saved(&self) -> Vec<String> {
         let mut problems = Vec::new();
         let settings = self.settings();
+        // Pointeur des souris (KWin le garde, Hyprland aussi par son fichier :
+        // remis pour une souris branchée depuis).
+        if settings.mouse.acceleration.is_some()
+            && let Err(error) = self.pointer().apply(&settings.mouse)
+        {
+            problems.push(error.to_string());
+        }
         let gpus = self.gpus();
         for gpu in gpus.iter().filter(|g| g.vendor == Vendor::Nvidia) {
             let values = vibrance_values(&settings, gpu);
