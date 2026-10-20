@@ -579,6 +579,14 @@ fn set_wrapped_closing_steam(app_ids: &[u32], wrapped: bool) -> last1_panel_core
     let root = steam::find_root(&last1_panel_core::paths::home_dir())
         .ok_or_else(|| CoreError::message(t("Steam n'est pas installé.", "Steam is not installed.")))?;
     steam::check_writable(&root, wrapped)?;
+    with_steam_closed(|| steam::set_wrapped(&root, Path::new("/proc"), app_ids, wrapped))
+}
+
+/// `work` fait Steam fermé proprement (s'il était lancé), puis Steam rouvert,
+/// même en cas d'échec. Jamais pendant un jeu : fermer Steam le fermerait.
+fn with_steam_closed<T>(
+    work: impl FnOnce() -> last1_panel_core::error::CoreResult<T>,
+) -> last1_panel_core::error::CoreResult<T> {
     let proc_dir = Path::new("/proc");
     let was_running = steam::is_running(proc_dir);
     if was_running {
@@ -596,11 +604,26 @@ fn set_wrapped_closing_steam(app_ids: &[u32], wrapped: bool) -> last1_panel_core
             )));
         }
     }
-    let result = steam::set_wrapped(&root, proc_dir, app_ids, wrapped);
+    let result = work();
     if was_running && let Ok(mut child) = steam_command(&[]).spawn() {
         std::thread::spawn(move || child.wait());
     }
     result
+}
+
+/// Steam relancé avec tous les cœurs pour compiler les shaders
+/// (steam_dev.cfg, lu à son démarrage) : il reprend la compilation aussitôt.
+#[tauri::command]
+pub async fn speed_up_shaders() -> Result<()> {
+    blocking(|| {
+        let root = steam::find_root(&last1_panel_core::paths::home_dir())
+            .ok_or_else(|| CoreError::message(t("Steam n'est pas installé.", "Steam is not installed.")))?;
+        with_steam_closed(|| {
+            last1_panel_core::games::shaders::give_cores(&root, last1_panel_core::games::shaders::cores())?;
+            Ok(())
+        })
+    })
+    .await
 }
 
 /// Steam lancé hors de la fenêtre (son propre groupe de processus) et sans

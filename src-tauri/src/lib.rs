@@ -77,6 +77,7 @@ pub fn run() {
             commands::quit,
             commands::sharing,
             commands::shader_precache,
+            commands::speed_up_shaders,
             commands::mouse_state,
             commands::set_pointer,
             commands::set_mouse_hardware,

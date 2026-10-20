@@ -70,6 +70,8 @@ export const api = {
   quit: () => invoke<void>("quit"),
   sharing: () => invoke<Sharing>("sharing"),
   shaderPrecache: () => invoke<Precache | null>("shader_precache"),
+  /** Steam relancé avec tous les cœurs pour compiler. */
+  speedUpShaders: () => invoke<void>("speed_up_shaders"),
   setSharing: (enabled: boolean) => invoke<void>("set_sharing", { enabled }),
 
   games: () => invoke<GamesInfo>("games"),

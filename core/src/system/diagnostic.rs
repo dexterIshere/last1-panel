@@ -1199,6 +1199,13 @@ pub fn run(src: &Sources) -> Report {
             .filter(|(_, total)| *total > 0)
             .map(|(done, total)| format!(" ({} %)", u64::from(done) * 100 / u64::from(total)))
             .unwrap_or_default();
+        let threads = precache.threads.map(|threads| {
+            (
+                format!(" Steam lui donne {threads} cœur(s) sur {}.", precache.cores),
+                format!(" Steam gives it {threads} core(s) out of {}.", precache.cores),
+            )
+        });
+        let (threads_fr, threads_en) = threads.unwrap_or_default();
         checks.push(check(
             "shader-precache",
             Level::Warning,
@@ -1214,11 +1221,11 @@ pub fn run(src: &Sources) -> Report {
             },
             t(
                 &format!(
-                    "C'est Steam (« Traitement des shaders Vulkan »), après une mise à jour d'un jeu ou du pilote : il occupe le processeur, les jeux peuvent saccader jusqu'à la fin. Ensuite, ils tournent mieux.{}",
+                    "C'est Steam (« Traitement des shaders Vulkan »), après une mise à jour d'un jeu ou du pilote : il occupe le processeur, les jeux peuvent saccader jusqu'à la fin. Ensuite, ils tournent mieux.{threads_fr}{}",
                     if precache.readable { "" } else { " (Avancement illisible par Last1 Panel.)" }
                 ),
                 &format!(
-                    "It's Steam (“Vulkan shader processing”), after a game or driver update: it keeps the CPU busy, games may stutter until it ends. Afterwards, they run better.{}",
+                    "It's Steam (“Vulkan shader processing”), after a game or driver update: it keeps the CPU busy, games may stutter until it ends. Afterwards, they run better.{threads_en}{}",
                     if precache.readable { "" } else { " (Progress unreadable by Last1 Panel.)" }
                 ),
             ),
@@ -1525,6 +1532,9 @@ mod tests {
                 processes: 4,
                 cpu_ticks: 120_000,
                 running_secs: Some(1800),
+                threads: Some(2),
+                cores: 16,
+                restart_to_speed_up: true,
             }),
             sessions: vec![GameSession {
                 program: "PioneerGame.exe".into(),

@@ -132,6 +132,7 @@ export function installMockBackend(): void {
       rateChoices: [125, 250, 500, 1000],
     },
   ];
+  let shadersFast = false;
   let sharingChoice: boolean | null = null;
   // ?shaders=1 : Steam compile les shaders de Cyberpunk 2077 (90 s).
   const shadersStart = Date.now();
@@ -279,7 +280,14 @@ export function installMockBackend(): void {
       const elapsed = (Date.now() - shadersStart) / 1000;
       if (!params.get("shaders") || elapsed > 90) return null;
       // Six cœurs au travail : 600 centièmes de seconde par seconde.
-      const alive = { processes: 7, cpuTicks: Math.round(elapsed * 600), runningSecs: Math.round(3120 + elapsed) };
+      const alive = {
+        processes: 7,
+        cpuTicks: Math.round(elapsed * 600),
+        runningSecs: Math.round(3120 + elapsed),
+        threads: shadersFast ? 16 : 2,
+        cores: 16,
+        restartToSpeedUp: !shadersFast,
+      };
       if (elapsed < 6) return { game: "Cyberpunk 2077", done: null, total: null, readable: true, ...alive };
       return {
         game: "Cyberpunk 2077",
@@ -308,6 +316,10 @@ export function installMockBackend(): void {
     install_ratbag: async () => {
       await wait(1500);
       ratbagInstalled = true;
+    },
+    speed_up_shaders: async () => {
+      await wait(2500);
+      shadersFast = true;
     },
     enable_lact: async () => {
       await wait(1200);

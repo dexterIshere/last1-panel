@@ -402,7 +402,8 @@ fn watch_game() {
     }
 }
 
-/// Shaders compilés par Steam (games/shaders.rs) : prévenu quand une
+/// Shaders compilés par Steam (games/shaders.rs) : tous les cœurs lui sont
+/// donnés (steam_dev.cfg) ; prévenu quand une
 /// compilation dure (les jeux saccadent pendant ce temps), puis quand elle
 /// s'arrête, finie ou interrompue. Regardé toutes les 10 s ; Steam enchaîne
 /// parfois deux processus pour un jeu : arrêtée après 20 s sans compilation.
@@ -420,9 +421,17 @@ fn watch_shaders() {
     let percent = |ratio: f64| (ratio * 100.0).floor() as u32;
     let mut current: Option<Tracked> = None;
     let mut absent = 0;
+    let mut given = false;
     loop {
-        std::thread::sleep(Duration::from_secs(10));
         let root = steam::find_root(&last1_panel_core::paths::home_dir());
+        // Tous les cœurs pour compiler, dès le prochain démarrage de Steam.
+        if !given && let Some(root) = &root {
+            given = true;
+            if let Err(error) = shaders::give_cores(root, shaders::cores()) {
+                eprintln!("last1-panel-cli watch : steam_dev.cfg : {error}");
+            }
+        }
+        std::thread::sleep(Duration::from_secs(10));
         let precache = shaders::running(std::path::Path::new("/proc"), root.as_deref());
         let stopped = match (&precache, &current) {
             (Some(now), Some(tracked)) if tracked.game == now.game => None,

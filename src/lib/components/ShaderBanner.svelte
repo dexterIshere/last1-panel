@@ -2,7 +2,8 @@
      saccadent pendant ce temps), pour quel jeu, où il en est et quand il aura
      fini ; puis « prêts » quelques secondes. -->
 <script lang="ts">
-  import { api } from "$lib/api/ipc";
+  import { api, errorMessage } from "$lib/api/ipc";
+  import Spinner from "$lib/components/ui/Spinner.svelte";
   import type { Precache } from "$lib/api/types";
   import { t } from "$lib/i18n.svelte";
   import { onDestroy, onMount } from "svelte";
@@ -20,6 +21,8 @@
   let cores = $state<number | null>(null);
   /** Plus rien ne bouge depuis deux minutes. */
   let stalled = $state(false);
+  let speeding = $state(false);
+  let speedError = $state<string | null>(null);
   let timer: ReturnType<typeof setInterval> | undefined;
   let stoppedTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -77,6 +80,19 @@
       const last = samples[samples.length - 1];
       const speed = (last.ratio - first.ratio) / (last.at - first.at);
       remaining = last.at - first.at >= 15_000 && speed > 0 ? (1 - last.ratio) / speed : null;
+    }
+  }
+
+  /** Steam fermé et rouvert avec tous les cœurs : la compilation reprend. */
+  async function speedUp() {
+    speeding = true;
+    speedError = null;
+    try {
+      await api.speedUpShaders();
+    } catch (e) {
+      speedError = errorMessage(e);
+    } finally {
+      speeding = false;
     }
   }
 
@@ -144,6 +160,25 @@
         "It's Steam (“Vulkan shader processing”), after a game or driver update: meanwhile, games may stutter. Better wait for the end to play; afterwards, they run better.",
       )}
     </p>
+    {#if precache.restartToSpeedUp}
+      <div class="banner__speed">
+        <p>
+          {precache.threads
+            ? t(
+                `Steam ne compile qu'avec ${precache.threads} cœur${precache.threads >= 2 ? "s" : ""} sur ${precache.cores} : relancé, il les prend tous et finit bien plus vite. La compilation reprend aussitôt, sans repartir de zéro.`,
+                `Steam compiles with only ${precache.threads} core${precache.threads >= 2 ? "s" : ""} out of ${precache.cores}: restarted, it takes them all and finishes much faster. The compilation resumes right away, without starting over.`,
+              )
+            : t(
+                `Steam compile avec peu de cœurs : relancé, il prend les ${precache.cores} du processeur et finit bien plus vite. La compilation reprend aussitôt, sans repartir de zéro.`,
+                `Steam compiles with few cores: restarted, it takes all ${precache.cores} of the processor and finishes much faster. The compilation resumes right away, without starting over.`,
+              )}
+        </p>
+        <button class="btn btn--primary" onclick={speedUp} disabled={speeding}>
+          {#if speeding}<Spinner />{t("Relance de Steam…", "Restarting Steam…")}{:else}{t("Accélérer", "Speed up")}{/if}
+        </button>
+      </div>
+      {#if speedError}<p class="banner__alive banner__alive--stalled">{speedError}</p>{/if}
+    {/if}
     {#if stalled}
       <p class="banner__alive banner__alive--stalled">
         {t(
@@ -226,6 +261,23 @@
   .banner__text {
     margin: 0;
     color: var(--color-text-muted);
+  }
+
+  .banner__speed {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .banner__speed p {
+    margin: 0;
+    color: var(--color-text);
+    font-weight: 600;
+  }
+
+  .banner__speed .btn {
+    flex: none;
   }
 
   .banner__alive {

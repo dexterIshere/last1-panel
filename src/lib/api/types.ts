@@ -269,6 +269,11 @@ export interface Precache {
   cpuTicks: number;
   /** Depuis combien de secondes la compilation tourne. */
   runningSecs: number | null;
+  /** Cœurs que Steam lui donne (connu si Steam le dit), et ceux du processeur. */
+  threads: number | null;
+  cores: number;
+  /** Steam lancé avant d'avoir tous les cœurs : relancé, il compile plus vite. */
+  restartToSpeedUp: boolean;
 }
 
 export interface Sharing {

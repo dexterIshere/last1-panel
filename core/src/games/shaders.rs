@@ -14,6 +14,13 @@ use super::{steam, vdf};
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
+
+/// Réglages de développeur de Steam, lus à son démarrage.
+const STEAM_DEV: &str = "steam_dev.cfg";
+/// Cœurs que Steam donne à fossilize_replay (peu par défaut : la compilation
+/// traîne des dizaines de minutes).
+const THREADS_KEY: &str = "unShaderBackgroundProcessingThreads";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +41,75 @@ pub struct Precache {
     pub cpu_ticks: u64,
     /// Depuis combien de secondes la compilation tourne.
     pub running_secs: Option<u64>,
+    /// Cœurs que Steam lui donne (`--num-threads`), et ceux du processeur.
+    pub threads: Option<u32>,
+    pub cores: u32,
+    /// Steam a été lancé avant de recevoir tous les cœurs : relancé, il
+    /// compile avec tous.
+    pub restart_to_speed_up: bool,
+}
+
+/// Cœurs donnés à Steam pour compiler : tous ceux du processeur. Il arrête
+/// de compiler quand un jeu se lance.
+pub fn cores() -> u32 {
+    std::thread::available_parallelism().map_or(4, |n| n.get() as u32)
+}
+
+/// Cœurs que steam_dev.cfg donne à la compilation.
+pub fn configured_threads(steam_root: &Path) -> Option<u32> {
+    let text = fs::read_to_string(steam_root.join(STEAM_DEV)).ok()?;
+    text.lines().find_map(|line| {
+        let (key, value) = line.trim().split_once(char::is_whitespace)?;
+        (key == THREADS_KEY).then(|| value.trim().trim_matches('"').parse().ok()).flatten()
+    })
+}
+
+/// Donne `cores` cœurs à la compilation dans steam_dev.cfg (les autres
+/// lignes gardées ; un nombre plus grand déjà là, gardé). Vrai s'il a changé :
+/// Steam le lit à son prochain démarrage.
+pub fn give_cores(steam_root: &Path, cores: u32) -> std::io::Result<bool> {
+    if configured_threads(steam_root).is_some_and(|threads| threads >= cores) {
+        return Ok(false);
+    }
+    let path = steam_root.join(STEAM_DEV);
+    let old = fs::read_to_string(&path).unwrap_or_default();
+    let mut lines: Vec<String> = old
+        .lines()
+        .filter(|line| line.split_whitespace().next() != Some(THREADS_KEY))
+        .map(str::to_string)
+        .collect();
+    lines.push(format!("{THREADS_KEY} {cores}"));
+    fs::write(&path, lines.join("\n") + "\n")?;
+    Ok(true)
+}
+
+/// Heure de départ d'un processus (d'après /proc/uptime).
+fn started_at(proc_dir: &Path, process: &Path) -> Option<SystemTime> {
+    let (_, start) = cpu_and_start(process)?;
+    let uptime = fs::read_to_string(proc_dir.join("uptime")).ok()?.split_whitespace().next()?.parse::<f64>().ok()?;
+    SystemTime::now().checked_sub(Duration::from_secs_f64((uptime - start as f64 / 100.0).max(0.0)))
+}
+
+/// Steam compile-t-il avec moins de cœurs qu'il n'en aurait relancé ? Le
+/// nombre qu'il a passé à fossilize_replay, sinon : Steam lancé avant que
+/// steam_dev.cfg lui donne tous les cœurs.
+fn slow(proc_dir: &Path, steam_root: Option<&Path>, threads: Option<u32>, cores: u32) -> bool {
+    if let Some(threads) = threads {
+        return threads < cores;
+    }
+    let Some(root) = steam_root else { return false };
+    if configured_threads(root).is_none_or(|threads| threads < cores) {
+        return true;
+    }
+    let written = fs::metadata(root.join(STEAM_DEV)).and_then(|m| m.modified()).ok();
+    let steam = fs::read_dir(proc_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .find(|entry| fs::read_to_string(entry.path().join("comm")).is_ok_and(|comm| comm.trim() == "steam"));
+    let started = steam.and_then(|entry| started_at(proc_dir, &entry.path()));
+    matches!((started, written), (Some(started), Some(written)) if started < written)
 }
 
 /// Temps de processeur d'un processus (utime + stime, en tops d'horloge :
@@ -48,6 +124,10 @@ fn cpu_and_start(process: &Path) -> Option<(u64, u64)> {
 
 /// Compilation en cours, s'il y en a une.
 pub fn running(proc_dir: &Path, steam_root: Option<&Path>) -> Option<Precache> {
+    running_with(proc_dir, steam_root, cores())
+}
+
+fn running_with(proc_dir: &Path, steam_root: Option<&Path>, cores: u32) -> Option<Precache> {
     let mut found: Option<(PathBuf, Vec<String>)> = None;
     let (mut processes, mut cpu_ticks) = (0, 0);
     for entry in fs::read_dir(proc_dir).ok()?.flatten() {
@@ -93,6 +173,7 @@ pub fn running(proc_dir: &Path, steam_root: Option<&Path>) -> Option<Precache> {
     });
     let block = control_block(proc_dir, &process);
     let progress = block.as_deref().and_then(condensed);
+    let threads = args.iter().position(|arg| arg == "--num-threads").and_then(|i| args.get(i + 1)?.parse().ok());
     Some(Precache {
         game,
         done: progress.and_then(|p| p.map(|p| p.0)),
@@ -101,6 +182,9 @@ pub fn running(proc_dir: &Path, steam_root: Option<&Path>) -> Option<Precache> {
         processes,
         cpu_ticks,
         running_secs,
+        threads,
+        cores,
+        restart_to_speed_up: slow(proc_dir, steam_root, threads, cores),
     })
 }
 
@@ -315,7 +399,7 @@ mod tests {
             fs::write(path.join("cmdline"), args.join("\0") + "\0").unwrap();
             path
         };
-        assert_eq!(running(&proc_dir, None), None);
+        assert_eq!(running_with(&proc_dir, None, 16), None);
         // Steam (4100) a créé le bloc et l'a effacé de /dev/shm ; il garde son
         // descripteur. fossilize_replay a fermé le sien, le bloc reste dans sa
         // mémoire.
@@ -333,15 +417,18 @@ mod tests {
         let cache =
             format!("{}/steamapps/shadercache/1962700/fozpipelinesv6/steamapp_pipeline_cache.foz", library.display());
         process("4242", "fossilize_repla", &["/proc/self/exe", "--slave-process", "--shmem-fd", "7"]);
-        let master =
-            process("4200", "fossilize_repla", &["fossilize_replay", &cache, "--master-process", "--shmem-fd", "98"]);
+        let master = process(
+            "4200",
+            "fossilize_repla",
+            &["fossilize_replay", &cache, "--master-process", "--shmem-fd", "98", "--num-threads", "2"],
+        );
         fs::write(
             master.join("maps"),
             "5555-6666 r-xp 00000000 08:02 1 /usr/bin/fossilize_replay\n\
              7f12a0000000-7f12a0011000 rw-s 00000000 00:19 123456                     /dev/shm/fossilize-external-4100-3 (deleted)\n",
         )
         .unwrap();
-        let precache = running(&proc_dir, None).unwrap();
+        let precache = running_with(&proc_dir, None, 16).unwrap();
         assert_eq!(
             precache,
             Precache {
@@ -351,7 +438,10 @@ mod tests {
                 readable: true,
                 processes: 2,
                 cpu_ticks: 0,
-                running_secs: None
+                running_secs: None,
+                threads: Some(2),
+                cores: 16,
+                restart_to_speed_up: true,
             }
         );
         // Temps de processeur des deux processus, et depuis quand ça tourne
@@ -362,17 +452,17 @@ mod tests {
         fs::write(master.join("stat"), stat(1000, 60_000)).unwrap();
         fs::write(proc_dir.join("4242/stat"), stat(250, 61_000)).unwrap();
         fs::write(proc_dir.join("uptime"), "3600.42 1000.00\n").unwrap();
-        let alive = running(&proc_dir, None).unwrap();
+        let alive = running_with(&proc_dir, None, 16).unwrap();
         assert_eq!((alive.processes, alive.cpu_ticks, alive.running_secs), (2, 1350, Some(3000)));
         // Autre espace de numéros (le pid du nom n'est pas celui vu ici) : le
         // parent de fossilize_replay.
         fs::rename(&steam, proc_dir.join("4101")).unwrap();
         fs::write(master.join("status"), "Name:\tfossilize_repla\nPPid:\t4101\n").unwrap();
-        assert_eq!(running(&proc_dir, None).unwrap().done, Some(25));
+        assert_eq!(running_with(&proc_dir, None, 16).unwrap().done, Some(25));
         // Bloc introuvable : la compilation reste dite, sans avancement.
         fs::remove_file(proc_dir.join("4101/fd/45")).unwrap();
         assert_eq!(
-            running(&proc_dir, None),
+            running_with(&proc_dir, None, 16),
             Some(Precache {
                 game: Some("Subnautica 2".into()),
                 done: None,
@@ -380,8 +470,46 @@ mod tests {
                 readable: false,
                 processes: 2,
                 cpu_ticks: 1350,
-                running_secs: Some(3000)
+                running_secs: Some(3000),
+                threads: Some(2),
+                cores: 16,
+                restart_to_speed_up: true,
             })
         );
+    }
+
+    #[test]
+    fn steam_gets_every_core() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        assert_eq!(configured_threads(root), None);
+        fs::write(
+            root.join(STEAM_DEV),
+            "@nClientDownloadEnableHTTP2PlatformLinux 0\nunShaderBackgroundProcessingThreads 2\n",
+        )
+        .unwrap();
+        assert_eq!(configured_threads(root), Some(2));
+        assert!(give_cores(root, 16).unwrap());
+        assert_eq!(
+            fs::read_to_string(root.join(STEAM_DEV)).unwrap(),
+            "@nClientDownloadEnableHTTP2PlatformLinux 0\nunShaderBackgroundProcessingThreads 16\n"
+        );
+        assert!(!give_cores(root, 16).unwrap());
+        assert!(!give_cores(root, 8).unwrap(), "un nombre plus grand est gardé");
+        // Sans --num-threads : Steam lancé avant le réglage, à relancer.
+        let proc_dir = root.join("proc");
+        fs::create_dir_all(proc_dir.join("4100")).unwrap();
+        fs::write(proc_dir.join("4100/comm"), "steam\n").unwrap();
+        fs::write(proc_dir.join("4100/stat"), "4100 (steam) S 1 4100 0 0 -1 0 0 0 0 0 10 5 0 0 20 0 1 0 100 0 0\n")
+            .unwrap();
+        fs::write(proc_dir.join("uptime"), "3600.00 1000.00\n").unwrap();
+        assert!(slow(&proc_dir, Some(root), None, 16));
+        fs::write(proc_dir.join("uptime"), "0.50 0.10\n").unwrap();
+        // Lancé après : il compile déjà avec tous.
+        fs::write(proc_dir.join("4100/stat"), "4100 (steam) S 1 4100 0 0 -1 0 0 0 0 0 10 5 0 0 20 0 1 0 50 0 0\n")
+            .unwrap();
+        assert!(!slow(&proc_dir, Some(root), None, 16));
+        assert!(slow(&proc_dir, Some(root), Some(4), 16));
+        assert!(!slow(&proc_dir, Some(root), Some(16), 16));
     }
 }
