@@ -143,13 +143,14 @@ fn read(path: &Path) -> Option<String> {
 /// Un relevé, maintenant. `sys` : /sys. nvidia-smi n'est lancé que pour une
 /// carte des jeux NVIDIA.
 pub fn sample(sys: &Path, exec: &dyn Exec, gpus: &[Gpu]) -> Sample {
-    // Secteur : une alimentation « Mains » branchée ; sans aucune (PC fixe),
-    // jamais sur batterie.
+    // Secteur : un chargeur branché (« Mains », ou « USB » pour l'USB-C) ;
+    // sans aucun (PC fixe), jamais sur batterie. Pas l'état de la batterie :
+    // un portable branché qui tire plus que son chargeur la vide aussi.
     let mains: Vec<bool> = fs::read_dir(sys.join("class/power_supply"))
         .into_iter()
         .flatten()
         .flatten()
-        .filter(|entry| read(&entry.path().join("type")).as_deref() == Some("Mains"))
+        .filter(|entry| matches!(read(&entry.path().join("type")).as_deref(), Some("Mains" | "USB")))
         .map(|entry| read(&entry.path().join("online")).as_deref() == Some("1"))
         .collect();
     let games = gpu::games_gpu(gpus);
@@ -365,6 +366,12 @@ mod tests {
         assert_eq!(context.cpu_thermal_throttles, 12);
         assert_eq!(context.cpu_power_limit, Some(35.0));
         // Branché, PC fixe : jamais « sur batterie ».
+        // Chargeur USB-C branché, prise du chargeur d'origine vide.
+        write(sys.join("class/power_supply/ucsi-source-psy-USBC000:001/type"), "USB\n");
+        write(sys.join("class/power_supply/ucsi-source-psy-USBC000:001/online"), "1\n");
+        assert!(!super::sample(sys, &exec, &gpus).on_battery);
+        write(sys.join("class/power_supply/ucsi-source-psy-USBC000:001/online"), "0\n");
+        assert!(super::sample(sys, &exec, &gpus).on_battery);
         write(sys.join("class/power_supply/ACAD/online"), "1\n");
         assert!(!super::sample(sys, &exec, &gpus).on_battery);
         let desktop = tempfile::tempdir().unwrap();
