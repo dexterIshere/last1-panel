@@ -219,7 +219,8 @@ export type PerfFix =
   | "vulkan-driver"
   | "system-update"
   | "game-mode"
-  | "panel-self-refresh";
+  | "panel-self-refresh"
+  | "cpu-power-limit";
 
 export interface PerfCheck {
   id: string;

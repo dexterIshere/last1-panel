@@ -206,6 +206,20 @@ if ! grep -q '^/dev/zram' /proc/swaps; then echo "zram ne s'est pas activé (zra
 printf '%s\n' '# Last1 Panel : Panel Self Refresh coupé (quadrillage, image figée)' 'options i915 enable_psr=0' 'options xe enable_psr=0' 'options amdgpu dcdebugmask=0x10' > {etc}/modprobe.d/99-last1-panel-psr.conf
 if command -v mkinitcpio >/dev/null; then mkinitcpio -P; elif command -v dracut >/dev/null; then dracut --regenerate-all -f; elif command -v update-initramfs >/dev/null; then update-initramfs -u -k all; fi"#
             )),
+            // Limites RAPL du processeur au compte du joueur, à chaque
+            // démarrage (tmpfiles) et tout de suite : le service de sa
+            // session les relève le temps des jeux (power_limit.rs).
+            Fix::CpuPowerLimit => parts.push(format!(
+                r#"user=$(id -nu "$PKEXEC_UID")
+mkdir -p {etc}/tmpfiles.d
+conf={etc}/tmpfiles.d/last1-panel-power-limit.conf
+echo '# Last1 Panel : limites de puissance du processeur relevées le temps des jeux' > "$conf"
+for f in /sys/class/powercap/intel-rapl:0/constraint_*_power_limit_uw /sys/class/powercap/intel-rapl-mmio:0/constraint_*_power_limit_uw; do
+  [ -e "$f" ] && echo "z $f 0644 $user root -" >> "$conf"
+done
+grep -q '^z ' "$conf" || {{ echo "pas de limite de puissance réglable sur ce processeur" >&2; exit 1; }}
+systemd-tmpfiles --create "$conf""#
+            )),
             Fix::Performance | Fix::LowLatency | Fix::WrapGames | Fix::Restart | Fix::SystemUpdate => {}
         }
     }
@@ -223,9 +237,10 @@ mod tests {
     use std::fs;
     use std::process::Command;
 
-    const ALL: [Fix; 15] = [
+    const ALL: [Fix; 16] = [
         Fix::GameMode,
         Fix::PanelSelfRefresh,
+        Fix::CpuPowerLimit,
         Fix::Performance,
         Fix::Ntsync,
         Fix::ShaderCache,
@@ -268,6 +283,8 @@ mod tests {
             "gpasswd -a \"$user\" gamemode",
             "/etc/modprobe.d/99-last1-panel-psr.conf",
             "options i915 enable_psr=0",
+            "/etc/tmpfiles.d/last1-panel-power-limit.conf",
+            "systemd-tmpfiles --create",
             "mkinitcpio -P",
         ] {
             assert!(script.contains(expected), "{expected}\n{script}");

@@ -63,6 +63,9 @@ pub enum Fix {
     /// Panel Self Refresh coupé (écran d'un portable sur une puce Intel ou
     /// AMD), au prochain démarrage.
     PanelSelfRefresh,
+    /// Limites de puissance du processeur (RAPL) données au compte du
+    /// joueur : le service les relève le temps des jeux (power_limit.rs).
+    CpuPowerLimit,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1236,61 +1239,66 @@ pub fn run(src: &Sources) -> Report {
     let cpu_bound: Vec<&&GameSession> = real.iter().filter(|s| s.limit == "cpu").collect();
     if !real.is_empty() && cpu_bound.len() * 2 > real.len() {
         let contexts: Vec<&GameContext> = cpu_bound.iter().filter_map(|s| s.context.as_ref()).collect();
-        let mut causes: Vec<String> = Vec::new();
+        // Ce qui règle chaque frein, le bouton d'abord.
+        let mut remedies: Vec<String> = Vec::new();
         let mut fix = None;
-        if contexts.iter().any(|c| c.on_battery) {
-            causes.push(t(
-                "le portable était sur batterie : il bride le processeur pour durer",
-                "the laptop was on battery: it holds the CPU back to last",
+        let held = cpu_bound.iter().find_map(|s| {
+            let c = s.context.as_ref()?;
+            let limit = c.cpu_power_limit?;
+            (s.cpu_power > 0.0 && s.cpu_power >= limit * 0.9).then_some((limit, c.cpu_power_limit_short))
+        });
+        if let Some((limit, short)) = held {
+            let to = short.filter(|short| *short > limit).map(|w| format!(" ({limit} W → {w} W)")).unwrap_or_default();
+            if crate::system::power_limit::writable(src.sys) {
+                remedies.push(t(
+                    &format!("Last1 Panel relève maintenant la limite de puissance du processeur{to} le temps des jeux, sur secteur : ça vaut dès la prochaine partie."),
+                    &format!("Last1 Panel now raises the CPU's power limit{to} for games, on AC power: it applies from the next game."),
+                ));
+            } else {
+                fix = Some(Fix::CpuPowerLimit);
+                remedies.push(t(
+                    &format!("Le processeur tourne à la limite de puissance que fixe le portable : le bouton la fait relever{to} le temps des jeux, sur secteur, comme l'appli du fabricant sous Windows. Il se protège seul de la chaleur."),
+                    &format!("The CPU runs at the power limit the laptop sets: the button has it raised{to} for games, on AC power, like the maker's app on Windows. It protects itself from heat."),
+                ));
+            }
+        }
+        if let Some(preference) =
+            contexts.iter().flat_map(|c| c.cpu_preferences.iter()).find(|p| p.as_str() != "performance")
+        {
+            fix = fix.or(Some(Fix::Performance));
+            remedies.push(t(
+                &format!(
+                    "Le processeur n'était pas en mode performance pendant le jeu ({preference}) : le bouton l'y met."
+                ),
+                &format!(
+                    "The CPU wasn't in performance mode during the game ({preference}): the button puts it there."
+                ),
             ));
         }
-        let saving: Vec<&String> = contexts
-            .iter()
-            .flat_map(|c| c.cpu_preferences.iter())
-            .filter(|preference| preference.as_str() != "performance")
-            .collect();
-        if let Some(preference) = saving.first() {
-            causes.push(t(
-                &format!("le processeur n'était pas en mode performance pendant le jeu ({preference})"),
-                &format!("the CPU wasn't in performance mode during the game ({preference})"),
+        if contexts.iter().any(|c| c.on_battery) {
+            remedies.push(t(
+                "Jouez chargeur branché : sur batterie, le portable bride le processeur pour durer.",
+                "Play with the charger plugged in: on battery, the laptop holds the CPU back to last.",
             ));
-            fix = Some(Fix::Performance);
         }
         let throttles: u64 = contexts.iter().map(|c| c.cpu_thermal_throttles).sum();
         if throttles > 0 {
-            causes.push(t(
-                &format!("il s'est bridé {throttles} fois à cause de la chaleur (aérations, ventilateurs, support)"),
-                &format!("it throttled {throttles} times because of heat (vents, fans, stand)"),
+            remedies.push(t(
+                &format!("Surélevez l'arrière du portable et dégagez ses aérations (un support ventilé aide) : il s'est bridé {throttles} fois à cause de la chaleur."),
+                &format!("Raise the back of the laptop and clear its vents (a cooling stand helps): it throttled {throttles} times because of heat."),
             ));
         }
-        let held = cpu_bound.iter().find_map(|s| {
-            let limit = s.context.as_ref()?.cpu_power_limit?;
-            (s.cpu_power > 0.0 && s.cpu_power >= limit * 0.9).then_some((s.cpu_power, limit))
-        });
-        if let Some((power, limit)) = held {
-            causes.push(t(
-                &format!(
-                    "il tournait à sa limite de puissance ({power} W sur {limit} W permis) : celle que fixe le mode du portable (sous Windows, l'appli du fabricant la relève)"
-                ),
-                &format!(
-                    "it ran at its power limit ({power} W of {limit} W allowed): the one set by the laptop's mode (on Windows, the maker's app raises it)"
-                ),
-            ));
-        }
-        let why = if causes.is_empty() && contexts.is_empty() {
+        let why = if !remedies.is_empty() {
+            remedies.join(" ")
+        } else if contexts.is_empty() {
             t(
-                "Last1 Panel relève maintenant pendant chaque partie ce qui bride le processeur (mode, puissance, chaleur) : la prochaine partie le dira ici.",
-                "Last1 Panel now records during each game what holds the CPU back (mode, power, heat): the next game will tell here.",
-            )
-        } else if causes.is_empty() {
-            t(
-                "Rien ne bridait le processeur pendant ces parties (mode performance, ni chaleur ni limite de puissance atteinte) : le jeu en demande plus qu'il ne peut donner. Réglages du jeu qui soulagent le processeur : distance d'affichage, foule, ombres ; DLSS ou FSR n'y aident pas.",
-                "Nothing held the CPU back during these games (performance mode, no heat, power limit not reached): the game asks more than it can give. Game settings that ease the CPU: view distance, crowds, shadows; DLSS or FSR don't help there.",
+                "Last1 Panel relève pendant chaque partie ce qui bride le processeur : dès la prochaine, il le corrige ou dit quoi faire ici.",
+                "Last1 Panel records during each game what holds the CPU back: from the next one, it fixes it or says here what to do.",
             )
         } else {
             t(
-                &format!("Pendant ces parties, {}.", causes.join(" ; ")),
-                &format!("During these games, {}.", causes.join("; ")),
+                "Rien ne bride le processeur (mode performance, ni chaleur ni limite de puissance atteinte) : le jeu en demande plus qu'il ne peut donner. Dans le jeu, baissez la distance d'affichage, la foule et les ombres ; DLSS ou FSR n'y aident pas.",
+                "Nothing holds the CPU back (performance mode, no heat, power limit not reached): the game asks more than it can give. In the game, lower view distance, crowds and shadows; DLSS or FSR don't help there.",
             )
         };
         checks.push(Check {
@@ -1711,7 +1719,7 @@ mod tests {
         // prochaine le dira (jamais « rien ne freine »).
         let cpu = report.checks.iter().find(|c| c.id == "cpu-limited").unwrap();
         assert_eq!(cpu.title, "Jeux limités par le processeur (1 parties sur 1)");
-        assert!(cpu.detail.contains("la prochaine partie le dira"), "{}", cpu.detail);
+        assert!(cpu.detail.contains("dès la prochaine, il le corrige"), "{}", cpu.detail);
         assert_eq!(
             ids(Level::Warning),
             [

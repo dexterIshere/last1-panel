@@ -101,6 +101,7 @@
       "system-update": t("Mettre à jour le pilote", "Update the driver"),
       "game-mode": t("Activer GameMode", "Turn on GameMode"),
       "panel-self-refresh": t("Couper le Panel Self Refresh", "Turn off Panel Self Refresh"),
+      "cpu-power-limit": t("Libérer la puissance du processeur en jeu", "Free the CPU's power in games"),
     })[kind];
   const icon = (check: PerfCheck) => ({ problem: CircleAlert, warning: TriangleAlert, info: Info, ok: Check })[check.level];
 </script>

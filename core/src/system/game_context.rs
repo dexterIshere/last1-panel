@@ -141,21 +141,25 @@ fn read(path: &Path) -> Option<String> {
 }
 
 /// Un relevé, maintenant. `sys` : /sys. nvidia-smi n'est lancé que pour une
-/// carte des jeux NVIDIA.
-pub fn sample(sys: &Path, exec: &dyn Exec, gpus: &[Gpu]) -> Sample {
-    // Secteur : un chargeur branché (« Mains », ou « USB » pour l'USB-C) ;
-    // sans aucun (PC fixe), jamais sur batterie. Pas l'état de la batterie :
-    // un portable branché qui tire plus que son chargeur la vide aussi.
-    let mains: Vec<bool> = fs::read_dir(sys.join("class/power_supply"))
+/// Sur batterie : aucun chargeur branché (« Mains », ou « USB » pour
+/// l'USB-C) ; sans aucun (PC fixe), jamais. Pas l'état de la batterie : un
+/// portable branché qui tire plus que son chargeur la vide aussi.
+pub fn on_battery(sys: &Path) -> bool {
+    let chargers: Vec<bool> = fs::read_dir(sys.join("class/power_supply"))
         .into_iter()
         .flatten()
         .flatten()
         .filter(|entry| matches!(read(&entry.path().join("type")).as_deref(), Some("Mains" | "USB")))
         .map(|entry| read(&entry.path().join("online")).as_deref() == Some("1"))
         .collect();
+    !chargers.is_empty() && !chargers.iter().any(|online| *online)
+}
+
+/// carte des jeux NVIDIA.
+pub fn sample(sys: &Path, exec: &dyn Exec, gpus: &[Gpu]) -> Sample {
     let games = gpu::games_gpu(gpus);
     let mut sample = Sample {
-        on_battery: !mains.is_empty() && !mains.iter().any(|online| *online),
+        on_battery: on_battery(sys),
         platform_profile: read(&sys.join("firmware/acpi/platform_profile")),
         cpu_preference: read(&sys.join("devices/system/cpu/cpu0/cpufreq/energy_performance_preference")),
         through_other_gpu: gpu::offload(gpus).is_some(),

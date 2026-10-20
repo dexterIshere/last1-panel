@@ -353,7 +353,12 @@ fn watch_game() {
     let logs = last1_panel_core::paths::game_logs_dir();
     let sys = std::path::Path::new("/sys");
     let exec = SystemExec { timeout: Duration::from_secs(10), ..SystemExec::default() };
+    use last1_panel_core::system::power_limit;
+    let power_state = last1_panel_core::paths::power_limit_file();
+    // Service arrêté pendant une partie : les limites d'avant reviennent.
+    power_limit::restore(&power_state);
     let mut playing = false;
+    let mut lifted = false;
     let mut tick: u32 = 0;
     // Par carte : la plus large, la plus rapide.
     let mut best: std::collections::BTreeMap<String, (u32, Option<f64>)> = std::collections::BTreeMap::new();
@@ -361,7 +366,20 @@ fn watch_game() {
         std::thread::sleep(Duration::from_secs(20));
         if !steam::game_running(std::path::Path::new("/proc")) {
             playing = false;
+            if lifted {
+                power_limit::restore(&power_state);
+                lifted = false;
+            }
             continue;
+        }
+        // Processeur à pleine puissance le temps du jeu, sur secteur
+        // (system/power_limit.rs) ; rendue s'il passe sur batterie.
+        let battery = game_context::on_battery(sys);
+        if !lifted && !battery {
+            lifted = !power_limit::lift(sys, &power_state).is_empty();
+        } else if lifted && battery {
+            power_limit::restore(&power_state);
+            lifted = false;
         }
         if !playing {
             playing = true;

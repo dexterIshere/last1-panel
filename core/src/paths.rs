@@ -34,6 +34,11 @@ pub fn cache_dir() -> PathBuf {
 
 /// Liaison PCI Express mesurée pendant la dernière partie (cli.rs,
 /// watch_pcie_link) : « emplacement largeur » par carte.
+/// Limites de puissance du processeur d'avant la partie (power_limit.rs).
+pub fn power_limit_file() -> PathBuf {
+    cache_dir().join("power-limit.txt")
+}
+
 pub fn pcie_in_game_file() -> PathBuf {
     cache_dir().join("pcie-in-game.txt")
 }

@@ -6,6 +6,7 @@ pub mod edid;
 pub mod game_context;
 pub mod gpu;
 pub mod packages;
+pub mod power_limit;
 pub mod repair;
 pub mod sessions;
 pub mod sharing;
