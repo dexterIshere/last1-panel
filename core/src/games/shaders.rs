@@ -73,11 +73,8 @@ pub fn give_cores(steam_root: &Path, cores: u32) -> std::io::Result<bool> {
     }
     let path = steam_root.join(STEAM_DEV);
     let old = fs::read_to_string(&path).unwrap_or_default();
-    let mut lines: Vec<String> = old
-        .lines()
-        .filter(|line| line.split_whitespace().next() != Some(THREADS_KEY))
-        .map(str::to_string)
-        .collect();
+    let mut lines: Vec<String> =
+        old.lines().filter(|line| line.split_whitespace().next() != Some(THREADS_KEY)).map(str::to_string).collect();
     lines.push(format!("{THREADS_KEY} {cores}"));
     fs::write(&path, lines.join("\n") + "\n")?;
     Ok(true)
