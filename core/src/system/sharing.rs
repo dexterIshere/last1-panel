@@ -4,8 +4,8 @@
 //! lui-même les siens. Contenu : le diagnostic de ce PC (composants, réglages
 //! lus, parties mesurées), pour optimiser Last1 Panel et rien d'autre. Ni nom
 //! ni compte : le nom du compte et celui du PC sont masqués, le PC n'est
-//! désigné que par une empreinte. Au plus un par jour, après des parties, et
-//! seulement s'il a changé ; le service de la session l'envoie (cli.rs).
+//! désigné que par une empreinte. Après chaque nouvelle partie (10 minutes
+//! d'écart au moins) ; le service de la session l'envoie (cli.rs).
 
 use crate::exec::Exec;
 use crate::system::diagnostic::Report;
@@ -17,10 +17,10 @@ use std::fs;
 use std::path::Path;
 
 pub const URL: &str = "https://last1.fun/api/public/performance";
-/// Un rapport par jour au plus.
-pub const EVERY: i64 = 24 * 3600;
-/// Après un échec (pas d'Internet, site qui refuse) : nouvel essai 6 h plus tard.
-pub const RETRY: i64 = 6 * 3600;
+/// Un rapport après chaque partie, à 10 minutes d'écart au moins.
+pub const EVERY: i64 = 600;
+/// Après un échec (pas d'Internet, site qui refuse) : nouvel essai 30 min plus tard.
+pub const RETRY: i64 = 1800;
 
 /// Dernier envoi : sa date, l'empreinte de son contenu, le prochain essai.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
@@ -90,10 +90,10 @@ fn replace_word(text: &str, word: &str, mask: &str) -> String {
     out
 }
 
-/// Le rapport à envoyer, s'il est dû : un jour depuis le dernier, contenu
-/// changé, pas d'échec récent ; après des parties (« game »), sauf le tout
-/// premier, envoyé dès l'accord pour le matériel (« firstboot »). Rend son
-/// empreinte et son occasion.
+/// Le rapport à envoyer, s'il est dû : une nouvelle partie depuis le
+/// dernier (« game »), 10 minutes au moins après lui, pas d'échec récent ;
+/// le tout premier part dès l'accord, pour le matériel (« firstboot »). Rend
+/// son empreinte et son occasion.
 pub fn due(report: &Report, state: &State, now: i64) -> Option<(String, &'static str)> {
     let first = state.sent_at == 0;
     if (report.sessions.is_empty() && !first) || now < state.retry_at || now - state.sent_at < EVERY {
@@ -104,10 +104,10 @@ pub fn due(report: &Report, state: &State, now: i64) -> Option<(String, &'static
     (sum != state.sum).then_some((sum, occasion))
 }
 
-/// Empreinte de ce qui compte (constats, éléments lus, parties) ; le texte à
-/// copier redit le reste.
+/// Empreinte des parties : un rapport par nouvelle partie, pas à chaque
+/// constat qui bouge (shaders en cours, mise à jour…).
 pub fn content_sum(report: &Report) -> String {
-    let content = serde_json::json!({ "checks": report.checks, "facts": report.facts, "sessions": report.sessions });
+    let content = serde_json::json!({ "sessions": report.sessions });
     Sha256::digest(content.to_string()).iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
@@ -273,7 +273,7 @@ mod tests {
     }
 
     #[test]
-    fn at_most_once_a_day_after_games_when_changed() {
+    fn after_each_new_game() {
         let now = 1_800_000_000;
         // Tout premier rapport, dès l'accord : le matériel, sans partie.
         assert_eq!(due(&report(0), &State::default(), now).unwrap().1, "firstboot");
@@ -281,7 +281,7 @@ mod tests {
         assert_eq!(occasion, "game");
         let sent = State { sent_at: now, sum: sum.clone(), retry_at: 0 };
         assert_eq!(due(&report(0), &sent, now + EVERY), None, "ensuite, seulement après des parties");
-        assert_eq!(due(&report(2), &sent, now + 3600), None, "moins d'un jour");
+        assert_eq!(due(&report(2), &sent, now + 60), None, "moins de 10 minutes");
         assert_eq!(due(&report(1), &sent, now + EVERY), None, "rien de changé");
         assert!(due(&report(2), &sent, now + EVERY).is_some());
         let failed = State { retry_at: now + RETRY, ..State::default() };

@@ -494,8 +494,8 @@ fn watch_shaders() {
 
 /// Rapports de performances partagés avec last1.fun (system/sharing.rs) :
 /// seulement avec l'accord du joueur, et hors go-to-linux (qui envoie les
-/// siens). Regardé dix minutes après la connexion, puis toutes les 30 minutes ;
-/// envoyé au plus une fois par jour, après des parties, s'il a changé.
+/// siens). Regardé dix minutes après la connexion, puis toutes les 5 minutes
+/// hors des jeux : envoyé après chaque nouvelle partie.
 fn share_reports() {
     use last1_panel_core::system::sharing;
     std::thread::sleep(Duration::from_secs(600));
@@ -527,7 +527,7 @@ fn share_reports() {
                 state.save(&state_path);
             }
         }
-        std::thread::sleep(Duration::from_secs(1800));
+        std::thread::sleep(Duration::from_secs(300));
     }
 }
 

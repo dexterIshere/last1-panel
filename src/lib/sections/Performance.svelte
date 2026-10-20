@@ -247,8 +247,8 @@
         <Switch
           label={t("Partager ces rapports", "Share these reports")}
           hint={t(
-            "Avec last1.fun, au plus une fois par jour après vos parties, pour optimiser Last1 Panel : composants, diagnostic, images par seconde. Ni nom ni compte.",
-            "With last1.fun, at most once a day after your games, to optimize Last1 Panel: components, diagnostic, frame rate. No name, no account.",
+            "Avec last1.fun, après chacune de vos parties, pour optimiser Last1 Panel : composants, diagnostic, images par seconde. Ni nom ni compte.",
+            "With last1.fun, after each of your games, to optimize Last1 Panel: components, diagnostic, frame rate. No name, no account.",
           )}
           checked={sharing.enabled}
           onchange={setSharing}

@@ -14,8 +14,8 @@
     <div class="body">
       <p>
         {t(
-          "Avec votre accord, Last1 Panel envoie à last1.fun, au plus une fois par jour après vos parties, le rapport de la page Performances :",
-          "With your consent, Last1 Panel sends last1.fun, at most once a day after your games, the report of the Performance page:",
+          "Avec votre accord, Last1 Panel envoie à last1.fun, après chacune de vos parties, le rapport de la page Performances :",
+          "With your consent, Last1 Panel sends last1.fun, after each of your games, the report of the Performance page:",
         )}
       </p>
       <ul>
