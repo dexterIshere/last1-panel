@@ -10,6 +10,7 @@ use crate::games::profile::LowLatency;
 use crate::i18n::t;
 use crate::settings::Settings;
 use crate::system::desktop::Desktop;
+use crate::system::game_context::GameContext;
 use crate::system::gpu::{Gpu, Vendor};
 use crate::system::packages;
 use crate::system::sessions::GameSession;
@@ -1227,6 +1228,88 @@ pub fn run(src: &Sources) -> Report {
         });
     }
 
+    // Jeux limités par le processeur : la carte attend. Ce que le service a
+    // relevé pendant ces parties dit pourquoi ; sans relevé, la prochaine
+    // partie le dira. Jamais « rien ne freine » quand les parties le disent.
+    let real: Vec<&GameSession> =
+        src.sessions.iter().filter(|s| s.limit != "loading" && s.minutes >= 3.0).take(5).collect();
+    let cpu_bound: Vec<&&GameSession> = real.iter().filter(|s| s.limit == "cpu").collect();
+    if !real.is_empty() && cpu_bound.len() * 2 > real.len() {
+        let contexts: Vec<&GameContext> = cpu_bound.iter().filter_map(|s| s.context.as_ref()).collect();
+        let mut causes: Vec<String> = Vec::new();
+        let mut fix = None;
+        if contexts.iter().any(|c| c.on_battery) {
+            causes.push(t(
+                "le portable était sur batterie : il bride le processeur pour durer",
+                "the laptop was on battery: it holds the CPU back to last",
+            ));
+        }
+        let saving: Vec<&String> = contexts
+            .iter()
+            .flat_map(|c| c.cpu_preferences.iter())
+            .filter(|preference| preference.as_str() != "performance")
+            .collect();
+        if let Some(preference) = saving.first() {
+            causes.push(t(
+                &format!("le processeur n'était pas en mode performance pendant le jeu ({preference})"),
+                &format!("the CPU wasn't in performance mode during the game ({preference})"),
+            ));
+            fix = Some(Fix::Performance);
+        }
+        let throttles: u64 = contexts.iter().map(|c| c.cpu_thermal_throttles).sum();
+        if throttles > 0 {
+            causes.push(t(
+                &format!("il s'est bridé {throttles} fois à cause de la chaleur (aérations, ventilateurs, support)"),
+                &format!("it throttled {throttles} times because of heat (vents, fans, stand)"),
+            ));
+        }
+        let held = cpu_bound.iter().find_map(|s| {
+            let limit = s.context.as_ref()?.cpu_power_limit?;
+            (s.cpu_power > 0.0 && s.cpu_power >= limit * 0.9).then_some((s.cpu_power, limit))
+        });
+        if let Some((power, limit)) = held {
+            causes.push(t(
+                &format!(
+                    "il tournait à sa limite de puissance ({power} W sur {limit} W permis) : celle que fixe le mode du portable (sous Windows, l'appli du fabricant la relève)"
+                ),
+                &format!(
+                    "it ran at its power limit ({power} W of {limit} W allowed): the one set by the laptop's mode (on Windows, the maker's app raises it)"
+                ),
+            ));
+        }
+        let why = if causes.is_empty() && contexts.is_empty() {
+            t(
+                "Last1 Panel relève maintenant pendant chaque partie ce qui bride le processeur (mode, puissance, chaleur) : la prochaine partie le dira ici.",
+                "Last1 Panel now records during each game what holds the CPU back (mode, power, heat): the next game will tell here.",
+            )
+        } else if causes.is_empty() {
+            t(
+                "Rien ne bridait le processeur pendant ces parties (mode performance, ni chaleur ni limite de puissance atteinte) : le jeu en demande plus qu'il ne peut donner. Réglages du jeu qui soulagent le processeur : distance d'affichage, foule, ombres ; DLSS ou FSR n'y aident pas.",
+                "Nothing held the CPU back during these games (performance mode, no heat, power limit not reached): the game asks more than it can give. Game settings that ease the CPU: view distance, crowds, shadows; DLSS or FSR don't help there.",
+            )
+        } else {
+            t(
+                &format!("Pendant ces parties, {}.", causes.join(" ; ")),
+                &format!("During these games, {}.", causes.join("; ")),
+            )
+        };
+        checks.push(Check {
+            fix,
+            ..check(
+                "cpu-limited",
+                Level::Warning,
+                t(
+                    &format!("Jeux limités par le processeur ({} parties sur {})", cpu_bound.len(), real.len()),
+                    &format!("Games limited by the CPU ({} of {} games)", cpu_bound.len(), real.len()),
+                ),
+                t(
+                    &format!("La carte graphique attend le processeur. {why}"),
+                    &format!("The graphics card waits for the CPU. {why}"),
+                ),
+            )
+        });
+    }
+
     // Écran d'un portable : le Panel Self Refresh (l'écran garde la
     // dernière image et la puce cesse d'envoyer quand rien ne bouge) laisse
     // sur bien des portables un fin quadrillage ou une image figée, qui
@@ -1624,6 +1707,11 @@ mod tests {
         let ids =
             |level: Level| -> Vec<&str> { report.checks.iter().filter(|c| c.level == level).map(|c| c.id).collect() };
         assert_eq!(ids(Level::Problem), ["x3d", "pcie"]);
+        // La seule partie est limitée par le processeur, sans relevé : la
+        // prochaine le dira (jamais « rien ne freine »).
+        let cpu = report.checks.iter().find(|c| c.id == "cpu-limited").unwrap();
+        assert_eq!(cpu.title, "Jeux limités par le processeur (1 parties sur 1)");
+        assert!(cpu.detail.contains("la prochaine partie le dira"), "{}", cpu.detail);
         assert_eq!(
             ids(Level::Warning),
             [
@@ -1635,6 +1723,7 @@ mod tests {
                 "driver",
                 "measure",
                 "low-latency",
+                "cpu-limited",
                 "shader-precache"
             ]
         );
@@ -1927,6 +2016,7 @@ mod tests {
                 cpu_throttle_count_start: Some(3),
             }),
             details: Vec::new(),
+            timeline: Vec::new(),
         };
         let line = session_details(&session).join(" ; ");
         assert_eq!(

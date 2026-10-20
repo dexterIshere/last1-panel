@@ -46,6 +46,55 @@ pub struct GameSession {
     /// Le tout en phrases courtes (diagnostic::session_details), pour
     /// l'interface.
     pub details: Vec<String>,
+    /// La partie au fil du temps (60 points au plus), pour la courbe.
+    pub timeline: Vec<Point>,
+}
+
+/// Un moment de la partie : moyenne d'une tranche du journal.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Point {
+    /// Minutes depuis le début.
+    pub minute: f64,
+    pub fps: f64,
+    /// 1 % des images les plus lentes de la tranche.
+    pub fps_low: f64,
+    pub cpu_load: f64,
+    pub gpu_load: f64,
+}
+
+/// Le journal découpé en tranches égales (10 s au moins).
+fn timeline(rows: &[Row], elapsed_ns: f64) -> Vec<Point> {
+    if elapsed_ns <= 0.0 || rows.iter().all(|row| row.at.is_none()) {
+        return Vec::new();
+    }
+    let width = (elapsed_ns / 60.0).max(10e9);
+    let count = (elapsed_ns / width).ceil().max(1.0) as usize;
+    let mut slices: Vec<Vec<&Row>> = vec![Vec::new(); count];
+    for row in rows {
+        if let Some(at) = row.at {
+            slices[((at / width) as usize).min(count - 1)].push(row);
+        }
+    }
+    let round = |v: f64| (v * 10.0).round() / 10.0;
+    let mean = |v: &[f64]| if v.is_empty() { 0.0 } else { v.iter().sum::<f64>() / v.len() as f64 };
+    slices
+        .iter()
+        .enumerate()
+        .filter(|(_, slice)| !slice.is_empty())
+        .map(|(i, slice)| {
+            let mut frametimes: Vec<f64> = slice.iter().map(|row| row.frametime).collect();
+            frametimes.sort_by(f64::total_cmp);
+            let p99 = frametimes[((frametimes.len() as f64 * 0.99) as usize).min(frametimes.len() - 1)];
+            Point {
+                minute: round((i as f64 + 0.5) * width / 60e9),
+                fps: round(mean(&slice.iter().map(|row| row.fps).collect::<Vec<_>>())),
+                fps_low: round(1000.0 / p99),
+                cpu_load: round(mean(&slice.iter().filter_map(|row| row.cpu).collect::<Vec<_>>())),
+                gpu_load: round(mean(&slice.iter().filter_map(|row| row.gpu).collect::<Vec<_>>())),
+            }
+        })
+        .collect()
 }
 
 /// Les `count` dernières parties d'au moins une minute, de la plus récente à
@@ -106,6 +155,8 @@ fn date_of(path: &Path) -> Option<String> {
 
 /// Une ligne du journal de MangoHud.
 struct Row {
+    /// Depuis le début du journal (ns).
+    at: Option<f64>,
     fps: f64,
     frametime: f64,
     cpu: Option<f64>,
@@ -163,6 +214,7 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         // 0 : valeur que MangoHud n'a pas pu lire.
         let known = |col: Option<usize>| at(col).filter(|v| *v > 0.0);
         rows.push(Row {
+            at: at(elapsed_col),
             fps,
             frametime,
             cpu: at(cpu_col),
@@ -235,6 +287,7 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         cpu_power: round(mean(&used.iter().filter_map(|row| row.cpu_power).collect::<Vec<f64>>())),
         context: None,
         details: Vec::new(),
+        timeline: timeline(&rows, elapsed_ns),
     })
 }
 
@@ -274,6 +327,14 @@ mod tests {
         assert_eq!(session.gpu_name.as_deref(), Some("GeForce RTX 4070"));
         assert_eq!((session.gpu_power, session.gpu_power_max), (180.0, 180.0));
         assert_eq!((session.gpu_temp_max, session.cpu_temp_max, session.cpu_mhz), (66.0, 70.0, 5100.0));
+        // Au fil de la partie : une tranche de 10 s par point, la saccade de
+        // la fin dans la dernière.
+        assert_eq!(session.timeline.len(), 12);
+        assert_eq!(
+            session.timeline[0],
+            Point { minute: 0.1, fps: 60.0, fps_low: 60.2, cpu_load: 45.0, gpu_load: 60.0 }
+        );
+        assert_eq!(session.timeline[11].fps_low, 20.0);
     }
 
     #[test]

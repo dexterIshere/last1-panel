@@ -5,6 +5,8 @@
   import type { PerfCheck, PerfFix, PerfReport } from "$lib/api/types";
   import SectionHeader from "$lib/components/layout/SectionHeader.svelte";
   import Callout from "$lib/components/ui/Callout.svelte";
+  import FpsChart from "$lib/components/FpsChart.svelte";
+  import Segmented from "$lib/components/ui/Segmented.svelte";
   import WarningDialog from "$lib/components/ui/WarningDialog.svelte";
   import Spinner from "$lib/components/ui/Spinner.svelte";
   import Switch from "$lib/components/ui/Switch.svelte";
@@ -19,6 +21,9 @@
   let error = $state<string | null>(null);
   let notices = $state<string[]>([]);
   let copied = $state(false);
+  /** Parties en tableau, ou une partie en courbe. */
+  let view = $state<"table" | "chart">("table");
+  let charted = $state(0);
 
   /** Heure de la dernière lecture du PC (« Relancer » le montre). */
   let readAt = $state<string | null>(null);
@@ -158,7 +163,35 @@
 
     {#if report.sessions.length > 0}
       <section class="panel card sessions">
-        <h2>{t("Dernières parties", "Last games")}</h2>
+        <div class="sessions__head">
+          <h2>{t("Dernières parties", "Last games")}</h2>
+          <Segmented
+            label={t("Affichage des parties", "Games view")}
+            options={[
+              { value: "table", label: t("Tableau", "Table") },
+              { value: "chart", label: t("Courbe", "Chart") },
+            ]}
+            bind:value={view}
+          />
+        </div>
+        {#if view === "chart"}
+          {@const session = report.sessions[charted] ?? report.sessions[0]}
+          <select class="sessions__pick" value={charted} onchange={(e) => (charted = Number(e.currentTarget.value))}>
+            {#each report.sessions as s, i (s.program + s.started)}
+              <option value={i}>{s.program} · {s.started} · {s.minutes} min · {s.fpsAverage} {t("images/s", "FPS")}</option>
+            {/each}
+          </select>
+          {#if session.timeline.length > 1}
+            <FpsChart points={session.timeline} />
+          {:else}
+            <p class="field__hint">{t("Pas de relevé au fil du temps pour cette partie.", "No over-time record for this game.")}</p>
+          {/if}
+          {#if session.details.length > 0}
+            <ul class="chips">
+              {#each session.details as detail, i (i)}<li>{detail}</li>{/each}
+            </ul>
+          {/if}
+        {:else}
         <table>
           <thead>
             <tr>
@@ -183,7 +216,7 @@
               {#if session.details.length > 0}
                 <tr class="details">
                   <td colspan="6">
-                    <ul>
+                    <ul class="chips">
                       {#each session.details as detail, i (i)}<li>{detail}</li>{/each}
                     </ul>
                   </td>
@@ -192,6 +225,7 @@
             {/each}
           </tbody>
         </table>
+        {/if}
       </section>
     {/if}
 
@@ -346,16 +380,32 @@
     padding-top: 0;
   }
 
-  .details ul {
+  .sessions__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .sessions__pick {
+    margin-top: var(--space-3);
+    max-width: 100%;
+  }
+
+  .chips {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-1);
-    margin: 0;
+    margin: var(--space-2) 0 0;
     padding: 0;
     list-style: none;
   }
 
-  .details li {
+  .details .chips {
+    margin: 0;
+  }
+
+  .chips li {
     padding: 1px var(--space-2);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);

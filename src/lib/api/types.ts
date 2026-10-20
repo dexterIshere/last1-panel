@@ -244,6 +244,17 @@ export interface GameSession {
   limit: "gpu" | "cpu" | "loading" | "?";
   /** Ce qui entourait la partie : carte, puissance, températures, mode du processeur, freins… */
   details: string[];
+  /** La partie au fil du temps (60 points au plus). */
+  timeline: Point[];
+}
+
+/** Un moment d'une partie (moyenne d'une tranche du journal de MangoHud). */
+export interface Point {
+  minute: number;
+  fps: number;
+  fpsLow: number;
+  cpuLoad: number;
+  gpuLoad: number;
 }
 
 export interface PerfReport {
