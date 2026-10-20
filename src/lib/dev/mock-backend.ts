@@ -402,8 +402,8 @@ export function installMockBackend(): void {
         ["Mémoire", "32 Go"],
       ];
       const sessions = [
-        { program: "PioneerGame.exe", started: "2026-10-18 21:04", minutes: 32, fpsAverage: 58, fpsOnePercentLow: 31, cpuLoad: 45, gpuLoad: 60, gpuClock: 2610, limit: "cpu" },
-        { program: "Cyberpunk2077.exe", started: "2026-10-17 20:12", minutes: 75, fpsAverage: 96, fpsOnePercentLow: 71, cpuLoad: 38, gpuLoad: 98, gpuClock: 2745, limit: "gpu" },
+        { program: "PioneerGame.exe", started: "2026-10-18 21:04", minutes: 32, fpsAverage: 58, fpsOnePercentLow: 31, cpuLoad: 45, gpuLoad: 60, gpuClock: 2610, limit: "cpu", details: ["dessinée par GeForce RTX 3080 Laptop GPU", "carte 95 W (au plus 130 W)", "processeur jusqu'à 96 °C, 3200 MHz en moyenne", "processeur 45 W", "processeur en balance_performance", "processeur limité à 45 W, 90 W en pointe", "processeur bridé par la chaleur 14 fois", "image affichée par une autre puce (portable hybride)"] },
+        { program: "Cyberpunk2077.exe", started: "2026-10-17 20:12", minutes: 75, fpsAverage: 96, fpsOnePercentLow: 71, cpuLoad: 38, gpuLoad: 98, gpuClock: 2745, limit: "gpu", details: [] },
       ];
       const text = ["Last1 Panel — diagnostic des performances", "", ...facts.map(([n, v]) => `${n} : ${v}`), "", ...checks.map((c) => `[${c.level}] ${c.title} — ${c.detail}`)].join("\n");
       return { checks, facts, sessions, text, goToLinux: !params.get("arch") };

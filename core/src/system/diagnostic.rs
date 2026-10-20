@@ -1297,7 +1297,8 @@ pub fn run(src: &Sources) -> Report {
     }
 
     checks.sort_by_key(|check| check.level);
-    let sessions = src.sessions.clone();
+    let sessions: Vec<GameSession> =
+        src.sessions.iter().map(|s| GameSession { details: session_details(s), ..s.clone() }).collect();
     let text = text(&facts, &checks, &sessions);
     Report { checks, facts, sessions, text, go_to_linux: src.go_to_linux }
 }
@@ -1925,6 +1926,7 @@ mod tests {
                 cpu_thermal_throttles: 12,
                 cpu_throttle_count_start: Some(3),
             }),
+            details: Vec::new(),
         };
         let line = session_details(&session).join(" ; ");
         assert_eq!(

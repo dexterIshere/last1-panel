@@ -43,6 +43,9 @@ pub struct GameSession {
     /// Ce qui entourait la partie (secteur, modes de puissance, freins de
     /// la carte…), relevé par le service de la session (game_context.rs).
     pub context: Option<GameContext>,
+    /// Le tout en phrases courtes (diagnostic::session_details), pour
+    /// l'interface.
+    pub details: Vec<String>,
 }
 
 /// Les `count` dernières parties d'au moins une minute, de la plus récente à
@@ -231,6 +234,7 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         cpu_mhz: mean(&cpu_mhz).round(),
         cpu_power: round(mean(&used.iter().filter_map(|row| row.cpu_power).collect::<Vec<f64>>())),
         context: None,
+        details: Vec::new(),
     })
 }
 

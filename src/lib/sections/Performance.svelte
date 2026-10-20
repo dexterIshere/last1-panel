@@ -180,6 +180,15 @@
                 <td class="mono">{session.gpuLoad} %</td>
                 <td>{session.limit === "gpu" ? t("Carte graphique", "Graphics card") : session.limit === "cpu" ? t("Processeur", "CPU") : session.limit === "loading" ? t("Chargement (pas une vraie partie)", "Loading (not a real game)") : "?"}</td>
               </tr>
+              {#if session.details.length > 0}
+                <tr class="details">
+                  <td colspan="6">
+                    <ul>
+                      {#each session.details as detail, i (i)}<li>{detail}</li>{/each}
+                    </ul>
+                  </td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>
@@ -326,6 +335,32 @@
 
   td strong {
     display: block;
+  }
+
+  /* Ce qui entourait la partie, sous sa ligne. */
+  tr:has(+ .details) td {
+    border-bottom: 0;
+  }
+
+  .details td {
+    padding-top: 0;
+  }
+
+  .details ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .details li {
+    padding: 1px var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
   }
 
   th {

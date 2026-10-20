@@ -242,6 +242,8 @@ export interface GameSession {
   gpuLoad: number;
   gpuClock: number;
   limit: "gpu" | "cpu" | "loading" | "?";
+  /** Ce qui entourait la partie : carte, puissance, températures, mode du processeur, freins… */
+  details: string[];
 }
 
 export interface PerfReport {
