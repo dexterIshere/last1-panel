@@ -516,6 +516,12 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
                 "Compressed memory on: background programs stay in memory, even after a restart.",
             ));
         }
+        if fixes.contains(&Fix::PanelSelfRefresh) {
+            notices.push(t(
+                "Panel Self Refresh coupé : il vaut après un redémarrage du PC.",
+                "Panel Self Refresh off: it applies after restarting the PC.",
+            ));
+        }
         if fixes.contains(&Fix::ShaderCache) {
             notices.push(t(
                 "Cache des shaders agrandi : il vaudra après une déconnexion-reconnexion (ou un redémarrage).",

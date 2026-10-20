@@ -218,7 +218,8 @@ export type PerfFix =
   | "restart"
   | "vulkan-driver"
   | "system-update"
-  | "game-mode";
+  | "game-mode"
+  | "panel-self-refresh";
 
 export interface PerfCheck {
   id: string;

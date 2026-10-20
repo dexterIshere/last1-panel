@@ -419,6 +419,7 @@ impl Panel {
                     })
                 })
                 .collect(),
+            psr_off: crate::system::diagnostic::psr_off(Path::new("/proc/cmdline"), Path::new("/etc/modprobe.d")),
             gamemode_allowed: crate::system::diagnostic::gamemode_allowed(
                 Path::new("/etc/group"),
                 &std::env::var("USER").unwrap_or_default(),

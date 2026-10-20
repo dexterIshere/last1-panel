@@ -199,6 +199,13 @@ if ! grep -q '^/dev/zram' /proc/swaps; then echo "zram ne s'est pas activé (zra
                 ));
             }
             Fix::VulkanDriver => return Err(no_pacman()),
+            // Pour le prochain démarrage : options des pilotes, recopiées dans
+            // l'image de démarrage (le pilote graphique y est souvent chargé).
+            Fix::PanelSelfRefresh => parts.push(format!(
+                r#"mkdir -p {etc}/modprobe.d
+printf '%s\n' '# Last1 Panel : Panel Self Refresh coupé (quadrillage, image figée)' 'options i915 enable_psr=0' 'options xe enable_psr=0' 'options amdgpu dcdebugmask=0x10' > {etc}/modprobe.d/99-last1-panel-psr.conf
+if command -v mkinitcpio >/dev/null; then mkinitcpio -P; elif command -v dracut >/dev/null; then dracut --regenerate-all -f; elif command -v update-initramfs >/dev/null; then update-initramfs -u -k all; fi"#
+            )),
             Fix::Performance | Fix::LowLatency | Fix::WrapGames | Fix::Restart | Fix::SystemUpdate => {}
         }
     }
@@ -216,8 +223,9 @@ mod tests {
     use std::fs;
     use std::process::Command;
 
-    const ALL: [Fix; 14] = [
+    const ALL: [Fix; 15] = [
         Fix::GameMode,
+        Fix::PanelSelfRefresh,
         Fix::Performance,
         Fix::Ntsync,
         Fix::ShaderCache,
@@ -258,6 +266,9 @@ mod tests {
             "pacman -S --needed --noconfirm vulkan-radeon lib32-vulkan-radeon",
             "pacman -S --needed --noconfirm gamemode lib32-gamemode",
             "gpasswd -a \"$user\" gamemode",
+            "/etc/modprobe.d/99-last1-panel-psr.conf",
+            "options i915 enable_psr=0",
+            "mkinitcpio -P",
         ] {
             assert!(script.contains(expected), "{expected}\n{script}");
         }

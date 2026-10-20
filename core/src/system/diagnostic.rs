@@ -59,6 +59,9 @@ pub enum Fix {
     /// GameMode prêt à passer le processeur en performance pendant les
     /// jeux : installé (pacman) et le compte dans son groupe « gamemode ».
     GameMode,
+    /// Panel Self Refresh coupé (écran d'un portable sur une puce Intel ou
+    /// AMD), au prochain démarrage.
+    PanelSelfRefresh,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -115,6 +118,8 @@ pub struct Sources<'a> {
     pub pcie_in_game: Vec<GameLink>,
     /// Le compte peut se servir de GameMode (gamemode_allowed).
     pub gamemode_allowed: bool,
+    /// Panel Self Refresh déjà coupé (psr_off).
+    pub psr_off: bool,
     /// Shaders compilés par Steam en ce moment (games/shaders.rs).
     pub precache: Option<crate::games::shaders::Precache>,
     /// Dernières parties mesurées (journaux de MangoHud, system/sessions.rs).
@@ -174,6 +179,37 @@ pub(crate) fn environment_value(text: &str, name: &str) -> Option<String> {
 
 fn read(path: &Path) -> Option<String> {
     fs::read_to_string(path).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+/// Panel Self Refresh coupé : sur la ligne de commande du noyau, ou dans
+/// modprobe.d (par Last1 Panel ou à la main), pour le démarrage suivant.
+pub fn psr_off(cmdline: &Path, modprobe_d: &Path) -> bool {
+    let off = |text: &str| {
+        text.split_whitespace().any(|word| {
+            word.ends_with("enable_psr=0")
+                || word.strip_prefix("amdgpu.dcdebugmask=").or_else(|| word.strip_prefix("dcdebugmask=")).is_some_and(
+                    |mask| u32::from_str_radix(mask.trim_start_matches("0x"), 16).is_ok_and(|mask| mask & 0x10 != 0),
+                )
+        })
+    };
+    read(cmdline).is_some_and(|text| off(&text))
+        || fs::read_dir(modprobe_d).into_iter().flatten().flatten().any(|entry| {
+            fs::read_to_string(entry.path())
+                .is_ok_and(|text| text.lines().any(|line| !line.starts_with('#') && off(line)))
+        })
+}
+
+/// Écran du portable (eDP) allumé sur une puce Intel ou AMD : son pilote.
+fn psr_panel<'a>(sys: &Path, gpus: &'a [Gpu]) -> Option<&'a str> {
+    gpus.iter().find_map(|gpu| {
+        let driver = gpu.driver.as_deref().filter(|driver| ["i915", "xe", "amdgpu"].contains(driver))?;
+        let connected = fs::read_dir(sys.join("class/drm")).ok()?.flatten().any(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            name.starts_with(&format!("{}-eDP-", gpu.card))
+                && read(&entry.path().join("status")).as_deref() == Some("connected")
+        });
+        connected.then_some(driver)
+    })
 }
 
 /// Liaison PCI Express d'une carte graphique avec la carte mère.
@@ -1191,6 +1227,34 @@ pub fn run(src: &Sources) -> Report {
         });
     }
 
+    // Écran d'un portable : le Panel Self Refresh (l'écran garde la
+    // dernière image et la puce cesse d'envoyer quand rien ne bouge) laisse
+    // sur bien des portables un fin quadrillage ou une image figée, qui
+    // part au premier mouvement ; sa sortie retarde aussi la première image.
+    if !src.psr_off
+        && let Some(driver) = psr_panel(src.sys, src.gpus)
+    {
+        checks.push(Check {
+            fix: Some(Fix::PanelSelfRefresh),
+            ..check(
+                "panel-self-refresh",
+                Level::Info,
+                t(
+                    "Écran du portable : Panel Self Refresh actif",
+                    "Laptop screen: Panel Self Refresh on",
+                ),
+                t(
+                    &format!(
+                        "Quand l'image ne bouge plus, l'écran la garde et la puce graphique ({driver}) cesse de l'envoyer. Sur bien des portables, ça laisse un fin quadrillage ou une image figée qui part au premier mouvement, et la reprise retarde l'image suivante. Le couper supprime ces défauts (un peu plus de batterie à l'arrêt) ; il vaut après un redémarrage."
+                    ),
+                    &format!(
+                        "When the image stops moving, the screen keeps it and the graphics chip ({driver}) stops sending it. On many laptops, this leaves a fine grid or a frozen image that goes away at the first move, and waking up delays the next frame. Turning it off removes these flaws (a bit more battery at idle); it applies after a restart."
+                    ),
+                ),
+            )
+        });
+    }
+
     // Steam compile les shaders en arrière-plan.
     if let Some(precache) = &src.precache {
         let percent = precache
@@ -1524,6 +1588,7 @@ mod tests {
             go_to_linux_version: Some("2026.10.19-cf9724f".into()),
             pcie_in_game: vec![GameLink { slot: "0000:01:00.0".into(), width: 4, speed: None }],
             gamemode_allowed: true,
+            psr_off: false,
             precache: Some(crate::games::shaders::Precache {
                 game: Some("ARC Raiders".into()),
                 done: Some(42),
@@ -1640,6 +1705,7 @@ mod tests {
             go_to_linux_version: None,
             pcie_in_game: Vec::new(),
             gamemode_allowed: true,
+            psr_off: false,
             precache: None,
             sessions: vec![GameSession {
                 program: "Cyberpunk2077.exe".into(),
@@ -1712,6 +1778,7 @@ mod tests {
                 go_to_linux_version: None,
                 pcie_in_game: Vec::new(),
                 gamemode_allowed: true,
+                psr_off: false,
                 precache: None,
                 sessions: Vec::new(),
                 mangohud: true,
@@ -1800,6 +1867,7 @@ mod tests {
             go_to_linux_version: None,
             pcie_in_game: Vec::new(),
             gamemode_allowed: true,
+            psr_off: false,
             precache: None,
             sessions: Vec::new(),
             mangohud: true,
@@ -1899,6 +1967,7 @@ mod tests {
                 go_to_linux_version: None,
                 pcie_in_game: Vec::new(),
                 gamemode_allowed: allowed,
+                psr_off: false,
                 precache: None,
                 sessions: Vec::new(),
                 mangohud: true,
@@ -1988,6 +2057,7 @@ mod tests {
                     .into_iter()
                     .collect(),
                 gamemode_allowed: true,
+                psr_off: false,
                 precache: None,
                 sessions: Vec::new(),
                 mangohud: true,
@@ -2075,6 +2145,7 @@ mod tests {
             go_to_linux_version: None,
             pcie_in_game: Vec::new(),
             gamemode_allowed: true,
+            psr_off: false,
             precache: None,
             sessions: Vec::new(),
             mangohud: true,
@@ -2144,6 +2215,7 @@ mod tests {
                 go_to_linux_version: None,
                 pcie_in_game: Vec::new(),
                 gamemode_allowed: true,
+                psr_off: false,
                 precache: None,
                 sessions: Vec::new(),
                 mangohud: true,
@@ -2218,5 +2290,38 @@ mod tests {
         .unwrap();
         assert_eq!(largest_prefetchable_bar(&path), Some((1, 256 * 1024 * 1024)));
         assert_eq!(largest_prefetchable_bar(&dir.path().join("absent")), None);
+    }
+
+    #[test]
+    fn panel_self_refresh_of_a_laptop_screen() {
+        let dir = tempfile::tempdir().unwrap();
+        let sys = dir.path().join("sys");
+        let intel = Gpu { card: "card0".into(), driver: Some("i915".into()), ..gpu("615.71.09") };
+        let nvidia = Gpu { card: "card1".into(), ..gpu("615.71.09") };
+        let connector = |name: &str, status: &str| {
+            let path = sys.join("class/drm").join(name);
+            fs::create_dir_all(&path).unwrap();
+            fs::write(path.join("status"), format!("{status}\n")).unwrap();
+        };
+        connector("card1-DP-1", "connected");
+        connector("card0-eDP-1", "disconnected");
+        assert_eq!(psr_panel(&sys, &[intel.clone(), nvidia.clone()]), None, "écran du portable éteint");
+        connector("card0-eDP-1", "connected");
+        assert_eq!(psr_panel(&sys, &[nvidia.clone(), intel]), Some("i915"));
+        // Écran du portable sur la carte NVIDIA (MUX) : pas de PSR à couper.
+        connector("card1-eDP-1", "connected");
+        assert_eq!(psr_panel(&sys, &[nvidia]), None);
+
+        let cmdline = dir.path().join("cmdline");
+        let modprobe = dir.path().join("modprobe.d");
+        fs::create_dir_all(&modprobe).unwrap();
+        fs::write(&cmdline, "BOOT_IMAGE=/vmlinuz-linux-cachyos root=UUID=1 quiet\n").unwrap();
+        fs::write(modprobe.join("nvidia.conf"), "options nvidia NVreg_PreserveVideoMemoryAllocations=1\n").unwrap();
+        assert!(!psr_off(&cmdline, &modprobe));
+        fs::write(&cmdline, "root=UUID=1 amdgpu.dcdebugmask=0x12\n").unwrap();
+        assert!(psr_off(&cmdline, &modprobe));
+        fs::write(&cmdline, "root=UUID=1 quiet\n").unwrap();
+        fs::write(modprobe.join("99-last1-panel-psr.conf"), "# coupé\noptions i915 enable_psr=0\n").unwrap();
+        assert!(psr_off(&cmdline, &modprobe));
     }
 }

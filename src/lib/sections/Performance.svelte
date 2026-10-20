@@ -95,6 +95,7 @@
       "vulkan-driver": t("Installer le pilote Vulkan", "Install the Vulkan driver"),
       "system-update": t("Mettre à jour le pilote", "Update the driver"),
       "game-mode": t("Activer GameMode", "Turn on GameMode"),
+      "panel-self-refresh": t("Couper le Panel Self Refresh", "Turn off Panel Self Refresh"),
     })[kind];
   const icon = (check: PerfCheck) => ({ problem: CircleAlert, warning: TriangleAlert, info: Info, ok: Check })[check.level];
 </script>
