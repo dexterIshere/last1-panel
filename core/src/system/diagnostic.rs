@@ -1318,12 +1318,20 @@ pub fn run(src: &Sources) -> Report {
     if !real.is_empty() && gpu_bound.len() * 2 > real.len() {
         let mut remedies: Vec<String> = Vec::new();
         let mut fix = None;
-        // Limite de puissance sous le maximum que la carte accepte.
-        let below = gpu_bound.iter().find_map(|s| {
-            let c = s.context.as_ref()?;
-            let (limit, max) = (c.gpu_power_limit?, c.gpu_power_limit_max?);
-            (max > limit + 1.0).then_some((limit, max))
-        });
+        // Limite de puissance sous le maximum que la carte accepte : lue sur
+        // la carte maintenant (le bouton a pu la changer depuis les parties),
+        // sinon celle de la dernière partie qui l'a relevée.
+        let now = crate::system::game_context::sample(src.sys, src.exec, src.gpus);
+        let below = now
+            .gpu_power_limit
+            .zip(now.gpu_power_limit_max)
+            .or_else(|| {
+                gpu_bound.iter().find_map(|s| {
+                    let c = s.context.as_ref()?;
+                    c.gpu_power_limit.zip(c.gpu_power_limit_max)
+                })
+            })
+            .filter(|(limit, max)| *max > limit + 1.0);
         if let Some((limit, max)) = below {
             fix = Some(Fix::GpuPowerMax);
             remedies.push(t(
