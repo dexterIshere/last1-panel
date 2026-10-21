@@ -357,6 +357,10 @@ fn watch_game() {
     let power_state = last1_panel_core::paths::power_limit_file();
     // Service arrêté pendant une partie : les limites d'avant reviennent.
     power_limit::restore(&power_state);
+    use last1_panel_core::system::input_devices;
+    let proc_dir = std::path::Path::new("/proc");
+    let mut devices = input_devices::detect(proc_dir);
+    let mut started = std::time::Instant::now();
     let mut playing = false;
     let mut lifted = false;
     let mut tick: u32 = 0;
@@ -385,6 +389,25 @@ fn watch_game() {
             playing = true;
             best.clear();
             tick = 0;
+            started = std::time::Instant::now();
+            devices = input_devices::detect(proc_dir);
+        }
+        // Souris, clavier ou manette branchés ou débranchés : dit dans le
+        // relevé de la partie, avec la minute.
+        let now_devices = input_devices::detect(proc_dir);
+        let changes = input_devices::changes(&devices, &now_devices);
+        devices = now_devices;
+        if !changes.is_empty()
+            && let Some(log) = game_context::current_log(&logs)
+        {
+            let minute = (started.elapsed().as_secs_f64() / 6.0).round() / 10.0;
+            let mut context = game_context::load(&log).unwrap_or_default();
+            for change in changes {
+                if context.input_changes.len() < 20 {
+                    context.input_changes.push(format!("{minute} {change}"));
+                }
+            }
+            game_context::save(&log, &context);
         }
         tick += 1;
         let gpus = gpu::detect(&SysPaths::default());

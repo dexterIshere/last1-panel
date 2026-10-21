@@ -48,6 +48,9 @@ pub struct GameContext {
     /// partie (compteurs du noyau), et le compteur au premier relevé.
     pub cpu_thermal_throttles: u64,
     pub cpu_throttle_count_start: Option<u64>,
+    /// Souris, claviers et manettes branchés ou débranchés pendant la
+    /// partie, avec la minute : « 12.5 souris … débranché(e) » (20 au plus).
+    pub input_changes: Vec<String>,
 }
 
 /// Un relevé.

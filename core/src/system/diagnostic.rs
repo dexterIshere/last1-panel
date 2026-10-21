@@ -1196,6 +1196,8 @@ pub fn run(src: &Sources) -> Report {
             facts.push((t("Mémoire", "Memory"), format!("{} Go", (total + 524_288) / 1_048_576)));
         }
     }
+    // Souris, claviers, manettes : modèle, identifiant USB, liaison.
+    facts.extend(crate::system::input_devices::facts(&crate::system::input_devices::detect(src.proc_dir)));
     // Mémoire d'échange : zram (mémoire compressée, en RAM : CachyOS y range
     // exprès les pages froides pour laisser la RAM au jeu) ou disque.
     // /proc/swaps, en Kio : nom, type, taille, utilisé, priorité.
@@ -1587,6 +1589,9 @@ fn session_details(s: &GameSession) -> Vec<String> {
             &format!("processeur bridé par la chaleur {} fois", c.cpu_thermal_throttles),
             &format!("CPU throttled by heat {} times", c.cpu_thermal_throttles),
         ));
+    }
+    for change in &c.input_changes {
+        details.push(t(&format!("à {change}"), &format!("at {change}")));
     }
     if c.nvidia_powerd == Some(false) {
         details.push(t("Dynamic Boost (nvidia-powerd) arrêté", "Dynamic Boost (nvidia-powerd) stopped"));
@@ -2090,6 +2095,7 @@ mod tests {
                 cpu_power_limit_short: Some(90.0),
                 cpu_thermal_throttles: 12,
                 cpu_throttle_count_start: Some(3),
+                input_changes: vec!["12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e)".into()],
             }),
             details: Vec::new(),
             timeline: Vec::new(),
@@ -2101,7 +2107,9 @@ mod tests {
              processeur jusqu'à 97 °C, 3100 MHz en moyenne ; processeur 35.2 W ; mode du PC balanced ; \
              processeur en balance_performance ; limite de la carte 80 W sur 125 W possibles ; \
              carte freinée : limite de puissance ; processeur limité à 35 W, 90 W en pointe ; \
-             processeur bridé par la chaleur 12 fois ; Dynamic Boost (nvidia-powerd) arrêté ; \
+             processeur bridé par la chaleur 12 fois ; \
+             à 12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e) ; \
+             Dynamic Boost (nvidia-powerd) arrêté ; \
              image affichée par une autre puce (portable hybride)"
         );
         // Rien de relevé : rien d'inventé.

@@ -5,6 +5,7 @@ pub mod diagnostic;
 pub mod edid;
 pub mod game_context;
 pub mod gpu;
+pub mod input_devices;
 pub mod packages;
 pub mod power_limit;
 pub mod repair;
