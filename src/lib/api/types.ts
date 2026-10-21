@@ -242,7 +242,7 @@ export interface GameSession {
   cpuLoad: number;
   gpuLoad: number;
   gpuClock: number;
-  limit: "gpu" | "cpu" | "loading" | "?";
+  limit: "gpu" | "cpu" | "cap" | "loading" | "?";
   /** Ce qui entourait la partie : carte, puissance, températures, mode du processeur, freins… */
   details: string[];
   /** La partie au fil du temps (60 points au plus). */

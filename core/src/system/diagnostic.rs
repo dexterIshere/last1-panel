@@ -1415,6 +1415,7 @@ fn text(facts: &[(String, String)], checks: &[Check], sessions: &[GameSession]) 
             let limit = match s.limit {
                 "gpu" => t("limité par la carte graphique", "limited by the graphics card"),
                 "cpu" => t("limité par le processeur", "limited by the CPU"),
+                "cap" => t("tenu au plafond d'images (synchro ou limite)", "held at the frame cap (sync or limit)"),
                 "loading" => t(
                     "presque que du chargement ou de la compilation de shaders, pas une vraie partie",
                     "almost only loading or shader compilation, not a real game",

@@ -25,6 +25,7 @@ pub struct GameSession {
     /// Fréquence moyenne de la carte graphique (MHz).
     pub gpu_clock: f64,
     /// Ce qui limite : « gpu » (carte à fond), « cpu » (carte qui attend),
+    /// « cap » (images tenues à un plafond : synchro, limite d'images),
     /// « loading » (presque que du chargement : écran de compilation des
     /// shaders, menus figés), « ? ».
     pub limit: &'static str,
@@ -251,12 +252,21 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     frametimes.sort_by(f64::total_cmp);
     let p99 = frametimes[((frametimes.len() as f64 * 0.99) as usize).min(frametimes.len() - 1)];
     let gpu_load = mean(&gpu);
+    // Images tenues à un plafond (synchro verticale, limite d'images, VRR à
+    // la fréquence de l'écran) : presque toutes à la même cadence, la carte
+    // n'étant pas à fond. Ni le processeur ni la carte ne limitent alors.
+    let mut sorted = fps.clone();
+    sorted.sort_by(f64::total_cmp);
+    let at = |q: f64| sorted[((sorted.len() as f64 * q) as usize).min(sorted.len() - 1)];
+    let capped = sorted.len() >= 10 && at(0.9) > 0.0 && at(0.1) / at(0.9) >= 0.92;
     let limit = if gpu.is_empty() {
         "?"
     } else if mostly_loading {
         "loading"
     } else if gpu_load >= 90.0 {
         "gpu"
+    } else if capped {
+        "cap"
     } else {
         "cpu"
     };
@@ -311,14 +321,20 @@ mod tests {
     #[test]
     fn cpu_bound_game_is_recognised() {
         // Deux minutes : la carte n'est qu'à 60 %, le processeur limite.
-        let mut rows: Vec<(f64, f64, f64, f64, u64)> =
-            (0..99).map(|i| (60.0, 16.6, 45.0, 60.0, (i as u64 + 1) * 1_200_000_000)).collect();
+        // Cadence qui varie (la carte attend un processeur plus ou moins
+        // chargé) : pas un plafond.
+        let mut rows: Vec<(f64, f64, f64, f64, u64)> = (0..99)
+            .map(|i| {
+                let fps = if i % 2 == 0 { 50.0 } else { 70.0 };
+                (fps, 1000.0 / fps, 45.0, 60.0, (i as u64 + 1) * 1_200_000_000)
+            })
+            .collect();
         rows.push((20.0, 50.0, 45.0, 60.0, 120_000_000_000));
         let session = summarize("PioneerGame.exe_2026-10-18_21-04-33", &log(&rows)).unwrap();
         assert_eq!(session.program, "PioneerGame.exe");
         assert_eq!(session.started, "2026-10-18 21:04");
         assert_eq!(session.minutes, 2.0);
-        assert_eq!(session.fps_average, 59.6);
+        assert_eq!(session.fps_average, 59.5);
         assert_eq!(session.fps_one_percent_low, 20.0);
         assert_eq!((session.cpu_load, session.gpu_load, session.gpu_clock), (45.0, 60.0, 2610.0));
         assert_eq!(session.limit, "cpu");
@@ -332,9 +348,17 @@ mod tests {
         assert_eq!(session.timeline.len(), 12);
         assert_eq!(
             session.timeline[0],
-            Point { minute: 0.1, fps: 60.0, fps_low: 60.2, cpu_load: 45.0, gpu_load: 60.0 }
+            Point { minute: 0.1, fps: 60.0, fps_low: 50.0, cpu_load: 45.0, gpu_load: 60.0 }
         );
         assert_eq!(session.timeline[11].fps_low, 20.0);
+    }
+
+    #[test]
+    fn frame_cap_is_not_a_cpu_limit() {
+        // 144 images/s tenues (synchro de l'écran) avec la carte à 70 %.
+        let rows: Vec<(f64, f64, f64, f64, u64)> =
+            (0..100).map(|i| (143.0 + (i % 3) as f64, 6.9, 40.0, 70.0, (i as u64 + 1) * 1_200_000_000)).collect();
+        assert_eq!(summarize("Game.exe_2026-10-18_21-04-33", &log(&rows)).unwrap().limit, "cap");
     }
 
     #[test]
