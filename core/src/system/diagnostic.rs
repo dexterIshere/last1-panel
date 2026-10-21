@@ -474,10 +474,10 @@ pub fn run(src: &Sources) -> Report {
         .flatten()
         .any(|entry| read(&entry.path().join("type")).as_deref() == Some("Battery"));
     // Last1 Panel aussi, dans les jeux qui passent par lui (games/launch.rs) :
-    // game-performance (power-profiles-daemon), sinon GameMode, qui ne change
+    // power-profiles-daemon (mode performance tenu le temps du jeu), sinon GameMode, qui ne change
     // le mode du processeur que pour un compte de son groupe (règle polkit).
     let wrapped = src.wrapped_games.is_some_and(|(wrapped, _)| wrapped > 0);
-    let ppd_tool = src.exec.which("game-performance").is_some() && src.exec.which("powerprofilesctl").is_some();
+    let ppd_tool = src.exec.which("powerprofilesctl").is_some();
     let gamemode = src.exec.which("gamemoderun").is_some();
     let gamemode_ready = gamemode && src.gamemode_allowed;
     facts.push((
@@ -485,7 +485,7 @@ pub fn run(src: &Sources) -> Report {
         if during_games {
             "go-to-linux (gtl-perf)".to_string()
         } else if ppd_tool {
-            "game-performance (power-profiles-daemon)".to_string()
+            "Last1 Panel (power-profiles-daemon)".to_string()
         } else if gamemode_ready {
             "GameMode".to_string()
         } else if gamemode {
@@ -2113,7 +2113,7 @@ mod tests {
         // Arch, PC fixe sans power-profiles-daemon, gouverneur « powersave ».
         let pc = pc();
         write(pc.sys.join("devices/system/cpu/cpu0/cpufreq/scaling_governor"), "powersave\n");
-        let gamemode = FakeExec::new().without("powerprofilesctl").without("game-performance");
+        let gamemode = FakeExec::new().without("powerprofilesctl");
         let power = |exec: &FakeExec, allowed: bool, battery: bool, pacman: bool| {
             if battery {
                 write(pc.sys.join("class/power_supply/BAT0/type"), "Battery\n");
@@ -2153,7 +2153,7 @@ mod tests {
         // Dans le groupe : pleine vitesse le temps des jeux.
         assert_eq!(power(&gamemode, true, false, true).0, Level::Ok);
         // Sans GameMode : mode performance permanent sur un PC fixe…
-        let nothing = FakeExec::new().without("powerprofilesctl").without("game-performance").without("gamemoderun");
+        let nothing = FakeExec::new().without("powerprofilesctl").without("gamemoderun");
         assert_eq!(power(&nothing, true, false, true), (Level::Warning, Some(Fix::Performance)));
         // … GameMode installé sur un portable.
         assert_eq!(power(&nothing, true, true, true), (Level::Warning, Some(Fix::GameMode)));
@@ -2403,11 +2403,9 @@ mod tests {
             power(&FakeExec::new().on("powerprofilesctl", "balanced\n").on("systemctl", "active\n")),
             Some(Level::Ok)
         );
-        // Ou par Last1 Panel (game-performance), dans les jeux qui passent par lui.
+        // Ou par Last1 Panel (powerprofilesctl launch), dans les jeux qui
+        // passent par lui.
         assert_eq!(power(&FakeExec::new().on("powerprofilesctl", "balanced\n")), Some(Level::Ok));
-        let without_tools =
-            FakeExec::new().on("powerprofilesctl", "balanced\n").without("game-performance").without("gamemoderun");
-        assert_eq!(power(&without_tools), Some(Level::Warning));
         // Rien de lu (machine virtuelle) : pas d'avis.
         assert_eq!(power(&FakeExec::new().without("powerprofilesctl")), None);
     }

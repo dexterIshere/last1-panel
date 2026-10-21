@@ -1,7 +1,8 @@
 //! Lanceur des jeux : `$(command -v last1-panel-cli && echo run) %command%`
 //! dans les options de lancement Steam (games/steam.rs). Il lit nos réglages, pose les variables que lisent
 //! Proton, DXVK, VKD3D-Proton, dxvk-nvapi, les pilotes et MangoHud, chaîne
-//! les outils de CachyOS (game-performance, dlss-swapper) puis lance le jeu.
+//! le mode performance (power-profiles-daemon) et dlss-swapper de CachyOS,
+//! puis lance le jeu.
 //!
 //! Sources des variables (vérifiées dans le code de chaque projet,
 //! octobre 2026) : dxvk.conf et README de DXVK 3.1, README et swapchain.c de
@@ -35,7 +36,7 @@ pub struct Context {
     pub offload: Option<Offload>,
     /// Carte des jeux à mesurer (MangoHud pci_dev), quand il y en a plusieurs.
     pub measured_gpu: Option<String>,
-    /// Outils installés : game-performance, powerprofilesctl, gamemoderun,
+    /// Outils installés : powerprofilesctl, systemd-inhibit, gamemoderun,
     /// dlss-swapper, mangohud.
     pub tools: Vec<String>,
     /// Dossier où MangoHud enregistre chaque partie (images par seconde,
@@ -236,10 +237,18 @@ pub fn plan(profile: &GameProfile, context: &Context) -> Plan {
     }
 
     // Processeur à pleine vitesse le temps de chaque jeu, sans réglage : le
-    // profil « performance » de power-profiles-daemon (game-performance de
-    // CachyOS, qui échoue sans powerprofilesctl), sinon GameMode.
-    if context.has("game-performance") && context.has("powerprofilesctl") {
-        plan.wrappers.insert(0, "game-performance".into());
+    // profil « performance » de power-profiles-daemon, tenu tant que le jeu
+    // tourne (comme game-performance de CachyOS), sinon GameMode. L'écran
+    // ne se met pas en veille pendant le jeu (manette) ; contrairement à
+    // game-performance, l'arrêt du PC n'est jamais bloqué, même par un jeu
+    // resté figé en arrière-plan.
+    if context.has("powerprofilesctl") {
+        let ppd = ["powerprofilesctl", "launch", "-p", "performance", "-r", "Last1 Panel : jeu en cours", "--"];
+        plan.wrappers.splice(0..0, ppd.iter().map(|arg| arg.to_string()));
+        if context.has("systemd-inhibit") {
+            let inhibit = ["systemd-inhibit", "--what=idle", "--who=Last1 Panel", "--why=Jeu en cours"];
+            plan.wrappers.splice(0..0, inhibit.iter().map(|arg| arg.to_string()));
+        }
     } else if context.has("gamemoderun") {
         plan.wrappers.insert(0, "gamemoderun".into());
     }
@@ -320,8 +329,8 @@ mod tests {
 
     #[test]
     fn default_profile_changes_nothing() {
-        // game-performance sans powerprofilesctl échouerait : pas utilisé.
-        let plan = plan(&GameProfile::default(), &ctx(true, true, &["mangohud", "dlss-swapper", "game-performance"]));
+        // Sans powerprofilesctl : pas de mode performance par lui.
+        let plan = plan(&GameProfile::default(), &ctx(true, true, &["mangohud", "dlss-swapper"]));
         assert_eq!(plan, Plan::default());
     }
 
@@ -372,9 +381,27 @@ mod tests {
 
     #[test]
     fn every_game_gets_the_cpu_at_full_speed() {
-        let both = ["game-performance", "powerprofilesctl", "gamemoderun"];
-        assert_eq!(plan(&GameProfile::default(), &ctx(true, true, &both)).wrappers, ["game-performance"]);
-        assert_eq!(plan(&GameProfile::default(), &ctx(true, true, &both[1..])).wrappers, ["gamemoderun"]);
+        let both = ["powerprofilesctl", "systemd-inhibit", "gamemoderun"];
+        let ppd = plan(&GameProfile::default(), &ctx(true, true, &both)).wrappers;
+        assert_eq!(
+            ppd,
+            [
+                "systemd-inhibit",
+                "--what=idle",
+                "--who=Last1 Panel",
+                "--why=Jeu en cours",
+                "powerprofilesctl",
+                "launch",
+                "-p",
+                "performance",
+                "-r",
+                "Last1 Panel : jeu en cours",
+                "--"
+            ]
+        );
+        // Jamais le verrou d'arrêt de game-performance.
+        assert!(!ppd.iter().any(|arg| arg.contains("shutdown")));
+        assert_eq!(plan(&GameProfile::default(), &ctx(true, true, &both[2..])).wrappers, ["gamemoderun"]);
     }
 
     #[test]
@@ -388,8 +415,7 @@ mod tests {
             smooth_motion: Some(true),
             ..Default::default()
         };
-        let plan =
-            plan(&profile, &ctx(true, true, &["dlss-swapper", "game-performance", "powerprofilesctl", "mangohud"]));
+        let plan = plan(&profile, &ctx(true, true, &["dlss-swapper", "powerprofilesctl", "mangohud"]));
         let vars = env(&plan);
         assert_eq!(
             get(&vars, "DXVK_CONFIG").unwrap(),
@@ -404,7 +430,11 @@ mod tests {
         assert_eq!(get(&vars, "__GL_LOG_MAX_ANISO").as_deref(), Some("4"));
         assert_eq!(get(&vars, "NVPRESENT_ENABLE_SMOOTH_MOTION").as_deref(), Some("1"));
         // Proton : limiteur de DXVK, pas MangoHud.
-        assert_eq!(plan.wrappers, ["game-performance", "dlss-swapper"]);
+        assert_eq!(
+            plan.wrappers[..7],
+            ["powerprofilesctl", "launch", "-p", "performance", "-r", "Last1 Panel : jeu en cours", "--"]
+        );
+        assert_eq!(plan.wrappers[7..], ["dlss-swapper"]);
         assert!(get(&vars, "MANGOHUD_CONFIG").is_none());
     }
 

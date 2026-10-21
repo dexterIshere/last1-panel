@@ -80,7 +80,7 @@ fn run(command: &[String]) -> ExitCode {
     let gpus = gpu::detect(&SysPaths::default());
     let context = Context {
         proton: launch::is_proton(command),
-        tools: ["game-performance", "powerprofilesctl", "gamemoderun", "dlss-swapper", "mangohud"]
+        tools: ["powerprofilesctl", "systemd-inhibit", "gamemoderun", "dlss-swapper", "mangohud"]
             .iter()
             .filter(|tool| last1_panel_core::exec::which(tool).is_some())
             .map(|tool| tool.to_string())
