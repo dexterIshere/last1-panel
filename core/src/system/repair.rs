@@ -220,6 +220,12 @@ done
 grep -q '^z ' "$conf" || {{ echo "pas de limite de puissance réglable sur ce processeur" >&2; exit 1; }}
 systemd-tmpfiles --create "$conf""#
             )),
+            // Service LACT (il garde la puissance de la carte à chaque
+            // démarrage) ; la limite est posée ensuite, sans mot de passe.
+            Fix::GpuPowerMax if pacman => parts.push(
+                "command -v lact >/dev/null || pacman -S --needed --noconfirm lact || pacman -Syu --needed --noconfirm lact\nsystemctl enable --now lactd.service".to_string(),
+            ),
+            Fix::GpuPowerMax => parts.push("systemctl enable --now lactd.service".to_string()),
             Fix::Performance | Fix::LowLatency | Fix::WrapGames | Fix::Restart | Fix::SystemUpdate => {}
         }
     }
@@ -237,10 +243,11 @@ mod tests {
     use std::fs;
     use std::process::Command;
 
-    const ALL: [Fix; 16] = [
+    const ALL: [Fix; 17] = [
         Fix::GameMode,
         Fix::PanelSelfRefresh,
         Fix::CpuPowerLimit,
+        Fix::GpuPowerMax,
         Fix::Performance,
         Fix::Ntsync,
         Fix::ShaderCache,
@@ -285,6 +292,7 @@ mod tests {
             "options i915 enable_psr=0",
             "/etc/tmpfiles.d/last1-panel-power-limit.conf",
             "systemd-tmpfiles --create",
+            "systemctl enable --now lactd.service",
             "mkinitcpio -P",
         ] {
             assert!(script.contains(expected), "{expected}\n{script}");

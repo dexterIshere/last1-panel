@@ -482,6 +482,9 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
                 });
             }
         }
+        if fixes.contains(&Fix::GpuPowerMax) {
+            gpu_power_max(&panel)?;
+        }
         if fixes.contains(&Fix::Performance) && power_profiles {
             SystemExec::default().run_ok("powerprofilesctl", &["set".into(), "performance".into()])?;
         }
@@ -516,6 +519,12 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
                 "Compressed memory on: background programs stay in memory, even after a restart.",
             ));
         }
+        if fixes.contains(&Fix::GpuPowerMax) {
+            notices.push(t(
+                "Carte graphique à sa puissance maximale, gardée à chaque démarrage (page Carte graphique pour la changer).",
+                "Graphics card at its maximum power, kept at every boot (Graphics card page to change it).",
+            ));
+        }
         if fixes.contains(&Fix::CpuPowerLimit) {
             notices.push(t(
                 "Puissance du processeur libérée pour les jeux : elle vaut dès la prochaine partie, chargeur branché.",
@@ -537,6 +546,36 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
         Ok(notices)
     })
     .await
+}
+
+/// Carte des jeux à sa puissance maximale, gardée par LACT (service démarré
+/// juste avant par le script d'administrateur).
+fn gpu_power_max(panel: &Panel) -> last1_panel_core::error::CoreResult<()> {
+    for _ in 0..50 {
+        if lact::find_socket().is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let lact = Lact::connect()?;
+    let gpus = panel.gpus();
+    let games = last1_panel_core::system::gpu::games_gpu(&gpus)
+        .ok_or_else(|| CoreError::message(t("Aucune carte graphique pour les jeux.", "No graphics card for games.")))?;
+    let device =
+        lact.devices()?.into_iter().find(|device| device.pci_slot.eq_ignore_ascii_case(&games.pci_slot)).ok_or_else(
+            || CoreError::message(t("LACT ne voit pas la carte des jeux.", "LACT doesn't see the games card.")),
+        )?;
+    let max = lact.stats(&device.id)?.power_cap_max.ok_or_else(|| {
+        CoreError::message(t(
+            "Cette carte ne donne pas sa puissance maximale.",
+            "This card doesn't report its maximum power.",
+        ))
+    })?;
+    let config = lact.config(&device.id)?;
+    let tuning = Tuning { power_cap: Some(max), ..lact::tuning_from_config(&config) };
+    let config = lact::apply_tuning(&config, &tuning, games.vendor == Vendor::Nvidia);
+    lact.try_config(&device.id, &config)?;
+    lact.confirm(true)
 }
 
 /// Ce que devient le lien entre un jeu et un profil de couleurs.

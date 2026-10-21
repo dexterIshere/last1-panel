@@ -66,6 +66,9 @@ pub enum Fix {
     /// Limites de puissance du processeur (RAPL) données au compte du
     /// joueur : le service les relève le temps des jeux (power_limit.rs).
     CpuPowerLimit,
+    /// Carte des jeux à sa puissance maximale, gardée par LACT (installé et
+    /// démarré s'il le faut).
+    GpuPowerMax,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1314,6 +1317,71 @@ pub fn run(src: &Sources) -> Report {
                     &format!("La carte graphique attend le processeur. {why}"),
                     &format!("The graphics card waits for the CPU. {why}"),
                 ),
+            )
+        });
+    }
+
+    // Jeux limités par la carte graphique : ce qui lui donne plus d'images.
+    let gpu_bound: Vec<&&GameSession> = real.iter().filter(|s| s.limit == "gpu").collect();
+    if !real.is_empty() && gpu_bound.len() * 2 > real.len() {
+        let mut remedies: Vec<String> = Vec::new();
+        let mut fix = None;
+        // Limite de puissance sous le maximum que la carte accepte.
+        let below = gpu_bound.iter().find_map(|s| {
+            let c = s.context.as_ref()?;
+            let (limit, max) = (c.gpu_power_limit?, c.gpu_power_limit_max?);
+            (max > limit + 1.0).then_some((limit, max))
+        });
+        if let Some((limit, max)) = below {
+            fix = Some(Fix::GpuPowerMax);
+            remedies.push(t(
+                &format!("Le bouton met la carte à sa puissance maximale ({limit} W → {max} W), gardée à chaque démarrage, comme le curseur de MSI Afterburner poussé à fond."),
+                &format!("The button sets the card to its maximum power ({limit} W → {max} W), kept at every boot, like MSI Afterburner's slider pushed all the way."),
+            ));
+        }
+        let games = src.gpus.iter().find(|g| g.games);
+        let rtx = games.and_then(|g| g.name.as_deref()).is_some_and(|name| name.contains("RTX"));
+        remedies.push(if rtx {
+            t(
+                "Dans le jeu, mettez DLSS en Qualité (ou Équilibré) : la carte calcule moins de pixels et l'image reste nette.",
+                "In the game, set DLSS to Quality (or Balanced): the card computes fewer pixels and the image stays sharp.",
+            )
+        } else {
+            t(
+                "Dans le jeu, mettez FSR (ou XeSS) en Qualité : la carte calcule moins de pixels et l'image reste nette.",
+                "In the game, set FSR (or XeSS) to Quality: the card computes fewer pixels and the image stays sharp.",
+            )
+        });
+        // Carte à fond, sans rien qui la retienne : le PC donne tout ce
+        // qu'il a, c'est le bon équilibre ; DLSS ou FSR pour aller au-delà.
+        let (level, title) = if fix.is_some() {
+            (
+                Level::Warning,
+                t(
+                    &format!("Carte graphique retenue ({} parties sur {})", gpu_bound.len(), real.len()),
+                    &format!("Graphics card held back ({} of {} games)", gpu_bound.len(), real.len()),
+                ),
+            )
+        } else {
+            (Level::Ok, t("Carte graphique à fond dans les jeux", "Graphics card at full load in games"))
+        };
+        checks.push(Check {
+            fix,
+            ..check(
+                "gpu-limited",
+                level,
+                title,
+                if fix.is_some() {
+                    t(
+                        &format!("La carte est à fond, retenue par sa limite de puissance. {}", remedies.join(" ")),
+                        &format!("The card is at full load, held back by its power limit. {}", remedies.join(" ")),
+                    )
+                } else {
+                    t(
+                        &format!("La carte donne tout ce qu'elle a. {}", remedies.join(" ")),
+                        &format!("The card gives all it has. {}", remedies.join(" ")),
+                    )
+                },
             )
         });
     }

@@ -171,10 +171,10 @@ struct Row {
 }
 
 impl Row {
-    /// Chargement : très peu d'images, carte presque au repos (écran de
-    /// compilation des shaders au démarrage, après une mise à jour du pilote).
+    /// Pas du jeu : moins de 15 images par seconde (chargement, écran de
+    /// compilation des shaders, jeu en pause ou en arrière-plan).
     fn loading(&self) -> bool {
-        self.fps < 12.0 && self.gpu.is_some_and(|gpu| gpu < 35.0)
+        self.fps < 15.0
     }
 }
 
@@ -252,6 +252,10 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     frametimes.sort_by(f64::total_cmp);
     let p99 = frametimes[((frametimes.len() as f64 * 0.99) as usize).min(frametimes.len() - 1)];
     let gpu_load = mean(&gpu);
+    // Carte à fond (85 % et plus : NVIDIA ne dépasse guère 95 %) la moitié
+    // du temps de jeu au moins : c'est elle qui limite. Une moyenne serait
+    // tirée vers le bas par les menus et les chargements.
+    let gpu_bound = gpu.iter().filter(|load| **load >= 85.0).count();
     // Images tenues à un plafond (synchro verticale, limite d'images, VRR à
     // la fréquence de l'écran) : presque toutes à la même cadence, la carte
     // n'étant pas à fond. Ni le processeur ni la carte ne limitent alors.
@@ -263,7 +267,7 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         "?"
     } else if mostly_loading {
         "loading"
-    } else if gpu_load >= 90.0 {
+    } else if gpu_bound * 2 >= gpu.len() {
         "gpu"
     } else if capped {
         "cap"
@@ -351,6 +355,27 @@ mod tests {
             Point { minute: 0.1, fps: 60.0, fps_low: 50.0, cpu_load: 45.0, gpu_load: 60.0 }
         );
         assert_eq!(session.timeline[11].fps_low, 20.0);
+    }
+
+    #[test]
+    fn card_at_full_load_most_of_the_game_is_the_limit() {
+        // ARC Raiders sur RTX 2060 : menus à 250 i/s, chargements à 1 i/s,
+        // et le jeu à 60-80 i/s, carte entre 86 et 94 % : la moyenne de la
+        // carte (sous 90 %) ne doit pas faire dire « processeur ».
+        let rows: Vec<(f64, f64, f64, f64, u64)> = (0..200)
+            .map(|i| {
+                let (fps, gpu) = match i {
+                    0..20 => (250.0, 50.0),
+                    20..40 => (1.0, 12.0),
+                    _ => (60.0 + (i % 20) as f64, 86.0 + (i % 9) as f64),
+                };
+                (fps, 1000.0 / fps, 60.0, gpu, (i as u64 + 1) * 1_000_000_000)
+            })
+            .collect();
+        let session = summarize("PioneerGame_2026-10-21_10-54-00", &log(&rows)).unwrap();
+        assert_eq!(session.limit, "gpu");
+        // Les chargements à 1 i/s ne font pas le 1 % bas.
+        assert!(session.fps_one_percent_low > 50.0, "{}", session.fps_one_percent_low);
     }
 
     #[test]

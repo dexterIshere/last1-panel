@@ -220,7 +220,8 @@ export type PerfFix =
   | "system-update"
   | "game-mode"
   | "panel-self-refresh"
-  | "cpu-power-limit";
+  | "cpu-power-limit"
+  | "gpu-power-max";
 
 export interface PerfCheck {
   id: string;
