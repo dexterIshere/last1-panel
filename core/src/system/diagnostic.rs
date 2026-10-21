@@ -1254,14 +1254,16 @@ pub fn run(src: &Sources) -> Report {
             let to = short.filter(|short| *short > limit).map(|w| format!(" ({limit} W → {w} W)")).unwrap_or_default();
             if crate::system::power_limit::writable(src.sys) {
                 remedies.push(t(
-                    &format!("Last1 Panel relève maintenant la limite de puissance du processeur{to} le temps des jeux, sur secteur : ça vaut dès la prochaine partie."),
-                    &format!("Last1 Panel now raises the CPU's power limit{to} for games, on AC power: it applies from the next game."),
+                    &format!(
+                        "C'est réglé : Last1 Panel libère le processeur{to} pendant les jeux, dès la prochaine partie."
+                    ),
+                    &format!("Done: Last1 Panel unlocks the CPU{to} during games, from the next game."),
                 ));
             } else {
                 fix = Some(Fix::CpuPowerLimit);
                 remedies.push(t(
-                    &format!("Le processeur tourne à la limite de puissance que fixe le portable : le bouton la fait relever{to} le temps des jeux, sur secteur, comme l'appli du fabricant sous Windows. Il se protège seul de la chaleur."),
-                    &format!("The CPU runs at the power limit the laptop sets: the button has it raised{to} for games, on AC power, like the maker's app on Windows. It protects itself from heat."),
+                    &format!("Il est bridé par le PC{to}. Un clic le libère pendant les jeux, chargeur branché, comme l'appli du fabricant sous Windows."),
+                    &format!("It's capped by the PC{to}. One click unlocks it during games, charger plugged in, like the maker's app on Windows."),
                 ));
             }
         }
@@ -1270,38 +1272,34 @@ pub fn run(src: &Sources) -> Report {
         {
             fix = fix.or(Some(Fix::Performance));
             remedies.push(t(
-                &format!(
-                    "Le processeur n'était pas en mode performance pendant le jeu ({preference}) : le bouton l'y met."
-                ),
-                &format!(
-                    "The CPU wasn't in performance mode during the game ({preference}): the button puts it there."
-                ),
+                &format!("Il tourne au ralenti pendant les jeux ({preference}). Un clic le passe à pleine vitesse."),
+                &format!("It runs slowed down during games ({preference}). One click sets it to full speed."),
             ));
         }
         if contexts.iter().any(|c| c.on_battery) {
             remedies.push(t(
-                "Jouez chargeur branché : sur batterie, le portable bride le processeur pour durer.",
-                "Play with the charger plugged in: on battery, the laptop holds the CPU back to last.",
+                "Jouez chargeur branché : sur batterie, le portable le ralentit.",
+                "Play with the charger plugged in: on battery, the laptop slows it down.",
             ));
         }
         let throttles: u64 = contexts.iter().map(|c| c.cpu_thermal_throttles).sum();
         if throttles > 0 {
             remedies.push(t(
-                &format!("Surélevez l'arrière du portable et dégagez ses aérations (un support ventilé aide) : il s'est bridé {throttles} fois à cause de la chaleur."),
-                &format!("Raise the back of the laptop and clear its vents (a cooling stand helps): it throttled {throttles} times because of heat."),
+                &format!("Il chauffe trop et ralentit ({throttles} fois) : surélevez l'arrière du portable et dégagez ses aérations."),
+                &format!("It runs too hot and slows down ({throttles} times): raise the back of the laptop and clear its vents."),
             ));
         }
         let why = if !remedies.is_empty() {
             remedies.join(" ")
         } else if contexts.is_empty() {
             t(
-                "Last1 Panel relève pendant chaque partie ce qui bride le processeur : dès la prochaine, il le corrige ou dit quoi faire ici.",
-                "Last1 Panel records during each game what holds the CPU back: from the next one, it fixes it or says here what to do.",
+                "Last1 Panel regarde ce qui le ralentit pendant votre prochaine partie, puis le corrige ou dit ici quoi faire.",
+                "Last1 Panel checks what slows it down during your next game, then fixes it or says here what to do.",
             )
         } else {
             t(
-                "Rien ne bride le processeur (mode performance, ni chaleur ni limite de puissance atteinte) : le jeu en demande plus qu'il ne peut donner. Dans le jeu, baissez la distance d'affichage, la foule et les ombres ; DLSS ou FSR n'y aident pas.",
-                "Nothing holds the CPU back (performance mode, no heat, power limit not reached): the game asks more than it can give. In the game, lower view distance, crowds and shadows; DLSS or FSR don't help there.",
+                "Il est à pleine vitesse, mais ces jeux lui en demandent plus. Dans le jeu, baissez la distance d'affichage, la foule et les ombres.",
+                "It's at full speed, but these games ask for more. In the game, lower view distance, crowds and shadows.",
             )
         };
         checks.push(Check {
@@ -1309,14 +1307,8 @@ pub fn run(src: &Sources) -> Report {
             ..check(
                 "cpu-limited",
                 Level::Warning,
-                t(
-                    &format!("Jeux limités par le processeur ({} parties sur {})", cpu_bound.len(), real.len()),
-                    &format!("Games limited by the CPU ({} of {} games)", cpu_bound.len(), real.len()),
-                ),
-                t(
-                    &format!("La carte graphique attend le processeur. {why}"),
-                    &format!("The graphics card waits for the CPU. {why}"),
-                ),
+                t("Votre processeur ralentit vos jeux", "Your CPU slows your games down"),
+                why,
             )
         });
     }
@@ -1335,35 +1327,37 @@ pub fn run(src: &Sources) -> Report {
         if let Some((limit, max)) = below {
             fix = Some(Fix::GpuPowerMax);
             remedies.push(t(
-                &format!("Le bouton met la carte à sa puissance maximale ({limit} W → {max} W), gardée à chaque démarrage, comme le curseur de MSI Afterburner poussé à fond."),
-                &format!("The button sets the card to its maximum power ({limit} W → {max} W), kept at every boot, like MSI Afterburner's slider pushed all the way."),
+                &format!(
+                    "Elle est bridée à {limit} W alors qu'elle peut aller à {max} W. Un clic la libère, pour de bon."
+                ),
+                &format!("It's capped at {limit} W while it can go up to {max} W. One click unlocks it, for good."),
             ));
         }
         let games = src.gpus.iter().find(|g| g.games);
         let rtx = games.and_then(|g| g.name.as_deref()).is_some_and(|name| name.contains("RTX"));
-        remedies.push(if rtx {
-            t(
-                "Dans le jeu, mettez DLSS en Qualité (ou Équilibré) : la carte calcule moins de pixels et l'image reste nette.",
-                "In the game, set DLSS to Quality (or Balanced): the card computes fewer pixels and the image stays sharp.",
-            )
-        } else {
-            t(
-                "Dans le jeu, mettez FSR (ou XeSS) en Qualité : la carte calcule moins de pixels et l'image reste nette.",
-                "In the game, set FSR (or XeSS) to Quality: the card computes fewer pixels and the image stays sharp.",
-            )
-        });
+        // Le bouton d'abord : le conseil du jeu vient quand rien n'est à libérer.
+        if fix.is_none() {
+            remedies.push(if rtx {
+                t(
+                    "Pour encore plus d'images : DLSS en Qualité dans le jeu.",
+                    "For even more frames: DLSS on Quality in the game.",
+                )
+            } else {
+                t(
+                    "Pour encore plus d'images : FSR (ou XeSS) en Qualité dans le jeu.",
+                    "For even more frames: FSR (or XeSS) on Quality in the game.",
+                )
+            });
+        }
         // Carte à fond, sans rien qui la retienne : le PC donne tout ce
         // qu'il a, c'est le bon équilibre ; DLSS ou FSR pour aller au-delà.
         let (level, title) = if fix.is_some() {
-            (
-                Level::Warning,
-                t(
-                    &format!("Carte graphique retenue ({} parties sur {})", gpu_bound.len(), real.len()),
-                    &format!("Graphics card held back ({} of {} games)", gpu_bound.len(), real.len()),
-                ),
-            )
+            (Level::Warning, t("Votre carte graphique peut aller plus vite", "Your graphics card can go faster"))
         } else {
-            (Level::Ok, t("Carte graphique à fond dans les jeux", "Graphics card at full load in games"))
+            (
+                Level::Ok,
+                t("Votre carte graphique donne tout dans les jeux", "Your graphics card gives its all in games"),
+            )
         };
         checks.push(Check {
             fix,
@@ -1372,14 +1366,11 @@ pub fn run(src: &Sources) -> Report {
                 level,
                 title,
                 if fix.is_some() {
-                    t(
-                        &format!("La carte est à fond, retenue par sa limite de puissance. {}", remedies.join(" ")),
-                        &format!("The card is at full load, held back by its power limit. {}", remedies.join(" ")),
-                    )
+                    remedies.join(" ")
                 } else {
                     t(
-                        &format!("La carte donne tout ce qu'elle a. {}", remedies.join(" ")),
-                        &format!("The card gives all it has. {}", remedies.join(" ")),
+                        &format!("Rien ne la retient. {}", remedies.join(" ")),
+                        &format!("Nothing holds it back. {}", remedies.join(" ")),
                     )
                 },
             )
@@ -1787,8 +1778,8 @@ mod tests {
         // La seule partie est limitée par le processeur, sans relevé : la
         // prochaine le dira (jamais « rien ne freine »).
         let cpu = report.checks.iter().find(|c| c.id == "cpu-limited").unwrap();
-        assert_eq!(cpu.title, "Jeux limités par le processeur (1 parties sur 1)");
-        assert!(cpu.detail.contains("dès la prochaine, il le corrige"), "{}", cpu.detail);
+        assert_eq!(cpu.title, "Votre processeur ralentit vos jeux");
+        assert!(cpu.detail.contains("pendant votre prochaine partie"), "{}", cpu.detail);
         assert_eq!(
             ids(Level::Warning),
             [

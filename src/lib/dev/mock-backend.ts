@@ -367,6 +367,9 @@ export function installMockBackend(): void {
       await wait(400);
       const open = (fix: string) => !perfFixed.has(fix);
       const checks = [
+        ...(open("gpu-power-max")
+          ? [{ id: "gpu-limited", level: "warning", title: "Votre carte graphique peut aller plus vite", detail: "Elle est bridée à 170 W alors qu'elle peut aller à 180 W. Un clic la libère, pour de bon.", fix: "gpu-power-max" }]
+          : [{ id: "gpu-limited", level: "ok", title: "Votre carte graphique donne tout dans les jeux", detail: "Rien ne la retient. Pour encore plus d'images : DLSS en Qualité dans le jeu.", fix: null }]),
         ...(open("x3d-cache")
           ? [{ id: "x3d", level: "problem", title: "Les jeux tournent sans la 3D V-Cache", detail: "Processeur X3D en mode « frequency » : les jeux partent sur le bloc sans 3D V-Cache, beaucoup d'images en moins quand le processeur limite.", fix: "x3d-cache" }]
           : [{ id: "x3d", level: "ok", title: "Jeux sur la 3D V-Cache", detail: "Mode « cache ».", fix: null }]),

@@ -89,7 +89,7 @@
       "low-latency": t("Rendre la latence aux jeux", "Give latency back to games"),
       "install-mango-hud": t("Installer MangoHud", "Install MangoHud"),
       "wrap-games": t("Activer pour tous les jeux", "Turn on for all games"),
-      performance: t("Passer en mode performance", "Switch to performance mode"),
+      performance: t("Pleine vitesse", "Full speed"),
       ntsync: t("Activer NTSync", "Turn on NTSync"),
       "shader-cache": t("Agrandir à 12 Go", "Enlarge to 12 GB"),
       "split-lock": t("Arrêter ce frein", "Stop this slowdown"),
@@ -101,8 +101,8 @@
       "system-update": t("Mettre à jour le pilote", "Update the driver"),
       "game-mode": t("Activer GameMode", "Turn on GameMode"),
       "panel-self-refresh": t("Couper le Panel Self Refresh", "Turn off Panel Self Refresh"),
-      "cpu-power-limit": t("Libérer la puissance du processeur en jeu", "Free the CPU's power in games"),
-      "gpu-power-max": t("Carte à sa puissance maximale", "Card at maximum power"),
+      "cpu-power-limit": t("Libérer le processeur", "Unlock the CPU"),
+      "gpu-power-max": t("Libérer la carte", "Unlock the card"),
     })[kind];
   const icon = (check: PerfCheck) => ({ problem: CircleAlert, warning: TriangleAlert, info: Info, ok: Check })[check.level];
 </script>
@@ -152,6 +152,7 @@
             {#if check.fix}
               <button
                 class="btn"
+                class:btn--primary={check.level === "problem" || check.level === "warning"}
                 onclick={() => (check.fix === "restart" ? (confirmRestart = true) : fix([check.fix!]))}
                 disabled={fixing.length > 0}
               >
