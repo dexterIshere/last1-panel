@@ -5,6 +5,7 @@
 //! (kscreen-doctor, hyprctl, nvibrant, LACT, Proton…) : ce crate les pilote
 //! et ne réimplémente rien de ce qu'ils font déjà (docs/DESIGN.md).
 
+pub mod clips;
 pub mod color;
 pub mod display;
 pub mod error;

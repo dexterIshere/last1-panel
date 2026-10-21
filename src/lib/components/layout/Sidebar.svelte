@@ -5,7 +5,7 @@
   import { api, errorMessage } from "$lib/api/ipc";
   import { i18n, t, type Lang } from "$lib/i18n.svelte";
   import { app, type Section } from "$lib/state/app.svelte";
-  import { Cpu, Gamepad2, Gauge, Monitor, Mouse, Palette, Power, Usb } from "@lucide/svelte";
+  import { Clapperboard, Cpu, Gamepad2, Gauge, Monitor, Mouse, Palette, Power, Usb } from "@lucide/svelte";
 
   const LANGS: Lang[] = ["fr", "en"];
 
@@ -30,6 +30,7 @@
     },
     { id: "gpu", title: t("Carte graphique", "Graphics card"), detail: t("Puissance, ventilateurs", "Power, fans"), icon: Cpu },
     { id: "games", title: t("Jeux", "Games"), detail: t("Réglages 3D par jeu", "Per-game 3D settings"), icon: Gamepad2 },
+    { id: "clips", title: t("Clips", "Clips"), detail: t("F8 : la dernière minute du jeu", "F8: the game's last minute"), icon: Clapperboard },
     { id: "perf", title: t("Performances", "Performance"), detail: t("Diagnostic en jeu", "In-game diagnostic"), icon: Gauge },
   ]);
 

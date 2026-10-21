@@ -52,6 +52,8 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("fix") if args.get(1).is_some_and(|a| a == "wrap-games") => wrap_games(),
+        // Appelé par gpu-screen-recorder pour chaque vidéo enregistrée.
+        Some("clip-saved") => clip_saved(&args[1..]),
         _ => {
             eprintln!(
                 "{}",
@@ -233,6 +235,7 @@ fn watch() -> ExitCode {
     std::thread::spawn(watch_shaders);
     std::thread::spawn(watch_own_update);
     std::thread::spawn(watch_game);
+    std::thread::spawn(clips);
     let tray = last1_panel_core::tray::spawn();
     std::thread::sleep(Duration::from_secs(3));
     apply_until_ready(20);
@@ -280,6 +283,106 @@ fn watch() -> ExitCode {
         }
     }
     let _ = child.kill();
+    ExitCode::SUCCESS
+}
+
+/// Clips des parties (clips.rs) : gpu-screen-recorder garde la dernière
+/// minute tant qu'un jeu tourne ; F8 l'enregistre, F9 lance ou arrête un
+/// enregistrement. Arrêté hors des jeux (rien n'est gardé du bureau).
+fn clips() {
+    use last1_panel_core::clips::{self, Key};
+    let home = last1_panel_core::paths::home_dir();
+    let (keys, pressed) = mpsc::channel();
+    std::thread::spawn(move || clips::watch_keys(std::path::Path::new("/dev"), keys));
+    let script = last1_panel_core::paths::cache_dir().join("clip-saved.sh");
+    let mut recorder: Option<std::process::Child> = None;
+    let mut recording = false;
+    let mut retry_at = std::time::Instant::now();
+    let signal = |child: &std::process::Child, signal: i32| {
+        // SAFETY : kill(2) sur le processus que nous avons lancé.
+        unsafe { libc::kill(child.id() as i32, signal) };
+    };
+    loop {
+        match pressed.recv_timeout(Duration::from_secs(2)) {
+            Ok(Key::Clip) => {
+                if let Some(child) = &recorder {
+                    signal(child, libc::SIGUSR1);
+                }
+            }
+            Ok(Key::Record) => {
+                if let Some(child) = &recorder {
+                    signal(child, libc::SIGRTMIN());
+                    recording = !recording;
+                    desktop::notify(&if recording {
+                        t("Enregistrement lancé (F9 pour l'arrêter).", "Recording started (F9 to stop it).")
+                    } else {
+                        t(
+                            "Enregistrement arrêté : la vidéo arrive dans Clips.",
+                            "Recording stopped: the video is coming to Clips.",
+                        )
+                    });
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        }
+        if let Some(child) = recorder.as_mut()
+            && child.try_wait().ok().flatten().is_some()
+        {
+            recorder = None;
+            recording = false;
+            retry_at = std::time::Instant::now() + Duration::from_secs(60);
+        }
+        let wanted = Settings::load().clips != Some(false)
+            && clips::installed()
+            && last1_panel_core::games::steam::game_running(std::path::Path::new("/proc"));
+        if wanted && recorder.is_none() && std::time::Instant::now() >= retry_at {
+            let dir = clips::dir(&home);
+            let _ = std::fs::create_dir_all(&dir);
+            let cli = std::env::current_exe().unwrap_or_else(|_| "last1-panel-cli".into());
+            let _ = std::fs::write(&script, format!("#!/bin/sh\nexec '{}' clip-saved \"$@\"\n", cli.display()));
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755));
+            }
+            let args = clips::command(&dir, &script);
+            let mut command = Command::new(&args[0]);
+            command
+                .args(&args[1..])
+                .envs(last1_panel_core::system::desktop::session_env())
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            last1_panel_core::exec::without_appimage_env(&mut command);
+            recorder = command.spawn().ok();
+            if recorder.is_none() {
+                retry_at = std::time::Instant::now() + Duration::from_secs(60);
+            }
+        } else if !wanted && let Some(mut child) = recorder.take() {
+            // SIGINT : un enregistrement en cours est fini et gardé.
+            signal(&child, libc::SIGINT);
+            let _ = child.wait();
+            recording = false;
+        }
+    }
+}
+
+/// Une vidéo vient d'être enregistrée : nommée d'après le jeu, et dite.
+fn clip_saved(args: &[String]) -> ExitCode {
+    let Some(path) = args.first() else { return ExitCode::from(2) };
+    let game = last1_panel_core::panel::last_game_name().unwrap_or_default();
+    let stamp = Command::new("date")
+        .arg("+%Y-%m-%d %H-%M-%S")
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .unwrap_or_default();
+    let saved = last1_panel_core::clips::rename_saved(std::path::Path::new(path), &game, &stamp);
+    let name = saved.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    desktop::notify(&if args.get(1).is_some_and(|kind| kind == "replay") {
+        t(&format!("Clip enregistré : {name}"), &format!("Clip saved: {name}"))
+    } else {
+        t(&format!("Vidéo enregistrée : {name}"), &format!("Video saved: {name}"))
+    });
     ExitCode::SUCCESS
 }
 

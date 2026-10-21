@@ -1,6 +1,7 @@
 <script lang="ts">
   import Sidebar from "$lib/components/layout/Sidebar.svelte";
   import Callout from "$lib/components/ui/Callout.svelte";
+  import Clips from "$lib/sections/Clips.svelte";
   import Colors from "$lib/sections/Colors.svelte";
   import Display from "$lib/sections/Display.svelte";
   import Games from "$lib/sections/Games.svelte";
@@ -50,6 +51,8 @@
           <Mouse />
         {:else if app.section === "gpu"}
           <GpuTuning />
+        {:else if app.section === "clips"}
+          <Clips />
         {:else if app.section === "perf"}
           <Performance />
         {:else}

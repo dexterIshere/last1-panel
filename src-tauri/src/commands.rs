@@ -321,6 +321,78 @@ pub async fn enable_lact() -> Result<()> {
     .await
 }
 
+/// Page Clips : gpu-screen-recorder, touches F8 et F9, vidéos enregistrées.
+#[tauri::command]
+pub async fn clips_state() -> Result<last1_panel_core::clips::ClipsState> {
+    blocking(|| {
+        let enabled = Settings::load().clips != Some(false);
+        Ok(last1_panel_core::clips::state(&last1_panel_core::paths::home_dir(), Path::new("/dev"), enabled))
+    })
+    .await
+}
+
+/// Clips pendant les jeux, ou plus.
+#[tauri::command]
+pub async fn set_clips(enabled: bool) -> Result<()> {
+    blocking(move || Settings::update(&Settings::path(), |s| s.clips = Some(enabled))).await
+}
+
+/// gpu-screen-recorder installé (pacman) et les claviers ouverts au compte
+/// connecté (règle udev « uaccess », comme Vice) pour F8 et F9.
+#[tauri::command]
+pub async fn install_clips() -> Result<()> {
+    blocking(|| {
+        if which("pacman").is_none() {
+            return Err(CoreError::message(t(
+                "Installez gpu-screen-recorder avec le gestionnaire de paquets du système, puis rouvrez cette page.",
+                "Install gpu-screen-recorder with the system's package manager, then reopen this page.",
+            )));
+        }
+        let rule = last1_panel_core::clips::UDEV_RULE;
+        let script = format!(
+            "command -v gpu-screen-recorder >/dev/null || pacman -S --needed --noconfirm gpu-screen-recorder || pacman -Syu --needed --noconfirm gpu-screen-recorder\n\
+             mkdir -p \"$(dirname {rule})\"\n\
+             echo 'KERNEL==\"event*\", SUBSYSTEM==\"input\", TAG+=\"uaccess\"' > {rule}\n\
+             udevadm control --reload\n\
+             udevadm trigger --subsystem-match=input --action=change"
+        );
+        let exec = SystemExec { timeout: Duration::from_secs(1800), ..SystemExec::default() };
+        exec.run_ok("pkexec", &["/bin/sh".into(), "-c".into(), script])?;
+        Ok(())
+    })
+    .await
+}
+
+/// Ouvre une vidéo ou le dossier des clips avec l'application du bureau.
+#[tauri::command]
+pub async fn open_clip(path: String) -> Result<()> {
+    blocking(move || {
+        let folder = last1_panel_core::clips::dir(&last1_panel_core::paths::home_dir());
+        let _ = std::fs::create_dir_all(&folder);
+        if !Path::new(&path).starts_with(&folder) {
+            return Err(CoreError::message(t("Fichier hors du dossier des clips.", "File outside the clips folder.")));
+        }
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(&path).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
+        last1_panel_core::exec::without_appimage_env(&mut command);
+        command.spawn().map(|_| ()).map_err(|e| CoreError::message(e.to_string()))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_clip(path: String) -> Result<()> {
+    blocking(move || {
+        let folder = last1_panel_core::clips::dir(&last1_panel_core::paths::home_dir());
+        let path = Path::new(&path);
+        if path.parent() != Some(folder.as_path()) {
+            return Err(CoreError::message(t("Fichier hors du dossier des clips.", "File outside the clips folder.")));
+        }
+        std::fs::remove_file(path).map_err(|e| CoreError::message(e.to_string()))
+    })
+    .await
+}
+
 /// Page Souris : pointeur du bureau et souris réglables (libratbag).
 #[tauri::command]
 pub async fn mouse_state(panel: State<'_, Arc<Panel>>) -> Result<last1_panel_core::panel::MouseState> {

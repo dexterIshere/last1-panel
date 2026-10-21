@@ -4,6 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { t, type Lang } from "$lib/i18n.svelte";
 import type {
+  ClipsState,
   ColorAdjust,
   ColorProfile,
   ColorProfiles,
@@ -87,4 +88,12 @@ export const api = {
     invoke<void>("set_mouse_hardware", { id, dpis, active, rate }),
   /** Installe libratbag (pkexec, mot de passe demandé). */
   installRatbag: () => invoke<void>("install_ratbag"),
+
+  clipsState: () => invoke<ClipsState>("clips_state"),
+  setClips: (enabled: boolean) => invoke<void>("set_clips", { enabled }),
+  /** gpu-screen-recorder et les touches F8/F9 (pkexec, mot de passe demandé). */
+  installClips: () => invoke<void>("install_clips"),
+  /** Vidéo ou dossier ouvert par l'application du bureau. */
+  openClip: (path: string) => invoke<void>("open_clip", { path }),
+  deleteClip: (path: string) => invoke<void>("delete_clip", { path }),
 };

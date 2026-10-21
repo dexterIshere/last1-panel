@@ -2012,6 +2012,7 @@ dependencies = [
  "ed25519-dalek",
  "ksni",
  "lcms2",
+ "libc",
  "log",
  "png 0.18.1",
  "serde",

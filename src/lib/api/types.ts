@@ -376,3 +376,23 @@ export interface MouseState {
   pointer: PointerState;
   ratbag: Ratbag;
 }
+
+/** Une vidéo des clips (core/src/clips.rs). */
+export interface Clip {
+  name: string;
+  path: string;
+  /** Octets. */
+  size: number;
+  /** Secondes depuis 1970. */
+  modified: number;
+}
+
+export interface ClipsState {
+  /** gpu-screen-recorder installé. */
+  installed: boolean;
+  /** Claviers lisibles : F8 et F9 marchent. */
+  hotkeys: boolean;
+  enabled: boolean;
+  folder: string;
+  clips: Clip[];
+}
