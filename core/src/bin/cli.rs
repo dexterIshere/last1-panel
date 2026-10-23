@@ -395,7 +395,13 @@ fn watch_game() {
         // Portable Razer : mode Gaming et ventilateurs à fond, comme Synapse.
         let battery = game_context::on_battery(sys);
         if !lifted && !battery {
-            let cpu = !power_limit::lift(sys, &power_state).is_empty();
+            // Pas plus de puissance à un processeur qui chauffait déjà à la
+            // partie d'avant : il se briderait encore plus.
+            let hot = last1_panel_core::system::sessions::recent(&logs, 1)
+                .first()
+                .and_then(|s| s.context.as_ref())
+                .is_some_and(|c| c.cpu_thermal_throttles > 0);
+            let cpu = !hot && !power_limit::lift(sys, &power_state).is_empty();
             let fans = laptop.as_ref().filter(|l| razer::writable(l)).is_some_and(|l| {
                 let before = razer::mode(l).unwrap_or(razer::BALANCED);
                 let _ = std::fs::write(&razer_state, before.to_string());

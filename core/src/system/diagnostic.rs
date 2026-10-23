@@ -1250,7 +1250,9 @@ pub fn run(src: &Sources) -> Report {
         // Ce qui règle chaque frein, le bouton d'abord.
         let mut remedies: Vec<String> = Vec::new();
         let mut fix = None;
-        let held = cpu_bound.iter().find_map(|s| {
+        // Bridé par la chaleur : plus de puissance le ferait chauffer plus.
+        let hot = contexts.iter().any(|c| c.cpu_thermal_throttles > 0);
+        let held = cpu_bound.iter().filter(|_| !hot).find_map(|s| {
             let c = s.context.as_ref()?;
             let limit = c.cpu_power_limit?;
             (s.cpu_power > 0.0 && s.cpu_power >= limit * 0.9).then_some((limit, c.cpu_power_limit_short))
@@ -1272,8 +1274,12 @@ pub fn run(src: &Sources) -> Report {
                 ));
             }
         }
-        if let Some(preference) =
-            contexts.iter().flat_map(|c| c.cpu_preferences.iter()).find(|p| p.as_str() != "performance")
+        // Une partie jamais vue en performance (le premier relevé peut
+        // tomber avant que le mode change).
+        if let Some(preference) = contexts
+            .iter()
+            .filter(|c| !c.cpu_preferences.is_empty() && !c.cpu_preferences.iter().any(|p| p == "performance"))
+            .find_map(|c| c.cpu_preferences.first())
         {
             fix = fix.or(Some(Fix::Performance));
             remedies.push(t(
@@ -2114,6 +2120,8 @@ mod tests {
                 cpu_power_limit_short: Some(90.0),
                 cpu_thermal_throttles: 12,
                 cpu_throttle_count_start: Some(3),
+                gpu_busy: None,
+                gpu_busy_samples: 0,
                 input_changes: vec!["12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e)".into()],
             }),
             details: Vec::new(),

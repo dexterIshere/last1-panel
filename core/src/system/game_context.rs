@@ -51,6 +51,11 @@ pub struct GameContext {
     /// Souris, claviers et manettes branchés ou débranchés pendant la
     /// partie, avec la minute : « 12.5 souris … débranché(e) » (20 au plus).
     pub input_changes: Vec<String>,
+    /// Charge moyenne de la carte des jeux (%) relevée par le service (pilote
+    /// ou nvidia-smi), et le nombre de relevés : la mesure de MangoHud peut
+    /// manquer (carte trop récente pour lui, mauvaise carte lue).
+    pub gpu_busy: Option<f64>,
+    pub gpu_busy_samples: u32,
 }
 
 /// Un relevé.
@@ -68,6 +73,8 @@ pub struct Sample {
     pub cpu_power_limit_short: Option<f64>,
     /// Compteurs de bridage thermique du processeur (cœurs et puce), cumulés.
     pub cpu_throttle_count: Option<u64>,
+    /// Charge de la carte des jeux (%).
+    pub gpu_busy: Option<f64>,
 }
 
 impl GameContext {
@@ -78,6 +85,11 @@ impl GameContext {
             }
         };
         self.samples += 1;
+        if let Some(busy) = sample.gpu_busy {
+            let n = f64::from(self.gpu_busy_samples);
+            self.gpu_busy = Some((self.gpu_busy.unwrap_or(0.0) * n + busy) / (n + 1.0));
+            self.gpu_busy_samples += 1;
+        }
         self.on_battery |= sample.on_battery;
         if let Some(profile) = &sample.platform_profile {
             push(&mut self.platform_profiles, profile);
@@ -203,6 +215,13 @@ pub fn sample(sys: &Path, exec: &dyn Exec, gpus: &[Gpu]) -> Sample {
     sample.cpu_throttle_count = (!counts.is_empty()).then(|| counts.iter().sum());
     match games.map(|g| (g.vendor, g.pci_slot.as_str())) {
         Some((Vendor::Nvidia, slot)) => {
+            sample.gpu_busy = exec
+                .run(
+                    "nvidia-smi",
+                    &["--query-gpu=pci.bus_id,utilization.gpu".into(), "--format=csv,noheader,nounits".into()],
+                )
+                .ok()
+                .and_then(|output| parse_nvidia_busy(&output.stdout, slot));
             if let Some((limit, max, reasons)) = nvidia_power(exec, slot) {
                 sample.gpu_power_limit = limit;
                 sample.gpu_power_limit_max = max;
@@ -213,8 +232,11 @@ pub fn sample(sys: &Path, exec: &dyn Exec, gpus: &[Gpu]) -> Sample {
                 .ok()
                 .map(|output| output.stdout.trim() == "active");
         }
-        // Carte AMD : sa limite de puissance (hwmon, en µW).
+        // Carte AMD : sa charge (amdgpu) et sa limite de puissance (hwmon,
+        // en µW).
         Some((Vendor::Amd, slot)) => {
+            sample.gpu_busy = read(&sys.join("bus/pci/devices").join(slot).join("gpu_busy_percent"))
+                .and_then(|v| v.parse::<f64>().ok());
             let hwmon = fs::read_dir(sys.join("bus/pci/devices").join(slot).join("hwmon"))
                 .into_iter()
                 .flatten()
@@ -253,6 +275,15 @@ fn nvidia_power(exec: &dyn Exec, slot: &str) -> Option<(Option<f64>, Option<f64>
             .ok()
             .filter(|output| output.success())?;
         parse_nvidia_power(&output.stdout, slot)
+    })
+}
+
+/// « 00000000:01:00.0, 97 » : la charge de la carte de `slot`.
+fn parse_nvidia_busy(stdout: &str, slot: &str) -> Option<f64> {
+    let tail = slot.split_once(':').map_or(slot, |(_, rest)| rest).to_ascii_lowercase();
+    stdout.lines().find_map(|line| {
+        let (bus, busy) = line.split_once(',')?;
+        bus.trim().to_ascii_lowercase().ends_with(&tail).then(|| busy.trim().parse().ok()).flatten()
     })
 }
 
@@ -358,6 +389,7 @@ mod tests {
                 cpu_power_limit: Some(35.0),
                 cpu_power_limit_short: Some(90.0),
                 cpu_throttle_count: Some(15),
+                gpu_busy: None,
             }
         );
         // Deux relevés : rien en double, la limite la plus haute gardée.
@@ -395,5 +427,15 @@ mod tests {
         save(&log, &context);
         assert_eq!(file_for(&log), dir.path().join("PioneerGame_2026-10-19_15-38-00.context.json"));
         assert_eq!(load(&log), Some(context));
+    }
+
+    #[test]
+    fn games_card_load_is_read_by_the_service() {
+        assert_eq!(super::parse_nvidia_busy("00000000:01:00.0, 97\n00000000:02:00.0, 3\n", "0000:01:00.0"), Some(97.0));
+        let mut context = GameContext::default();
+        context.add(&Sample { gpu_busy: Some(90.0), ..Sample::default() });
+        context.add(&Sample { gpu_busy: Some(80.0), ..Sample::default() });
+        context.add(&Sample::default());
+        assert_eq!((context.gpu_busy, context.gpu_busy_samples), (Some(85.0), 2));
     }
 }

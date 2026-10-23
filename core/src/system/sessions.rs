@@ -118,6 +118,12 @@ pub fn recent(dir: &Path, count: usize) -> Vec<GameSession> {
             let name = path.file_stem()?.to_string_lossy().into_owned();
             let mut session = summarize(&name, &fs::read_to_string(path).ok()?)?;
             session.context = game_context::load(path);
+            // MangoHud n'a pas lu la carte : la charge relevée par le service.
+            if session.limit == "?"
+                && let Some(busy) = session.context.as_ref().and_then(|c| c.gpu_busy)
+            {
+                session.limit = if busy >= 85.0 { "gpu" } else { "cpu" };
+            }
             Some(session)
         })
         .filter(|session| session.minutes >= 1.0)
@@ -263,7 +269,11 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     sorted.sort_by(f64::total_cmp);
     let at = |q: f64| sorted[((sorted.len() as f64 * q) as usize).min(sorted.len() - 1)];
     let capped = sorted.len() >= 10 && at(0.9) > 0.0 && at(0.1) / at(0.9) >= 0.92;
-    let limit = if gpu.is_empty() {
+    // Carte à 0 % avec des dizaines d'images par seconde : MangoHud ne la lit
+    // pas (carte trop récente pour lui, ou une autre carte) ; pas de limite
+    // devinée.
+    let unread = gpu_load < 5.0 && mean(&fps) > 30.0;
+    let limit = if gpu.is_empty() || (unread && !mostly_loading) {
         "?"
     } else if mostly_loading {
         "loading"
@@ -376,6 +386,18 @@ mod tests {
         assert_eq!(session.limit, "gpu");
         // Les chargements à 1 i/s ne font pas le 1 % bas.
         assert!(session.fps_one_percent_low > 50.0, "{}", session.fps_one_percent_low);
+    }
+
+    #[test]
+    fn card_read_at_zero_is_not_a_cpu_limit() {
+        // RX 9070 XT que MangoHud ne lit pas : 0 % à 250 i/s.
+        let rows: Vec<(f64, f64, f64, f64, u64)> = (0..100)
+            .map(|i| {
+                let fps = 200.0 + (i % 7) as f64 * 15.0;
+                (fps, 1000.0 / fps, 40.0, 0.0, (i as u64 + 1) * 1_200_000_000)
+            })
+            .collect();
+        assert_eq!(summarize("PioneerGame_2026-10-22_20-58-00", &log(&rows)).unwrap().limit, "?");
     }
 
     #[test]
