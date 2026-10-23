@@ -32,9 +32,6 @@ pub struct Settings {
     pub share_reports: Option<bool>,
     /// Pointeur des souris (input/pointer.rs), remis à chaque connexion.
     pub mouse: MouseSettings,
-    /// Clips des parties (clips.rs) : absent, ils sont actifs dès que
-    /// gpu-screen-recorder est installé ; faux, coupés par le joueur.
-    pub clips: Option<bool>,
 }
 
 /// Accélération et sensibilité des souris. Absentes : jamais réglées (le
@@ -57,7 +54,6 @@ impl Default for Settings {
             tray: true,
             share_reports: None,
             mouse: MouseSettings::default(),
-            clips: None,
         }
     }
 }

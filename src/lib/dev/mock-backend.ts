@@ -133,17 +133,13 @@ export function installMockBackend(): void {
     },
   ];
   let shadersFast = false;
-  // ?clips=absent : gpu-screen-recorder pas installé.
+  // ?clips=absent|arrete|hors-gtl : Vice pas installé, service arrêté, PC hors go-to-linux.
+  const clipsParam = params.get("clips");
   const clipsState = {
-    installed: params.get("clips") !== "absent",
-    hotkeys: params.get("clips") !== "absent",
-    enabled: true,
-    folder: "/home/joueur/Vidéos/Last1 Panel",
-    clips: [
-      { name: "ARC Raiders 2026-10-21 21-30-05", path: "/home/joueur/Vidéos/Last1 Panel/ARC Raiders 2026-10-21 21-30-05.mp4", size: 48_200_000, modified: 1792617005 },
-      { name: "ARC Raiders 2026-10-21 20-58-41", path: "/home/joueur/Vidéos/Last1 Panel/ARC Raiders 2026-10-21 20-58-41.mp4", size: 51_700_000, modified: 1792615121 },
-      { name: "DayZ 2026-10-20 23-12-09", path: "/home/joueur/Vidéos/Last1 Panel/DayZ 2026-10-20 23-12-09.mp4", size: 412_000_000, modified: 1792537929 },
-    ],
+    installed: clipsParam !== "absent" && clipsParam !== "hors-gtl",
+    running: clipsParam !== "arrete",
+    goToLinux: clipsParam !== "hors-gtl",
+    folder: "/home/joueur/Videos/Vice",
   };
   let sharingChoice: boolean | null = null;
   // ?shaders=1 : Steam compile les shaders de Cyberpunk 2077 (90 s).
@@ -313,17 +309,10 @@ export function installMockBackend(): void {
       await wait(200);
       return structuredClone(clipsState);
     },
-    set_clips: (args) => {
-      clipsState.enabled = args.enabled as boolean;
-    },
-    install_clips: async () => {
-      await wait(1500);
-      clipsState.installed = true;
-      clipsState.hotkeys = true;
-    },
-    open_clip: () => undefined,
-    delete_clip: (args) => {
-      clipsState.clips = clipsState.clips.filter((c) => c.path !== args.path);
+    open_clips: () => undefined,
+    start_vice: async () => {
+      await wait(600);
+      clipsState.running = true;
     },
     mouse_state: async () => {
       await wait(250);

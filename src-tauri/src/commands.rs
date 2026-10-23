@@ -321,74 +321,47 @@ pub async fn enable_lact() -> Result<()> {
     .await
 }
 
-/// Page Clips : gpu-screen-recorder, touches F8 et F9, vidéos enregistrées.
+/// Page Clips : Vice, installé, démarré ou non.
 #[tauri::command]
 pub async fn clips_state() -> Result<last1_panel_core::clips::ClipsState> {
-    blocking(|| {
-        let enabled = Settings::load().clips != Some(false);
-        Ok(last1_panel_core::clips::state(&last1_panel_core::paths::home_dir(), Path::new("/dev"), enabled))
-    })
-    .await
+    blocking(|| Ok(last1_panel_core::clips::state(&SystemExec::default(), &last1_panel_core::paths::home_dir()))).await
 }
 
-/// Clips pendant les jeux, ou plus.
+/// Ouvre Vice, son dossier de clips, go-to-linux (pour l'installer) ou sa
+/// page, hors de la fenêtre et sans l'environnement de l'AppImage.
 #[tauri::command]
-pub async fn set_clips(enabled: bool) -> Result<()> {
-    blocking(move || Settings::update(&Settings::path(), |s| s.clips = Some(enabled))).await
-}
-
-/// gpu-screen-recorder installé (pacman) et les claviers ouverts au compte
-/// connecté (règle udev « uaccess », comme Vice) pour F8 et F9.
-#[tauri::command]
-pub async fn install_clips() -> Result<()> {
-    blocking(|| {
-        if which("pacman").is_none() {
-            return Err(CoreError::message(t(
-                "Installez gpu-screen-recorder avec le gestionnaire de paquets du système, puis rouvrez cette page.",
-                "Install gpu-screen-recorder with the system's package manager, then reopen this page.",
-            )));
-        }
-        let rule = last1_panel_core::clips::UDEV_RULE;
-        let script = format!(
-            "command -v gpu-screen-recorder >/dev/null || pacman -S --needed --noconfirm gpu-screen-recorder || pacman -Syu --needed --noconfirm gpu-screen-recorder\n\
-             mkdir -p \"$(dirname {rule})\"\n\
-             echo 'KERNEL==\"event*\", SUBSYSTEM==\"input\", TAG+=\"uaccess\"' > {rule}\n\
-             udevadm control --reload\n\
-             udevadm trigger --subsystem-match=input --action=change"
-        );
-        let exec = SystemExec { timeout: Duration::from_secs(1800), ..SystemExec::default() };
-        exec.run_ok("pkexec", &["/bin/sh".into(), "-c".into(), script])?;
-        Ok(())
-    })
-    .await
-}
-
-/// Ouvre une vidéo ou le dossier des clips avec l'application du bureau.
-#[tauri::command]
-pub async fn open_clip(path: String) -> Result<()> {
+pub async fn open_clips(target: String) -> Result<()> {
     blocking(move || {
-        let folder = last1_panel_core::clips::dir(&last1_panel_core::paths::home_dir());
-        let _ = std::fs::create_dir_all(&folder);
-        if !Path::new(&path).starts_with(&folder) {
-            return Err(CoreError::message(t("Fichier hors du dossier des clips.", "File outside the clips folder.")));
-        }
-        let mut command = std::process::Command::new("xdg-open");
-        command.arg(&path).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
+        use last1_panel_core::clips;
+        let home = last1_panel_core::paths::home_dir();
+        let (program, args): (&str, Vec<String>) = match target.as_str() {
+            "vice" if which("vice-app").is_some() => ("vice-app", vec![]),
+            "vice" => ("gtk-launch", vec!["vice".into()]),
+            "folder" => {
+                let folder = clips::folder(&home);
+                let _ = std::fs::create_dir_all(&folder);
+                ("xdg-open", vec![folder.to_string_lossy().into_owned()])
+            }
+            "go-to-linux" => (clips::GO_TO_LINUX, vec![]),
+            _ => ("xdg-open", vec![clips::VICE_URL.into()]),
+        };
+        let mut command = std::process::Command::new(program);
+        command.args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
         last1_panel_core::exec::without_appimage_env(&mut command);
         command.spawn().map(|_| ()).map_err(|e| CoreError::message(e.to_string()))
     })
     .await
 }
 
+/// Démarre le service de Vice (ses touches), pour cette session et les
+/// suivantes.
 #[tauri::command]
-pub async fn delete_clip(path: String) -> Result<()> {
-    blocking(move || {
-        let folder = last1_panel_core::clips::dir(&last1_panel_core::paths::home_dir());
-        let path = Path::new(&path);
-        if path.parent() != Some(folder.as_path()) {
-            return Err(CoreError::message(t("Fichier hors du dossier des clips.", "File outside the clips folder.")));
-        }
-        std::fs::remove_file(path).map_err(|e| CoreError::message(e.to_string()))
+pub async fn start_vice() -> Result<()> {
+    blocking(|| {
+        SystemExec::default()
+            .run_ok("systemctl", &["--user".into(), "enable".into(), "--now".into(), "vice.service".into()])?;
+        Ok(())
     })
     .await
 }
