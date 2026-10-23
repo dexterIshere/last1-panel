@@ -387,3 +387,9 @@ export interface ClipsState {
   goToLinux: boolean;
   folder: string;
 }
+
+/** Nouveautés de la version installée (core/src/release_notes.rs). */
+export interface News {
+  version: string;
+  notes: string[];
+}

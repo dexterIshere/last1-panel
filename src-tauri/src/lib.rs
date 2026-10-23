@@ -78,6 +78,8 @@ pub fn run() {
             commands::sharing,
             commands::shader_precache,
             commands::speed_up_shaders,
+            commands::news,
+            commands::dismiss_news,
             commands::clips_state,
             commands::open_clips,
             commands::start_vice,

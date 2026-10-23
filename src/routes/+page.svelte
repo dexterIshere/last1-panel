@@ -2,6 +2,7 @@
   import Sidebar from "$lib/components/layout/Sidebar.svelte";
   import Callout from "$lib/components/ui/Callout.svelte";
   import Clips from "$lib/sections/Clips.svelte";
+  import NewsBanner from "$lib/components/NewsBanner.svelte";
   import Colors from "$lib/sections/Colors.svelte";
   import Display from "$lib/sections/Display.svelte";
   import Games from "$lib/sections/Games.svelte";
@@ -39,6 +40,7 @@
       <Callout kind="danger" title={t("Last1 Panel n'a pas pu lire ce PC", "Last1 Panel couldn't read this PC")}>{app.error}</Callout>
     {/if}
     {#if ready}
+      <NewsBanner />
       <ShaderBanner />
     {/if}
     <svelte:boundary>

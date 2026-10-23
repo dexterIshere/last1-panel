@@ -13,6 +13,10 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cp "$root/packaging/arch/PKGBUILD" "$work/"
 sed -i "s/^pkgver=.*/pkgver=$version/" "$work/PKGBUILD"
-git -C "$root" archive --format=tar.gz --prefix="last1-panel-$version/" -o "$work/last1-panel-$version.tar.gz" HEAD
+# Notes de mise à jour (tools/release-notes.sh), posées par la CI à la racine :
+# ajoutées aux sources, hors git.
+notes=()
+[ -f "$root/release-notes.tsv" ] && notes=(--add-file="$root/release-notes.tsv")
+git -C "$root" archive --format=tar.gz --prefix="last1-panel-$version/" "${notes[@]}" -o "$work/last1-panel-$version.tar.gz" HEAD
 (cd "$work" && PKGDEST="$(realpath "$out")" makepkg --noconfirm --syncdeps --cleanbuild)
 ls "$out"/last1-panel-*.pkg.tar.zst

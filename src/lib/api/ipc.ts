@@ -20,6 +20,7 @@ import type {
   GpuStats,
   GpuTuning,
   MouseState,
+  News,
   Output,
   OutputChange,
   SystemInfo,
@@ -88,6 +89,10 @@ export const api = {
     invoke<void>("set_mouse_hardware", { id, dpis, active, rate }),
   /** Installe libratbag (pkexec, mot de passe demandé). */
   installRatbag: () => invoke<void>("install_ratbag"),
+
+  /** Nouveautés de la version installée, pas encore fermées. */
+  news: () => invoke<News | null>("news"),
+  dismissNews: () => invoke<void>("dismiss_news"),
 
   clipsState: () => invoke<ClipsState>("clips_state"),
   /** Ouvre Vice, son dossier, go-to-linux ou la page de Vice. */

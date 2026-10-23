@@ -321,6 +321,32 @@ pub async fn enable_lact() -> Result<()> {
     .await
 }
 
+/// Nouveautés de la version installée, pas encore fermées.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewsView {
+    version: String,
+    notes: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn news() -> Result<Option<NewsView>> {
+    blocking(|| {
+        Ok(last1_panel_core::release_notes::pending(&last1_panel_core::paths::cache_dir())
+            .map(|news| NewsView { version: news.version, notes: news.notes.iter().map(|note| note.text()).collect() }))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn dismiss_news() -> Result<()> {
+    blocking(|| {
+        last1_panel_core::release_notes::dismiss(&last1_panel_core::paths::cache_dir());
+        Ok(())
+    })
+    .await
+}
+
 /// Page Clips : Vice, installé, démarré ou non.
 #[tauri::command]
 pub async fn clips_state() -> Result<last1_panel_core::clips::ClipsState> {

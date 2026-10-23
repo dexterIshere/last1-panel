@@ -15,6 +15,7 @@ pub mod i18n;
 pub mod input;
 pub mod panel;
 pub mod paths;
+pub mod release_notes;
 pub mod settings;
 pub mod system;
 pub mod tray;

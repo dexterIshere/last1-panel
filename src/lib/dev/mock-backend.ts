@@ -10,6 +10,7 @@
 //   ?page=display|mouse|gpu|games|perf   page affichée au démarrage
 //   ?lang=en              système en anglais
 //   ?maj=1                version plus récente sur last1.fun
+//   ?nouveautes=1          nouveautés d'une mise à jour
 //   ?ratbag=absent|vide   libratbag pas installé, ou aucune souris de jeu
 
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
@@ -133,6 +134,7 @@ export function installMockBackend(): void {
     },
   ];
   let shadersFast = false;
+  let newsDismissed = false;
   // ?clips=absent|arrete|hors-gtl : Vice pas installé, service arrêté, PC hors go-to-linux.
   const clipsParam = params.get("clips");
   const clipsState = {
@@ -304,6 +306,13 @@ export function installMockBackend(): void {
         readable: true,
         ...alive,
       };
+    },
+    news: () =>
+      params.get("nouveautes") && !newsDismissed
+        ? { version: "0.1.0.r95", notes: ["Votre carte graphique se libère d'un clic.", "Les portables Razer refroidissent pendant les jeux.", "La courbe de chaque partie, dans Performances."] }
+        : null,
+    dismiss_news: () => {
+      newsDismissed = true;
     },
     clips_state: async () => {
       await wait(200);

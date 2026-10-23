@@ -228,6 +228,27 @@ fn watch() -> ExitCode {
     if update::enabled() {
         std::thread::spawn(propose_updates);
     }
+    // Mis à jour depuis la dernière fois : ce qui change, en trois lignes.
+    if let Some(news) = last1_panel_core::release_notes::on_start(
+        &last1_panel_core::paths::cache_dir(),
+        last1_panel_core::release_notes::EMBEDDED,
+        update::RELEASE.unwrap_or(env!("CARGO_PKG_VERSION")),
+    ) {
+        let lines: Vec<String> = news.notes.iter().take(3).map(|note| format!("• {}", note.text())).collect();
+        let more = if news.notes.len() > 3 {
+            t("\nLa suite dans Last1 Panel.", "\nMore in Last1 Panel.")
+        } else {
+            String::new()
+        };
+        desktop::notify(&format!(
+            "{}\n{}{more}",
+            t(
+                &format!("Last1 Panel est à jour ({}) :", news.version),
+                &format!("Last1 Panel is up to date ({}):", news.version)
+            ),
+            lines.join("\n")
+        ));
+    }
     std::thread::spawn(share_reports);
     std::thread::spawn(watch_updates);
     std::thread::spawn(watch_shaders);

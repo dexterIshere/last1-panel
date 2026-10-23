@@ -43,11 +43,15 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Les notes de mise à jour viennent des messages des commits.
+          fetch-depth: 500
       - id: version
         name: Version (celle de Cargo.toml, et le numéro de la construction)
         run: echo "value=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1).r${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
       - name: AppImage
         run: |
+          tools/release-notes.sh > release-notes.tsv
           docker build --quiet --tag last1-panel-appimage packaging/appimage
           mkdir -p dist
           docker run --rm --env VERSION='${{ steps.version.outputs.value }}' \
@@ -82,10 +86,13 @@ jobs:
             meson glslang spirv-headers vulkan-headers libx11
           useradd -m builder
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 500
       - id: version
         name: Version (celle de Cargo.toml, et le numéro de la construction)
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          tools/release-notes.sh > release-notes.tsv
           echo "value=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1).r${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
       - name: Paquet
         run: |
