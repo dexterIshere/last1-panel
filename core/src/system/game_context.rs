@@ -56,6 +56,8 @@ pub struct GameContext {
     /// manquer (carte trop récente pour lui, mauvaise carte lue).
     pub gpu_busy: Option<f64>,
     pub gpu_busy_samples: u32,
+    /// Mémoire de la carte des jeux (Go).
+    pub gpu_vram_total: Option<f64>,
 }
 
 /// Un relevé.
@@ -73,8 +75,9 @@ pub struct Sample {
     pub cpu_power_limit_short: Option<f64>,
     /// Compteurs de bridage thermique du processeur (cœurs et puce), cumulés.
     pub cpu_throttle_count: Option<u64>,
-    /// Charge de la carte des jeux (%).
+    /// Charge de la carte des jeux (%) et sa mémoire (Go).
     pub gpu_busy: Option<f64>,
+    pub gpu_vram_total: Option<f64>,
 }
 
 impl GameContext {
@@ -85,6 +88,7 @@ impl GameContext {
             }
         };
         self.samples += 1;
+        self.gpu_vram_total = sample.gpu_vram_total.or(self.gpu_vram_total);
         if let Some(busy) = sample.gpu_busy {
             let n = f64::from(self.gpu_busy_samples);
             self.gpu_busy = Some((self.gpu_busy.unwrap_or(0.0) * n + busy) / (n + 1.0));
@@ -215,13 +219,18 @@ pub fn sample(sys: &Path, exec: &dyn Exec, gpus: &[Gpu]) -> Sample {
     sample.cpu_throttle_count = (!counts.is_empty()).then(|| counts.iter().sum());
     match games.map(|g| (g.vendor, g.pci_slot.as_str())) {
         Some((Vendor::Nvidia, slot)) => {
-            sample.gpu_busy = exec
+            let busy = exec
                 .run(
                     "nvidia-smi",
-                    &["--query-gpu=pci.bus_id,utilization.gpu".into(), "--format=csv,noheader,nounits".into()],
+                    &[
+                        "--query-gpu=pci.bus_id,utilization.gpu,memory.total".into(),
+                        "--format=csv,noheader,nounits".into(),
+                    ],
                 )
                 .ok()
                 .and_then(|output| parse_nvidia_busy(&output.stdout, slot));
+            sample.gpu_busy = busy.map(|(busy, _)| busy);
+            sample.gpu_vram_total = busy.and_then(|(_, mib)| mib).map(|mib| (mib / 102.4).round() / 10.0);
             if let Some((limit, max, reasons)) = nvidia_power(exec, slot) {
                 sample.gpu_power_limit = limit;
                 sample.gpu_power_limit_max = max;
@@ -237,6 +246,9 @@ pub fn sample(sys: &Path, exec: &dyn Exec, gpus: &[Gpu]) -> Sample {
         Some((Vendor::Amd, slot)) => {
             sample.gpu_busy = read(&sys.join("bus/pci/devices").join(slot).join("gpu_busy_percent"))
                 .and_then(|v| v.parse::<f64>().ok());
+            sample.gpu_vram_total = read(&sys.join("bus/pci/devices").join(slot).join("mem_info_vram_total"))
+                .and_then(|v| v.parse::<f64>().ok())
+                .map(|bytes| (bytes / 1e8 / 1.073_741_824).round() / 10.0);
             let hwmon = fs::read_dir(sys.join("bus/pci/devices").join(slot).join("hwmon"))
                 .into_iter()
                 .flatten()
@@ -278,12 +290,16 @@ fn nvidia_power(exec: &dyn Exec, slot: &str) -> Option<(Option<f64>, Option<f64>
     })
 }
 
-/// « 00000000:01:00.0, 97 » : la charge de la carte de `slot`.
-fn parse_nvidia_busy(stdout: &str, slot: &str) -> Option<f64> {
+/// « 00000000:01:00.0, 97, 8192 » : la charge de la carte de `slot` (%) et
+/// sa mémoire (Mio).
+fn parse_nvidia_busy(stdout: &str, slot: &str) -> Option<(f64, Option<f64>)> {
     let tail = slot.split_once(':').map_or(slot, |(_, rest)| rest).to_ascii_lowercase();
     stdout.lines().find_map(|line| {
-        let (bus, busy) = line.split_once(',')?;
-        bus.trim().to_ascii_lowercase().ends_with(&tail).then(|| busy.trim().parse().ok()).flatten()
+        let fields: Vec<&str> = line.split(',').map(str::trim).collect();
+        if !fields.first()?.to_ascii_lowercase().ends_with(&tail) {
+            return None;
+        }
+        Some((fields.get(1)?.parse().ok()?, fields.get(2).and_then(|v| v.parse().ok())))
     })
 }
 
@@ -369,6 +385,11 @@ mod tests {
         write(sys.join("devices/system/cpu/cpu1/thermal_throttle/core_throttle_count"), "2\n");
         let exec = FakeExec::new()
             .on("nvidia-smi", "00000000:01:00.0, 60.00, 140.00, 0x0000000000000084\n")
+            .on_args(
+                "nvidia-smi",
+                &["--query-gpu=pci.bus_id,utilization.gpu,memory.total", "--format=csv,noheader,nounits"],
+                crate::exec::Output { status: 0, stdout: "00000000:01:00.0, 97, 8192\n".into(), stderr: String::new() },
+            )
             .on("systemctl", "inactive\n");
         let gpus = [
             gpu(Vendor::Intel, "0000:00:02.0", true, true, false),
@@ -389,7 +410,8 @@ mod tests {
                 cpu_power_limit: Some(35.0),
                 cpu_power_limit_short: Some(90.0),
                 cpu_throttle_count: Some(15),
-                gpu_busy: None,
+                gpu_busy: Some(97.0),
+                gpu_vram_total: Some(8.0),
             }
         );
         // Deux relevés : rien en double, la limite la plus haute gardée.
@@ -431,7 +453,10 @@ mod tests {
 
     #[test]
     fn games_card_load_is_read_by_the_service() {
-        assert_eq!(super::parse_nvidia_busy("00000000:01:00.0, 97\n00000000:02:00.0, 3\n", "0000:01:00.0"), Some(97.0));
+        assert_eq!(
+            super::parse_nvidia_busy("00000000:01:00.0, 97, 8192\n00000000:02:00.0, 3, 4096\n", "0000:01:00.0"),
+            Some((97.0, Some(8192.0)))
+        );
         let mut context = GameContext::default();
         context.add(&Sample { gpu_busy: Some(90.0), ..Sample::default() });
         context.add(&Sample { gpu_busy: Some(80.0), ..Sample::default() });

@@ -560,7 +560,28 @@ fn last_launch(file: &Path, logs: &Path, steam: Option<&Path>) -> Option<crate::
         seconds: std::time::SystemTime::now().duration_since(launched).unwrap_or_default().as_secs(),
         measured: text.lines().any(|line| line.starts_with("MANGOHUD_CONFIG=") && line.contains("autostart_log=1")),
         logged,
+        shader_cache_mb: steam.zip(app_id).map(|(root, id)| {
+            let bytes: u64 = crate::games::steam::libraries(root)
+                .iter()
+                .map(|library| dir_size(&library.join("steamapps/shadercache").join(id.to_string())))
+                .sum();
+            bytes / 1_000_000
+        }),
     })
+}
+
+/// Taille d'un dossier et de tout ce qu'il contient (octets).
+fn dir_size(dir: &Path) -> u64 {
+    fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| match entry.file_type() {
+            Ok(kind) if kind.is_dir() => dir_size(&entry.path()),
+            Ok(_) => entry.metadata().map_or(0, |m| m.len()),
+            Err(_) => 0,
+        })
+        .sum()
 }
 
 /// Rang de la carte parmi les cartes NVIDIA (variable NVIDIA_GPU de nvibrant).

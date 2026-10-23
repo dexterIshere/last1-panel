@@ -49,6 +49,16 @@ pub struct GameSession {
     pub details: Vec<String>,
     /// La partie au fil du temps (60 points au plus), pour la courbe.
     pub timeline: Vec<Point>,
+    /// Saccades : relevés (toutes les 100 ms) dont l'image a pris plus de
+    /// 50 ms, plus de 100 ms, et les minutes des plus longues (20 au plus).
+    pub spikes_50: u32,
+    pub spikes_100: u32,
+    pub spike_minutes: Vec<f64>,
+    /// Mémoire de la carte, mémoire vive et échange (zram compris) les plus
+    /// hautes pendant la partie (Go ; 0 : inconnues).
+    pub vram_max: f64,
+    pub ram_max: f64,
+    pub swap_max: f64,
 }
 
 /// Un moment de la partie : moyenne d'une tranche du journal.
@@ -174,6 +184,9 @@ struct Row {
     gpu_temp: Option<f64>,
     cpu_temp: Option<f64>,
     cpu_mhz: Option<f64>,
+    vram: Option<f64>,
+    ram: Option<f64>,
+    swap: Option<f64>,
 }
 
 impl Row {
@@ -232,6 +245,9 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
             gpu_temp: known(column("gpu_temp")),
             cpu_temp: known(column("cpu_temp")),
             cpu_mhz: known(column("cpu_mhz")),
+            vram: known(column("gpu_vram_used")),
+            ram: known(column("ram_used")),
+            swap: at(column("swap_used")),
         });
         if let Some(e) = at(elapsed_col) {
             elapsed_ns = elapsed_ns.max(e);
@@ -292,7 +308,24 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         None => (name.to_string(), String::new()),
     };
     let round = |v: f64| (v * 10.0).round() / 10.0;
+    // Saccades pendant le jeu (pas les chargements).
+    let spikes = |ms: f64| used.iter().filter(|row| row.frametime > ms).count() as u32;
+    let mut spike_minutes: Vec<f64> = used
+        .iter()
+        .filter(|row| row.frametime > 100.0)
+        .filter_map(|row| row.at)
+        .map(|at| (at / 6e9).round() / 10.0)
+        .collect();
+    spike_minutes.dedup();
+    spike_minutes.truncate(20);
+    let peak = |f: fn(&Row) -> Option<f64>| round(used.iter().filter_map(|row| f(row)).fold(0.0_f64, f64::max));
     Some(GameSession {
+        spikes_50: spikes(50.0),
+        spikes_100: spikes(100.0),
+        spike_minutes,
+        vram_max: peak(|row| row.vram),
+        ram_max: peak(|row| row.ram),
+        swap_max: peak(|row| row.swap),
         program,
         started,
         minutes: round(elapsed_ns / 60e9),

@@ -337,6 +337,9 @@ pub struct LastLaunch {
     pub measured: bool,
     /// Un journal de MangoHud a été écrit depuis (il l'écrit pendant la partie).
     pub logged: bool,
+    /// Cache des shaders de ce jeu dans Steam (shadercache/<appid> :
+    /// Fossilize, DXVK, VKD3D-Proton, pilote), en Mo.
+    pub shader_cache_mb: Option<u64>,
 }
 
 /// « il y a 5 min ».
@@ -452,6 +455,9 @@ pub fn run(src: &Sources) -> Report {
                 .map(|last| format!("{}, {}", last.name, ago(last.seconds)))
                 .unwrap_or_else(|| t("aucun pour l'instant", "none yet")),
         ));
+    }
+    if let Some(mb) = src.last_launch.as_ref().and_then(|last| last.shader_cache_mb) {
+        facts.push((t("Cache des shaders du dernier jeu", "Last game's shader cache"), format!("{mb} Mo")));
     }
 
     // Mode d'énergie : « performance » en permanence (PC fixe installé par
@@ -1564,6 +1570,29 @@ fn session_details(s: &GameSession) -> Vec<String> {
     if s.cpu_power > 0.0 {
         details.push(t(&format!("processeur {} W", s.cpu_power), &format!("CPU {} W", s.cpu_power)));
     }
+    if s.spikes_50 > 0 {
+        let at: Vec<String> = s.spike_minutes.iter().take(6).map(|m| m.to_string()).collect();
+        let at = if at.is_empty() { String::new() } else { format!(" ({} min)", at.join(", ")) };
+        details.push(t(
+            &format!("{} à-coups de plus de 50 ms, {} de plus de 100 ms{at}", s.spikes_50, s.spikes_100),
+            &format!("{} hitches over 50 ms, {} over 100 ms{at}", s.spikes_50, s.spikes_100),
+        ));
+    }
+    let vram_total = s.context.as_ref().and_then(|c| c.gpu_vram_total);
+    if s.vram_max > 0.0 {
+        let of = vram_total.map(|total| format!(" sur {total}")).unwrap_or_default();
+        let of_en = vram_total.map(|total| format!(" of {total}")).unwrap_or_default();
+        details.push(t(
+            &format!("mémoire de la carte jusqu'à {} Go{of}", s.vram_max),
+            &format!("card memory up to {} GB{of_en}", s.vram_max),
+        ));
+    }
+    if s.ram_max > 0.0 {
+        details.push(t(
+            &format!("mémoire vive jusqu'à {} Go, échange {} Go", s.ram_max, s.swap_max),
+            &format!("RAM up to {} GB, swap {} GB", s.ram_max, s.swap_max),
+        ));
+    }
     let Some(c) = &s.context else { return details };
     if c.on_battery {
         details.push(t("sur batterie", "on battery"));
@@ -1896,6 +1925,7 @@ mod tests {
                 seconds: 3 * 3600,
                 measured: true,
                 logged: true,
+                shader_cache_mb: Some(1840),
             }),
             version: "0.1.0.r56".into(),
             go_to_linux_version: None,
@@ -1926,15 +1956,26 @@ mod tests {
         assert!(report.checks.iter().all(|c| c.level == Level::Ok), "{:#?}", report.checks);
         assert!(report.checks.iter().any(|c| c.id == "rebar" && c.detail.contains("16384")));
         assert!(report.text.contains("Cyberpunk 2077, il y a 3 h"), "{}", report.text);
+        assert!(report.text.contains("Cache des shaders du dernier jeu : 1840 Mo"), "{}", report.text);
         // Lancé par Last1 Panel il y a 5 min, sans journal de MangoHud : dit.
-        sources.last_launch =
-            Some(LastLaunch { name: "ARC Raiders".into(), seconds: 300, measured: true, logged: false });
+        sources.last_launch = Some(LastLaunch {
+            name: "ARC Raiders".into(),
+            seconds: 300,
+            measured: true,
+            logged: false,
+            shader_cache_mb: None,
+        });
         let measure = run(&sources).checks.into_iter().find(|c| c.id == "measure").unwrap();
         assert_eq!(measure.level, Level::Warning);
         assert!(measure.detail.contains("ARC Raiders") && measure.detail.contains("il y a 5 min"));
         // Le jeu vient de démarrer : pas encore d'alerte.
-        sources.last_launch =
-            Some(LastLaunch { name: "ARC Raiders".into(), seconds: 30, measured: true, logged: false });
+        sources.last_launch = Some(LastLaunch {
+            name: "ARC Raiders".into(),
+            seconds: 30,
+            measured: true,
+            logged: false,
+            shader_cache_mb: None,
+        });
         assert!(run(&sources).checks.iter().all(|c| c.level == Level::Ok));
     }
 
@@ -2122,10 +2163,12 @@ mod tests {
                 cpu_throttle_count_start: Some(3),
                 gpu_busy: None,
                 gpu_busy_samples: 0,
+                gpu_vram_total: None,
                 input_changes: vec!["12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e)".into()],
             }),
             details: Vec::new(),
             timeline: Vec::new(),
+            ..GameSession::default()
         };
         let line = session_details(&session).join(" ; ");
         assert_eq!(
