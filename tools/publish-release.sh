@@ -13,7 +13,9 @@
 #
 # Variable SITE_URL : adresse du site (https://last1.fun par défaut). Au-delà de
 # PUBLISH_CHUNK_MIB Mio (90), un fichier est envoyé par morceaux : le proxy de
-# Cloudflare refuse les envois de plus de 100 Mo.
+# Cloudflare refuse les envois de plus de 100 Mo. Le site redémarre à chaque
+# mise à jour (30 à 90 s sans réponse : 502, 503) : chaque envoi est retenté
+# 6 fois, à 15 s d'écart (la publication d'un même fichier est idempotente).
 # La copie de ce script dans les autres dépôts doit rester identique.
 set -euo pipefail
 
@@ -51,7 +53,7 @@ trap 'rm -rf "$work"' EXIT
 # put <url> <fichier> <empreinte> : envoie un fichier ou un morceau, renvoie le
 # code HTTP (réponse dans $work/reponse).
 put() {
-  curl -sS --retry 3 --retry-connrefused --max-time 900 -o "$work/reponse" -w '%{http_code}' -X PUT \
+  curl -sS --retry 6 --retry-delay 15 --retry-connrefused --max-time 900 -o "$work/reponse" -w '%{http_code}' -X PUT \
     -H "Authorization: Bearer $(oidc)" -H "X-Commit-SHA: $commit" -H "X-Content-SHA256: $3" -H 'Content-Type: application/octet-stream' \
     --data-binary "@$2" "$1"
 }
@@ -84,6 +86,6 @@ for entry in "$@"; do
   [ "$code" = 201 ] || { echo "::error::$name refusé par $site (HTTP $code)" >&2; exit 1; }
 done
 
-curl --fail-with-body -sS --retry 3 --retry-connrefused --max-time 60 -X POST \
+curl --fail-with-body -sS --retry 6 --retry-delay 15 --retry-connrefused --max-time 60 -X POST \
   -H "Authorization: Bearer $(oidc)" -H "X-Commit-SHA: $commit" "$site/api/publish/$product/$version/release" | jq .
 echo "$product $version en ligne sur $site"
