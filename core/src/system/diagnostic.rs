@@ -69,6 +69,9 @@ pub enum Fix {
     /// Carte des jeux à sa puissance maximale, gardée par LACT (installé et
     /// démarré s'il le faut).
     GpuPowerMax,
+    /// Contrôleur des portables Razer ouvert au compte du joueur : mode
+    /// Gaming et ventilateurs à fond pendant les jeux (razer.rs).
+    RazerCooling,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1285,7 +1288,23 @@ pub fn run(src: &Sources) -> Report {
             ));
         }
         let throttles: u64 = contexts.iter().map(|c| c.cpu_thermal_throttles).sum();
-        if throttles > 0 {
+        let razer = crate::system::razer::find(src.sys, src.dev);
+        if throttles > 0
+            && let Some(laptop) = &razer
+        {
+            if crate::system::razer::writable(laptop) {
+                remedies.push(t(
+                    "C'est réglé : pendant les jeux, Last1 Panel met le Razer en mode Gaming, ventilateurs à fond, comme Synapse sous Windows.",
+                    "Done: during games, Last1 Panel sets the Razer to Gaming mode, fans at full speed, like Synapse on Windows.",
+                ));
+            } else {
+                fix = Some(Fix::RazerCooling);
+                remedies.push(t(
+                    &format!("Il chauffe trop et ralentit ({throttles} fois) : sous Linux, le Razer garde ses ventilateurs au calme. Un clic les fait tourner à fond pendant les jeux, en mode Gaming, comme Synapse sous Windows."),
+                    &format!("It runs too hot and slows down ({throttles} times): on Linux, the Razer keeps its fans quiet. One click runs them at full speed during games, in Gaming mode, like Synapse on Windows."),
+                ));
+            }
+        } else if throttles > 0 {
             remedies.push(t(
                 &format!("Il chauffe trop et ralentit ({throttles} fois) : surélevez l'arrière du portable et dégagez ses aérations."),
                 &format!("It runs too hot and slows down ({throttles} times): raise the back of the laptop and clear its vents."),

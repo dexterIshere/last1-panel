@@ -357,6 +357,19 @@ fn watch_game() {
     let power_state = last1_panel_core::paths::power_limit_file();
     // Service arrêté pendant une partie : les limites d'avant reviennent.
     power_limit::restore(&power_state);
+    use last1_panel_core::system::razer;
+    let razer_state = last1_panel_core::paths::razer_mode_file();
+    let laptop = razer::find(sys, std::path::Path::new("/dev"));
+    // Le mode d'avant, si le service s'est arrêté pendant une partie.
+    let razer_restore = |laptop: &Option<razer::Laptop>| {
+        if let (Some(laptop), Ok(text)) = (laptop, std::fs::read_to_string(&razer_state)) {
+            let mode = text.trim().parse().unwrap_or(razer::BALANCED);
+            if razer::restore(laptop, mode).is_ok() {
+                let _ = std::fs::remove_file(&razer_state);
+            }
+        }
+    };
+    razer_restore(&laptop);
     use last1_panel_core::system::input_devices;
     let proc_dir = std::path::Path::new("/proc");
     let mut devices = input_devices::detect(proc_dir);
@@ -372,17 +385,26 @@ fn watch_game() {
             playing = false;
             if lifted {
                 power_limit::restore(&power_state);
+                razer_restore(&laptop);
                 lifted = false;
             }
             continue;
         }
         // Processeur à pleine puissance le temps du jeu, sur secteur
         // (system/power_limit.rs) ; rendue s'il passe sur batterie.
+        // Portable Razer : mode Gaming et ventilateurs à fond, comme Synapse.
         let battery = game_context::on_battery(sys);
         if !lifted && !battery {
-            lifted = !power_limit::lift(sys, &power_state).is_empty();
+            let cpu = !power_limit::lift(sys, &power_state).is_empty();
+            let fans = laptop.as_ref().filter(|l| razer::writable(l)).is_some_and(|l| {
+                let before = razer::mode(l).unwrap_or(razer::BALANCED);
+                let _ = std::fs::write(&razer_state, before.to_string());
+                razer::gaming(l).is_ok()
+            });
+            lifted = cpu || fans;
         } else if lifted && battery {
             power_limit::restore(&power_state);
+            razer_restore(&laptop);
             lifted = false;
         }
         if !playing {

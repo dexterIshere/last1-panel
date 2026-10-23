@@ -226,6 +226,11 @@ systemd-tmpfiles --create "$conf""#
                 "command -v lact >/dev/null || pacman -S --needed --noconfirm lact || pacman -Syu --needed --noconfirm lact\nsystemctl enable --now lactd.service".to_string(),
             ),
             Fix::GpuPowerMax => parts.push("systemctl enable --now lactd.service".to_string()),
+            // Contrôleur des portables Razer (hidraw) au compte connecté.
+            Fix::RazerCooling => parts.push(format!(
+                "mkdir -p {etc}/udev/rules.d\ncat > {etc}/udev/rules.d/70-last1-panel-razer.rules <<'RULES'\n{}RULES\nudevadm control --reload\nudevadm trigger --subsystem-match=hidraw --action=change\nudevadm settle || true",
+                crate::system::razer::udev_rule()
+            )),
             Fix::Performance | Fix::LowLatency | Fix::WrapGames | Fix::Restart | Fix::SystemUpdate => {}
         }
     }
@@ -243,11 +248,12 @@ mod tests {
     use std::fs;
     use std::process::Command;
 
-    const ALL: [Fix; 17] = [
+    const ALL: [Fix; 18] = [
         Fix::GameMode,
         Fix::PanelSelfRefresh,
         Fix::CpuPowerLimit,
         Fix::GpuPowerMax,
+        Fix::RazerCooling,
         Fix::Performance,
         Fix::Ntsync,
         Fix::ShaderCache,
@@ -293,6 +299,8 @@ mod tests {
             "/etc/tmpfiles.d/last1-panel-power-limit.conf",
             "systemd-tmpfiles --create",
             "systemctl enable --now lactd.service",
+            "/etc/udev/rules.d/70-last1-panel-razer.rules",
+            "udevadm trigger --subsystem-match=hidraw",
             "mkinitcpio -P",
         ] {
             assert!(script.contains(expected), "{expected}\n{script}");

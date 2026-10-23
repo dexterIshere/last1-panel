@@ -564,6 +564,12 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
                 "Compressed memory on: background programs stay in memory, even after a restart.",
             ));
         }
+        if fixes.contains(&Fix::RazerCooling) {
+            notices.push(t(
+                "Ventilateurs du Razer à fond pendant les jeux, dès la prochaine partie, chargeur branché.",
+                "Razer fans at full speed during games, from the next game, charger plugged in.",
+            ));
+        }
         if fixes.contains(&Fix::GpuPowerMax) {
             notices.push(t(
                 "Carte graphique à sa puissance maximale, gardée à chaque démarrage (page Carte graphique pour la changer).",

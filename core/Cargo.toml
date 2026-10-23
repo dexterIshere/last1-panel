@@ -36,6 +36,8 @@ base64 = "0.22"
 # image de secours si le thème d'icônes n'a pas la nôtre.
 ksni = { version = "0.3", features = ["blocking"] }
 png = "0.18"
+# ioctl des rapports HID du contrôleur des portables Razer (system/razer.rs).
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

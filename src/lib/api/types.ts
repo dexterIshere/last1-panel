@@ -221,7 +221,8 @@ export type PerfFix =
   | "game-mode"
   | "panel-self-refresh"
   | "cpu-power-limit"
-  | "gpu-power-max";
+  | "gpu-power-max"
+  | "razer-cooling";
 
 export interface PerfCheck {
   id: string;

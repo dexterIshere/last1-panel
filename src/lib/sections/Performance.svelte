@@ -103,6 +103,7 @@
       "panel-self-refresh": t("Couper le Panel Self Refresh", "Turn off Panel Self Refresh"),
       "cpu-power-limit": t("Libérer le processeur", "Unlock the CPU"),
       "gpu-power-max": t("Libérer la carte", "Unlock the card"),
+      "razer-cooling": t("Refroidir en jeu", "Cool down in games"),
     })[kind];
   const icon = (check: PerfCheck) => ({ problem: CircleAlert, warning: TriangleAlert, info: Info, ok: Check })[check.level];
 </script>

@@ -39,6 +39,11 @@ pub fn power_limit_file() -> PathBuf {
     cache_dir().join("power-limit.txt")
 }
 
+/// Mode du contrôleur Razer d'avant la partie (system/razer.rs).
+pub fn razer_mode_file() -> PathBuf {
+    cache_dir().join("razer-mode.txt")
+}
+
 pub fn pcie_in_game_file() -> PathBuf {
     cache_dir().join("pcie-in-game.txt")
 }
