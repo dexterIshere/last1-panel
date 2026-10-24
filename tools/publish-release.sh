@@ -53,7 +53,7 @@ trap 'rm -rf "$work"' EXIT
 # put <url> <fichier> <empreinte> : envoie un fichier ou un morceau, renvoie le
 # code HTTP (réponse dans $work/reponse).
 put() {
-  curl -sS --retry 6 --retry-delay 15 --retry-connrefused --max-time 900 -o "$work/reponse" -w '%{http_code}' -X PUT \
+  curl -sS --http1.1 --retry 6 --retry-delay 15 --retry-all-errors --max-time 900 -o "$work/reponse" -w '%{http_code}' -X PUT \
     -H "Authorization: Bearer $(oidc)" -H "X-Commit-SHA: $commit" -H "X-Content-SHA256: $3" -H 'Content-Type: application/octet-stream' \
     --data-binary "@$2" "$1"
 }
@@ -86,6 +86,6 @@ for entry in "$@"; do
   [ "$code" = 201 ] || { echo "::error::$name refusé par $site (HTTP $code)" >&2; exit 1; }
 done
 
-curl --fail-with-body -sS --retry 6 --retry-delay 15 --retry-connrefused --max-time 60 -X POST \
+curl --fail-with-body -sS --retry 6 --retry-delay 15 --retry-all-errors --max-time 60 -X POST \
   -H "Authorization: Bearer $(oidc)" -H "X-Commit-SHA: $commit" "$site/api/publish/$product/$version/release" | jq .
 echo "$product $version en ligne sur $site"
