@@ -58,6 +58,9 @@ pub struct GameContext {
     pub gpu_busy_samples: u32,
     /// Mémoire de la carte des jeux (Go).
     pub gpu_vram_total: Option<f64>,
+    /// Portable Razer : ce que dit son contrôleur pendant la partie
+    /// (razer::state), ou pourquoi il refuse le réglage de jeu.
+    pub razer: Option<String>,
 }
 
 /// Un relevé.

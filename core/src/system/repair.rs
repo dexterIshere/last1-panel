@@ -168,8 +168,10 @@ fi"#
                 )));
             }
             // Mémoire compressée, comme CachyOS (zram de la taille de la RAM,
-            // zstd, avant l'échange sur disque) ; la configuration de
-            // zram-generator déjà là est gardée. Le service de préparation ne
+            // zstd, avant l'échange sur disque) : un complément de
+            // configuration à nous fixe la taille, même si une zram plus
+            // petite était configurée ; refaite tout de suite si la mémoire
+            // libre peut reprendre ce qu'elle contient, sinon au redémarrage. Le service de préparation ne
             // fait que créer le périphérique : c'est dev-zram0.swap qui le met
             // en service (swapon). Vérifié à la fin : sinon, une erreur.
             Fix::Zram => {
@@ -182,10 +184,15 @@ fi"#
                 parts.push(format!(
                     r#"if [ ! -e {ZRAM_GENERATOR} ]; then pacman -S --needed --noconfirm zram-generator || pacman -Syu --needed --noconfirm zram-generator; fi
 if [ ! -e {etc}/systemd/zram-generator.conf ]; then mkdir -p {etc}/systemd; printf '%s\n' '[zram0]' 'zram-size = ram' 'compression-algorithm = zstd' 'swap-priority = 100' > {etc}/systemd/zram-generator.conf; fi
+mkdir -p {etc}/systemd/zram-generator.conf.d
+printf '%s\n' '[zram0]' 'zram-size = ram' 'compression-algorithm = zstd' 'swap-priority = 100' > {etc}/systemd/zram-generator.conf.d/99-last1-panel.conf
 mkdir -p {etc}/sysctl.d
 printf '%s\n' 'vm.swappiness = 150' 'vm.page-cluster = 0' > {etc}/sysctl.d/99-last1-panel-zram.conf
 sysctl -q -p {etc}/sysctl.d/99-last1-panel-zram.conf
 systemctl daemon-reload
+size=$(awk '$1=="/dev/zram0"{{print $3}}' /proc/swaps); used=$(awk '$1=="/dev/zram0"{{print $4}}' /proc/swaps)
+total=$(awk '/^MemTotal/{{print $2}}' /proc/meminfo); avail=$(awk '/^MemAvailable/{{print $2}}' /proc/meminfo)
+if [ -n "$size" ] && [ "$size" -lt $((total / 2)) ] && [ "$used" -lt "$avail" ]; then swapoff /dev/zram0 && systemctl restart systemd-zram-setup@zram0.service || true; fi
 systemctl start dev-zram0.swap || systemctl start swap.target
 if ! grep -q '^/dev/zram' /proc/swaps; then echo "zram ne s'est pas activé (zramctl, journalctl -b -u systemd-zram-setup@zram0)" >&2; exit 1; fi"#
                 ));

@@ -53,6 +53,10 @@ pub struct GameSession {
     /// 50 ms, plus de 100 ms, et les minutes des plus longues (20 au plus).
     pub spikes_50: u32,
     pub spikes_100: u32,
+    /// Relevés dont l'image a pris de 25 à 50 ms (le jeu tombe sous 40 i/s
+    /// sans pic isolé), et le 0,1 % des images les plus lentes (i/s).
+    pub frames_25_50: u32,
+    pub fps_point_one_low: f64,
     pub spike_minutes: Vec<f64>,
     /// Mémoire de la carte, mémoire vive et échange (zram compris) les plus
     /// hautes pendant la partie (Go ; 0 : inconnues).
@@ -319,7 +323,10 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     spike_minutes.dedup();
     spike_minutes.truncate(20);
     let peak = |f: fn(&Row) -> Option<f64>| round(used.iter().filter_map(|row| f(row)).fold(0.0_f64, f64::max));
+    let p999 = frametimes[((frametimes.len() as f64 * 0.999) as usize).min(frametimes.len() - 1)];
     Some(GameSession {
+        frames_25_50: used.iter().filter(|row| (25.0..50.0).contains(&row.frametime)).count() as u32,
+        fps_point_one_low: round(1000.0 / p999),
         spikes_50: spikes(50.0),
         spikes_100: spikes(100.0),
         spike_minutes,

@@ -398,12 +398,14 @@ fn watch_game() {
     let mut playing = false;
     let mut lifted = false;
     let mut tick: u32 = 0;
+    let mut razer_error: Option<String> = None;
     // Par carte : la plus large, la plus rapide.
     let mut best: std::collections::BTreeMap<String, (u32, Option<f64>)> = std::collections::BTreeMap::new();
     loop {
         std::thread::sleep(Duration::from_secs(20));
         if !steam::game_running(std::path::Path::new("/proc")) {
             playing = false;
+            razer_error = None;
             if lifted {
                 power_limit::restore(&power_state);
                 razer_restore(&laptop);
@@ -413,7 +415,8 @@ fn watch_game() {
         }
         // Processeur à pleine puissance le temps du jeu, sur secteur
         // (system/power_limit.rs) ; rendue s'il passe sur batterie.
-        // Portable Razer : mode Gaming et ventilateurs à fond, comme Synapse.
+        // Portable Razer : processeur Boost, carte Haut, ventilateurs à fond,
+        // comme Synapse.
         let battery = game_context::on_battery(sys);
         if !lifted && !battery {
             // Pas plus de puissance à un processeur qui chauffait déjà à la
@@ -426,7 +429,13 @@ fn watch_game() {
             let fans = laptop.as_ref().filter(|l| razer::writable(l)).is_some_and(|l| {
                 let before = razer::mode(l).unwrap_or(razer::BALANCED);
                 let _ = std::fs::write(&razer_state, before.to_string());
-                razer::gaming(l).is_ok()
+                match razer::boost(l) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        razer_error = Some(e.to_string());
+                        false
+                    }
+                }
             });
             lifted = cpu || fans;
         } else if lifted && battery {
@@ -487,6 +496,13 @@ fn watch_game() {
         {
             let mut context = game_context::load(&log).unwrap_or_default();
             context.add(&game_context::sample(sys, &exec, &gpus));
+            if let Some(l) = laptop.as_ref().filter(|_| !battery) {
+                context.razer = Some(match (&razer_error, razer::state(l)) {
+                    (Some(e), _) => format!("refusé : {e}"),
+                    (None, Ok(state)) => state,
+                    (None, Err(e)) => format!("illisible : {e}"),
+                });
+            }
             game_context::save(&log, &context);
         }
     }

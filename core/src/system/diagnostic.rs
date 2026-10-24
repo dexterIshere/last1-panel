@@ -70,7 +70,7 @@ pub enum Fix {
     /// démarré s'il le faut).
     GpuPowerMax,
     /// Contrôleur des portables Razer ouvert au compte du joueur : mode
-    /// Gaming et ventilateurs à fond pendant les jeux (razer.rs).
+    /// Boost et ventilateurs à fond pendant les jeux (razer.rs).
     RazerCooling,
 }
 
@@ -1210,24 +1210,60 @@ pub fn run(src: &Sources) -> Report {
     // Mémoire d'échange : zram (mémoire compressée, en RAM : CachyOS y range
     // exprès les pages froides pour laisser la RAM au jeu) ou disque.
     // /proc/swaps, en Kio : nom, type, taille, utilisé, priorité.
-    let (mut zram_kib, mut disk_kib, mut zram_on) = (0u64, 0u64, false);
+    let (mut zram_kib, mut disk_kib, mut zram_on, mut zram_size) = (0u64, 0u64, false, 0u64);
+    let mut swaps: Vec<String> = Vec::new();
     for line in read(&src.proc_dir.join("swaps")).unwrap_or_default().lines().skip(1) {
         let fields: Vec<&str> = line.split_whitespace().collect();
         let used = fields.get(3).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
-        if fields.first().is_some_and(|name| name.starts_with("/dev/zram")) {
+        let size = fields.get(2).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+        let name = fields.first().copied().unwrap_or_default();
+        if name.starts_with("/dev/zram") {
             zram_on = true;
             zram_kib += used;
+            zram_size += size;
+            swaps.push(format!("zram {} Go", (size + 524_288) / 1_048_576));
         } else {
             disk_kib += used;
+            swaps.push(t(
+                &format!("{name} {} Go (disque)", (size + 524_288) / 1_048_576),
+                &format!("{name} {} GB (disk)", (size + 524_288) / 1_048_576),
+            ));
         }
     }
+    if !swaps.is_empty() {
+        let swappiness = read(&src.proc_dir.join("sys/vm/swappiness")).unwrap_or_else(|| "?".into());
+        facts.push((t("Échange", "Swap"), format!("{} ; vm.swappiness {swappiness}", swaps.join(" ; "))));
+    }
+    let mem_total = read(&src.proc_dir.join("meminfo")).and_then(|m| {
+        m.lines().find_map(|l| l.strip_prefix("MemTotal:")?.split_whitespace().next()?.parse::<u64>().ok())
+    });
     let gib = |kib: u64| (kib + 524_288) / 1_048_576;
     if zram_kib >= 1_048_576 {
         facts.push((t("Mémoire compressée (zram)", "Compressed memory (zram)"), format!("{} Go", gib(zram_kib))));
     }
     // zram en service : le disque ne sert que quand il est plein (ou garde
     // ce qui y était avant) ; rien à faire, un fait.
-    if disk_kib > 1_048_576 && zram_on {
+    // zram plus petite que la moitié de la mémoire : elle déborde sur le
+    // disque, d'où les à-coups (relevé des parties : échange bien plus grand
+    // qu'elle).
+    let game_swap = src.sessions.iter().map(|s| s.swap_max).fold(0.0_f64, f64::max);
+    let small_zram = zram_on
+        && mem_total.is_some_and(|total| zram_size < total / 2)
+        && (disk_kib > 1_048_576 || game_swap * 1_048_576.0 > zram_size as f64 * 1.2);
+    if small_zram {
+        checks.push(Check {
+            fix: src.can_zram.then_some(Fix::Zram),
+            ..check(
+                "swap",
+                Level::Warning,
+                t("La mémoire compressée est trop petite", "Compressed memory is too small"),
+                t(
+                    &format!("Elle ne fait que {} Go : pendant les jeux, le reste part sur le disque, d'où des à-coups. Un clic l'agrandit à la taille de la mémoire, comme CachyOS.", gib(zram_size)),
+                    &format!("It's only {} GB: during games, the rest goes to the disk, hence hitches. One click enlarges it to the size of the memory, like CachyOS.", gib(zram_size)),
+                ),
+            )
+        });
+    } else if disk_kib > 1_048_576 && zram_on {
         facts.push((t("Mémoire d'échange sur le disque", "Swap on disk"), format!("{} Go", gib(disk_kib))));
     } else if disk_kib > 1_048_576 {
         let used = gib(disk_kib);
@@ -1243,6 +1279,26 @@ pub fn run(src: &Sources) -> Report {
                 ),
             )
         });
+    }
+
+    // Mémoire de la carte pleine pendant une partie : les textures qui n'y
+    // tiennent plus passent par la mémoire du PC, d'où des à-coups.
+    if let Some((s, total)) = src
+        .sessions
+        .iter()
+        .filter(|s| s.limit != "loading" && s.minutes >= 3.0)
+        .take(5)
+        .find_map(|s| s.context.as_ref()?.gpu_vram_total.filter(|total| s.vram_max >= total * 0.95).map(|t| (s, t)))
+    {
+        checks.push(check(
+            "vram-full",
+            Level::Warning,
+            t("La mémoire de la carte graphique est pleine", "The graphics card memory is full"),
+            t(
+                &format!("{} remplit les {total} Go de la carte, d'où des à-coups. Dans le jeu, baissez la qualité des textures d'un cran : les images restent presque les mêmes, les à-coups partent.", s.program),
+                &format!("{} fills the card's {total} GB, hence hitches. In the game, lower texture quality by one step: images stay almost the same, the hitches go away.", s.program),
+            ),
+        ));
     }
 
     // Jeux limités par le processeur : la carte attend. Ce que le service a
@@ -1304,16 +1360,28 @@ pub fn run(src: &Sources) -> Report {
         if throttles > 0
             && let Some(laptop) = &razer
         {
-            if crate::system::razer::writable(laptop) {
-                remedies.push(t(
-                    "C'est réglé : pendant les jeux, Last1 Panel met le Razer en mode Gaming, ventilateurs à fond, comme Synapse sous Windows.",
-                    "Done: during games, Last1 Panel sets the Razer to Gaming mode, fans at full speed, like Synapse on Windows.",
-                ));
-            } else {
+            // « Réglé » seulement si le relevé de la partie le montre.
+            let states: Vec<&str> = contexts.iter().filter_map(|c| c.razer.as_deref()).collect();
+            if !crate::system::razer::writable(laptop) {
                 fix = Some(Fix::RazerCooling);
                 remedies.push(t(
-                    &format!("Il chauffe trop et ralentit ({throttles} fois) : sous Linux, le Razer garde ses ventilateurs au calme. Un clic les fait tourner à fond pendant les jeux, en mode Gaming, comme Synapse sous Windows."),
-                    &format!("It runs too hot and slows down ({throttles} times): on Linux, the Razer keeps its fans quiet. One click runs them at full speed during games, in Gaming mode, like Synapse on Windows."),
+                    &format!("Il chauffe trop et ralentit ({throttles} fois) : sous Linux, le Razer garde ses ventilateurs au calme. Un clic le règle pendant les jeux comme Synapse sous Windows : processeur Boost, ventilateurs à fond."),
+                    &format!("It runs too hot and slows down ({throttles} times): on Linux, the Razer keeps its fans quiet. One click sets it during games like Synapse on Windows: CPU Boost, fans at full speed."),
+                ));
+            } else if states.iter().any(|s| crate::system::razer::applied(s)) {
+                remedies.push(t(
+                    &format!("Le Razer est déjà réglé comme Synapse pendant les jeux (processeur Boost, ventilateurs à fond) et chauffe encore ({throttles} fois) : surélevez l'arrière du portable, dégagez ses aérations ; s'il n'a jamais été nettoyé, la poussière et la pâte thermique sèche le brident."),
+                    &format!("The Razer is already set like Synapse during games (CPU Boost, fans at full speed) and still runs hot ({throttles} times): raise the back of the laptop, clear its vents; if it was never cleaned, dust and dry thermal paste hold it back."),
+                ));
+            } else if let Some(state) = states.first() {
+                remedies.push(t(
+                    &format!("Il chauffe trop et ralentit ({throttles} fois) : le Razer n'a pas pris le réglage de jeu ({state}). Last1 Panel le réessaie à chaque partie."),
+                    &format!("It runs too hot and slows down ({throttles} times): the Razer didn't take the game setting ({state}). Last1 Panel retries it every game."),
+                ));
+            } else {
+                remedies.push(t(
+                    "Il chauffe trop et ralentit : dès la prochaine partie, Last1 Panel règle le Razer comme Synapse sous Windows (processeur Boost, ventilateurs à fond) et vérifie qu'il l'a pris.",
+                    "It runs too hot and slows down: from the next game, Last1 Panel sets the Razer like Synapse on Windows (CPU Boost, fans at full speed) and checks it took it.",
                 ));
             }
         } else if throttles > 0 {
@@ -1570,6 +1638,12 @@ fn session_details(s: &GameSession) -> Vec<String> {
     if s.cpu_power > 0.0 {
         details.push(t(&format!("processeur {} W", s.cpu_power), &format!("CPU {} W", s.cpu_power)));
     }
+    if s.frames_25_50 > 0 {
+        details.push(t(
+            &format!("{} relevés entre 25 et 50 ms ; 0,1 % : {} i/s", s.frames_25_50, s.fps_point_one_low),
+            &format!("{} samples between 25 and 50 ms; 0.1 %: {} FPS", s.frames_25_50, s.fps_point_one_low),
+        ));
+    }
     if s.spikes_50 > 0 {
         let at: Vec<String> = s.spike_minutes.iter().take(6).map(|m| m.to_string()).collect();
         let at = if at.is_empty() { String::new() } else { format!(" ({} min)", at.join(", ")) };
@@ -1643,6 +1717,9 @@ fn session_details(s: &GameSession) -> Vec<String> {
             &format!("processeur bridé par la chaleur {} fois", c.cpu_thermal_throttles),
             &format!("CPU throttled by heat {} times", c.cpu_thermal_throttles),
         ));
+    }
+    if let Some(razer) = &c.razer {
+        details.push(format!("Razer {razer}"));
     }
     for change in &c.input_changes {
         details.push(t(&format!("à {change}"), &format!("at {change}")));
@@ -2062,6 +2139,23 @@ mod tests {
         );
         let after = report(None);
         assert!(after.checks.iter().all(|c| c.id != "swap"));
+        // zram de 2 Go seulement pour 16 Go, et 7 Go sur le disque : elle
+        // déborde ; un clic l'agrandit.
+        write(pc.proc_dir.join("meminfo"), "MemTotal: 16000000 kB\n");
+        write(
+            pc.proc_dir.join("swaps"),
+            "Filename\tType\tSize\tUsed\tPriority\n/dev/zram0 partition\t2097148\t2097148\t100\n/swapfile file\t16777212\t7340032\t-2\n",
+        );
+        let small = report(None);
+        let swap = small.checks.iter().find(|c| c.id == "swap").unwrap();
+        assert_eq!((swap.level, swap.fix), (Level::Warning, Some(Fix::Zram)));
+        assert!(
+            small
+                .facts
+                .iter()
+                .any(|(name, value)| name == "Échange" && value.starts_with("zram 2 Go ; /swapfile 16 Go (disque)"))
+        );
+        write(pc.proc_dir.join("meminfo"), "MemTotal: 32768000 kB\n");
         assert!(after.facts.iter().any(|(name, value)| name.contains("disque") && value == "7 Go"));
         // La carte ne se redimensionne pas : rien à régler dans le BIOS.
         let rebar = arch.checks.iter().find(|c| c.id == "rebar").unwrap();
@@ -2164,6 +2258,7 @@ mod tests {
                 gpu_busy: None,
                 gpu_busy_samples: 0,
                 gpu_vram_total: None,
+                razer: Some("mode 4/4, processeur 3, carte 2".into()),
                 input_changes: vec!["12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e)".into()],
             }),
             details: Vec::new(),
@@ -2177,7 +2272,7 @@ mod tests {
              processeur jusqu'à 97 °C, 3100 MHz en moyenne ; processeur 35.2 W ; mode du PC balanced ; \
              processeur en balance_performance ; limite de la carte 80 W sur 125 W possibles ; \
              carte freinée : limite de puissance ; processeur limité à 35 W, 90 W en pointe ; \
-             processeur bridé par la chaleur 12 fois ; \
+             processeur bridé par la chaleur 12 fois ; Razer mode 4/4, processeur 3, carte 2 ; \
              à 12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e) ; \
              Dynamic Boost (nvidia-powerd) arrêté ; \
              image affichée par une autre puce (portable hybride)"
@@ -2236,6 +2331,59 @@ mod tests {
         // … GameMode installé sur un portable.
         assert_eq!(power(&nothing, true, true, true), (Level::Warning, Some(Fix::GameMode)));
         assert_eq!(power(&nothing, true, true, false), (Level::Warning, None));
+    }
+
+    #[test]
+    fn full_card_memory_says_to_lower_textures() {
+        let pc = pc();
+        let exec = FakeExec::new();
+        let with_vram = |vram_max: f64| {
+            let session = GameSession {
+                program: "ARC Raiders".into(),
+                minutes: 30.0,
+                limit: "gpu",
+                vram_max,
+                context: Some(crate::system::game_context::GameContext {
+                    gpu_vram_total: Some(6.0),
+                    ..Default::default()
+                }),
+                ..GameSession::default()
+            };
+            run(&Sources {
+                sys: &pc.sys,
+                dev: &pc.dev,
+                proc_dir: &pc.proc_dir,
+                exec: &exec,
+                env: &|_| None,
+                next_login_env: &|_| None,
+                settings: &Settings::default(),
+                gpus: &[],
+                desktop: Desktop::Plasma,
+                default_proton: None,
+                recent_games: Vec::new(),
+                last_launch: None,
+                version: "0.1.0.r56".into(),
+                go_to_linux_version: None,
+                pcie_in_game: Vec::new(),
+                gamemode_allowed: true,
+                psr_off: false,
+                precache: None,
+                sessions: vec![session],
+                mangohud: true,
+                wrapped_games: Some((3, 3)),
+                go_to_linux: false,
+                can_zram: true,
+                pacman: true,
+                updates: Vec::new(),
+            })
+            .checks
+            .into_iter()
+            .find(|c| c.id == "vram-full")
+        };
+        let full = with_vram(5.9).unwrap();
+        assert_eq!(full.level, Level::Warning);
+        assert!(full.detail.contains("ARC Raiders remplit les 6 Go"), "{}", full.detail);
+        assert!(with_vram(4.0).is_none());
     }
 
     #[test]

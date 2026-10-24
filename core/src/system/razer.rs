@@ -1,7 +1,8 @@
 //! Portables Razer Blade : leur contrôleur (EC) garde sous Linux son mode par
-//! défaut, alors que Razer Synapse le passe sous Windows en mode Gaming et
-//! pousse les ventilateurs. Last1 Panel fait de même le temps des jeux, sur
-//! secteur, par le port USB interne du clavier (rapports HID « feature »,
+//! défaut, alors que Razer Synapse le passe sous Windows en mode personnalisé
+//! (processeur Boost, carte Haut) et pousse les ventilateurs. Last1 Panel fait
+//! de même le temps des jeux, sur secteur, note ce que le contrôleur en dit
+//! dans le relevé de la partie, par le port USB interne du clavier (rapports HID « feature »,
 //! protocole de razer-laptop-control, Razer-Linux/razer-laptop-control-no-dkms,
 //! GPL-2.0 ou ultérieure, et d'openrazer), puis rend le mode d'avant.
 //!
@@ -61,6 +62,10 @@ pub const LAPTOPS: [(u16, u16); 37] = [
 /// Modes du contrôleur.
 pub const BALANCED: u8 = 0;
 pub const GAMING: u8 = 1;
+pub const CUSTOM: u8 = 4;
+/// Mode personnalisé : processeur « Boost », carte « Haut » (Synapse).
+pub const CPU_BOOST: u8 = 3;
+pub const GPU_HIGH: u8 = 2;
 
 /// Le portable Razer de ce PC : son nœud hidraw (interface 0) et ses
 /// ventilateurs.
@@ -145,14 +150,50 @@ pub fn mode(laptop: &Laptop) -> io::Result<u8> {
     send(laptop, 0x0d, 0x82, &[0x00, 0x01, 0x00, 0x00]).map(|args| args[2])
 }
 
-/// Mode Gaming et ventilateurs à fond, sur les deux zones.
-pub fn gaming(laptop: &Laptop) -> io::Result<()> {
+/// Ventilateurs à fond dans un mode, sur les deux zones.
+fn fans_max(laptop: &Laptop, mode: u8) -> io::Result<()> {
     let rpm = (laptop.fan_max / 100) as u8;
     for zone in [0x01, 0x02] {
-        send(laptop, 0x0d, 0x02, &[0x00, zone, GAMING, 0x01])?;
+        send(laptop, 0x0d, 0x02, &[0x00, zone, mode, 0x01])?;
         send(laptop, 0x0d, 0x01, &[0x00, zone, rpm])?;
     }
     Ok(())
+}
+
+/// Ce que Synapse règle sous Windows pour jouer : mode personnalisé,
+/// processeur Boost, carte Haut, ventilateurs à fond. Un modèle qui refuse
+/// le mode personnalisé passe en mode Gaming, ventilateurs à fond.
+pub fn boost(laptop: &Laptop) -> io::Result<()> {
+    let custom = (|| {
+        send(laptop, 0x0d, 0x02, &[0x00, 0x01, CUSTOM, 0x00])?;
+        send(laptop, 0x0d, 0x07, &[0x00, 0x01, CPU_BOOST])?;
+        send(laptop, 0x0d, 0x07, &[0x00, 0x02, GPU_HIGH])?;
+        send(laptop, 0x0d, 0x02, &[0x00, 0x02, CUSTOM, 0x00])?;
+        fans_max(laptop, CUSTOM)
+    })();
+    custom.or_else(|_| fans_max(laptop, GAMING))
+}
+
+/// Ce que dit le contrôleur : « mode 4/4, processeur 3, carte 2,
+/// ventilateurs 4300/4300 tr/min » (zones 1 et 2), pour le relevé de la partie.
+pub fn state(laptop: &Laptop) -> io::Result<String> {
+    let mode = |zone| send(laptop, 0x0d, 0x82, &[0x00, zone, 0x00, 0x00]).map(|a| a[2]);
+    let boost = |part| send(laptop, 0x0d, 0x87, &[0x00, part, 0x00]).map(|a| a[2]);
+    let fan = |zone| send(laptop, 0x0d, 0x81, &[0x00, zone, 0x00]).map(|a| a[2] as u32 * 100);
+    let (m1, m2) = (mode(0x01)?, mode(0x02)?);
+    let mut text = format!("mode {m1}/{m2}");
+    if m1 == CUSTOM {
+        text.push_str(&format!(", processeur {}, carte {}", boost(0x01)?, boost(0x02)?));
+    }
+    if let (Ok(f1), Ok(f2)) = (fan(0x01), fan(0x02)) {
+        text.push_str(&format!(", ventilateurs {f1}/{f2} tr/min"));
+    }
+    Ok(text)
+}
+
+/// Le relevé montre-t-il le réglage de jeu en place ?
+pub fn applied(state: &str) -> bool {
+    state.starts_with(&format!("mode {CUSTOM}/{CUSTOM}")) || state.starts_with(&format!("mode {GAMING}/{GAMING}"))
 }
 
 /// Rend un mode, ventilateurs en automatique.
@@ -187,6 +228,14 @@ mod tests {
         // XOR de la taille, de la classe, de la commande et des arguments.
         assert_eq!(p[89], 0x04 ^ 0x0d ^ 0x02 ^ 0x01 ^ GAMING ^ 0x01);
         assert_eq!(hid_ioctl(0x06, 91), 0xC05B_4806);
+    }
+
+    #[test]
+    fn game_setting_is_seen_in_the_state() {
+        assert!(applied("mode 4/4, processeur 3, carte 2, ventilateurs 4300/4300 tr/min"));
+        assert!(applied("mode 1/1"));
+        assert!(!applied("mode 0/0, ventilateurs 2100/2100 tr/min"));
+        assert!(!applied("refusé : le contrôleur Razer a répondu 0x05"));
     }
 
     #[test]
