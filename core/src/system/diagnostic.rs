@@ -146,6 +146,9 @@ pub struct Sources<'a> {
     pub pacman: bool,
     /// Paquets qui ont une version plus récente (system/packages.rs).
     pub updates: Vec<String>,
+    /// Programmes des parties dont les textures sont déjà au plus bas
+    /// (steam::texture_quality).
+    pub minimal_textures: Vec<String>,
 }
 
 /// Variable posée pour toutes les sessions dans /etc/environment (pam_env) :
@@ -1290,15 +1293,30 @@ pub fn run(src: &Sources) -> Report {
         .take(5)
         .find_map(|s| s.context.as_ref()?.gpu_vram_total.filter(|total| s.vram_max >= total * 0.95).map(|t| (s, t)))
     {
-        checks.push(check(
-            "vram-full",
-            Level::Warning,
-            t("La mémoire de la carte graphique est pleine", "The graphics card memory is full"),
-            t(
-                &format!("{} remplit les {total} Go de la carte, d'où des à-coups. Dans le jeu, baissez la qualité des textures d'un cran : les images restent presque les mêmes, les à-coups partent.", s.program),
-                &format!("{} fills the card's {total} GB, hence hitches. In the game, lower texture quality by one step: images stay almost the same, the hitches go away.", s.program),
-            ),
-        ));
+        let game = s.program.strip_suffix(".exe").unwrap_or(&s.program);
+        let upscaler = if s.gpu_name.as_deref().is_some_and(|n| n.contains("RTX")) { "DLSS" } else { "FSR" };
+        checks.push(if src.minimal_textures.contains(&s.program) {
+            // Rien à baisser : pas de reproche, ce qui reste.
+            check(
+                "vram-full",
+                Level::Info,
+                t("La carte graphique est à sa limite dans ce jeu", "The graphics card is at its limit in this game"),
+                t(
+                    &format!("{game} remplit les {total} Go de la carte, textures déjà au plus bas : rien de plus à régler de ce côté. Ce qui reste : {upscaler} en mode Performance dans les options graphiques du jeu, qui allège la carte."),
+                    &format!("{game} fills the card's {total} GB, textures already at the lowest: nothing more to set there. What's left: {upscaler} in Performance mode in the game's graphics options, which lightens the card."),
+                ),
+            )
+        } else {
+            check(
+                "vram-full",
+                Level::Warning,
+                t("La mémoire de la carte graphique est pleine", "The graphics card memory is full"),
+                t(
+                    &format!("{game} remplit les {total} Go de la carte, d'où des à-coups. Dans le jeu, baissez la qualité des textures d'un cran : les images restent presque les mêmes, les à-coups partent."),
+                    &format!("{game} fills the card's {total} GB, hence hitches. In the game, lower texture quality by one step: images stay almost the same, the hitches go away."),
+                ),
+            )
+        });
     }
 
     // Jeux limités par le processeur : la carte attend. Ce que le service a
@@ -1915,6 +1933,7 @@ mod tests {
             can_zram: true,
             pacman: false,
             updates: Vec::new(),
+            minimal_textures: Vec::new(),
         });
         let ids =
             |level: Level| -> Vec<&str> { report.checks.iter().filter(|c| c.level == level).map(|c| c.id).collect() };
@@ -2028,6 +2047,7 @@ mod tests {
             can_zram: true,
             pacman: false,
             updates: Vec::new(),
+            minimal_textures: Vec::new(),
         };
         let report = run(&sources);
         assert!(report.checks.iter().all(|c| c.level == Level::Ok), "{:#?}", report.checks);
@@ -2101,6 +2121,7 @@ mod tests {
                 can_zram: true,
                 pacman: false,
                 updates: Vec::new(),
+                minimal_textures: Vec::new(),
             })
         };
         let arch = report(None);
@@ -2207,6 +2228,7 @@ mod tests {
             can_zram: true,
             pacman: true,
             updates: vec!["firefox".into(), "nvidia-utils".into(), "lib32-nvidia-utils".into()],
+            minimal_textures: Vec::new(),
         });
         let find = |id: &str| report.checks.iter().find(|c| c.id == id);
         assert!(find("driver").is_none());
@@ -2317,6 +2339,7 @@ mod tests {
                 can_zram: true,
                 pacman,
                 updates: Vec::new(),
+                minimal_textures: Vec::new(),
             });
             let check = report.checks.into_iter().find(|c| c.id == "power").unwrap();
             (check.level, check.fix)
@@ -2337,9 +2360,9 @@ mod tests {
     fn full_card_memory_says_to_lower_textures() {
         let pc = pc();
         let exec = FakeExec::new();
-        let with_vram = |vram_max: f64| {
+        let with_vram = |vram_max: f64, minimal: bool| {
             let session = GameSession {
-                program: "ARC Raiders".into(),
+                program: "PioneerGame.exe".into(),
                 minutes: 30.0,
                 limit: "gpu",
                 vram_max,
@@ -2375,15 +2398,19 @@ mod tests {
                 can_zram: true,
                 pacman: true,
                 updates: Vec::new(),
+                minimal_textures: if minimal { vec!["PioneerGame.exe".into()] } else { Vec::new() },
             })
             .checks
             .into_iter()
             .find(|c| c.id == "vram-full")
         };
-        let full = with_vram(5.9).unwrap();
+        let full = with_vram(5.9, false).unwrap();
         assert_eq!(full.level, Level::Warning);
-        assert!(full.detail.contains("ARC Raiders remplit les 6 Go"), "{}", full.detail);
-        assert!(with_vram(4.0).is_none());
+        assert!(full.detail.contains("PioneerGame remplit les 6 Go"), "{}", full.detail);
+        assert!(with_vram(4.0, false).is_none());
+        let limit = with_vram(5.9, true).unwrap();
+        assert_eq!(limit.level, Level::Info);
+        assert!(limit.detail.contains("textures déjà au plus bas") && limit.detail.contains("FSR"), "{}", limit.detail);
     }
 
     #[test]
@@ -2460,6 +2487,7 @@ mod tests {
                 can_zram: true,
                 pacman: false,
                 updates: Vec::new(),
+                minimal_textures: Vec::new(),
             });
             let fact = report
                 .facts
@@ -2548,6 +2576,7 @@ mod tests {
             can_zram: true,
             pacman: true,
             updates: Vec::new(),
+            minimal_textures: Vec::new(),
         });
         // Une seule carte vérifiée : la GTX 1650, et son pilote.
         assert_eq!(report.checks.iter().filter(|c| c.id == "rebar").count(), 1);
@@ -2618,6 +2647,7 @@ mod tests {
                 can_zram: true,
                 pacman: false,
                 updates: Vec::new(),
+                minimal_textures: Vec::new(),
             })
             .checks
             .into_iter()

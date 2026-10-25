@@ -382,6 +382,7 @@ impl Panel {
                     .collect()
             })
             .unwrap_or_default();
+        let sessions = crate::system::sessions::recent(&crate::paths::game_logs_dir(), 10);
         crate::system::diagnostic::run(&crate::system::diagnostic::Sources {
             sys: &self.sys.sys,
             dev: Path::new("/dev"),
@@ -394,7 +395,17 @@ impl Panel {
             desktop: self.desktop,
             default_proton,
             recent_games,
-            sessions: crate::system::sessions::recent(&crate::paths::game_logs_dir(), 10),
+            minimal_textures: steam
+                .as_deref()
+                .map(|root| {
+                    let mut programs: Vec<String> = sessions.iter().map(|s| s.program.clone()).collect();
+                    programs.sort();
+                    programs.dedup();
+                    programs.retain(|program| steam::texture_quality(root, program) == Some(0));
+                    programs
+                })
+                .unwrap_or_default(),
+            sessions,
             last_launch: last_launch(
                 &crate::paths::last_launch_file(),
                 &crate::paths::game_logs_dir(),

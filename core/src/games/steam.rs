@@ -319,6 +319,27 @@ pub fn compat_tool(root: &Path, key: &str) -> Option<String> {
     mapping.text("name").filter(|name| !name.is_empty()).map(str::to_string)
 }
 
+/// Qualité des textures d'un jeu Unreal Engine sous Proton (« sg.TextureQuality »
+/// de GameUserSettings.ini dans son préfixe, 0 = la plus basse), d'après le
+/// programme mesuré par MangoHud (« PioneerGame.exe », « X-Win64-Shipping.exe »).
+pub fn texture_quality(root: &Path, program: &str) -> Option<u32> {
+    let stem = program.strip_suffix(".exe").unwrap_or(program);
+    let project = stem.split("-Win64-").next().unwrap_or(stem).split("-WinGDK-").next().unwrap_or(stem);
+    if project.is_empty() || project.contains(['/', '.']) {
+        return None;
+    }
+    libraries(root).iter().find_map(|library| {
+        fs::read_dir(library.join("steamapps/compatdata")).ok()?.flatten().find_map(|prefix| {
+            let config =
+                prefix.path().join("pfx/drive_c/users/steamuser/AppData/Local").join(project).join("Saved/Config");
+            ["WindowsClient", "Windows", "WinGDK"].iter().find_map(|platform| {
+                let text = fs::read_to_string(config.join(platform).join("GameUserSettings.ini")).ok()?;
+                text.lines().find_map(|line| line.trim().strip_prefix("sg.TextureQuality=")?.trim().parse().ok())
+            })
+        })
+    })
+}
+
 /// Jeux installés, du dernier lancé au plus ancien (date « LastPlayed » de
 /// chaque compte Steam du PC) ; jamais lancés : absents.
 pub fn recently_played(root: &Path) -> Vec<Game> {
@@ -404,6 +425,23 @@ fn write_atomic(path: &Path, text: &str) -> CoreResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unreal_texture_quality_is_read_in_the_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let config = root.join(
+            "steamapps/compatdata/1808500/pfx/drive_c/users/steamuser/AppData/Local/PioneerGame/Saved/Config/WindowsClient",
+        );
+        fs::create_dir_all(&config).unwrap();
+        fs::write(
+            config.join("GameUserSettings.ini"),
+            "[ScalabilityGroups]\nsg.ResolutionQuality=100\nsg.TextureQuality=0\n",
+        )
+        .unwrap();
+        assert_eq!(texture_quality(root, "PioneerGame.exe"), Some(0));
+        assert_eq!(texture_quality(root, "Other-Win64-Shipping.exe"), None);
+    }
 
     fn steam() -> tempfile::TempDir {
         let home = tempfile::tempdir().unwrap();
