@@ -194,7 +194,18 @@ size=$(awk '$1=="/dev/zram0"{{print $3}}' /proc/swaps); used=$(awk '$1=="/dev/zr
 total=$(awk '/^MemTotal/{{print $2}}' /proc/meminfo); avail=$(awk '/^MemAvailable/{{print $2}}' /proc/meminfo)
 if [ -n "$size" ] && [ "$size" -lt $((total / 2)) ] && [ "$used" -lt "$avail" ]; then swapoff /dev/zram0 && systemctl restart systemd-zram-setup@zram0.service || true; fi
 systemctl start dev-zram0.swap || systemctl start swap.target
-if ! grep -q '^/dev/zram' /proc/swaps; then echo "zram ne s'est pas activé (zramctl, journalctl -b -u systemd-zram-setup@zram0)" >&2; exit 1; fi"#
+if ! grep -q '^/dev/zram' /proc/swaps; then echo "zram ne s'est pas activé (zramctl, journalctl -b -u systemd-zram-setup@zram0)" >&2; exit 1; fi
+# Disques en dernier recours (priorité -2, sous zram), à chaque démarrage
+# (fstab) et tout de suite ; ce qui y est revient en mémoire s'il y tient.
+if [ -f {etc}/fstab ] && awk '$0 !~ /^[[:space:]]*#/ && $3 == "swap" && $4 !~ /pri=-2([^0-9]|$)/ {{found = 1}} END {{exit !found}}' {etc}/fstab; then
+  cp {etc}/fstab {etc}/fstab.last1-panel.bak
+  awk 'BEGIN {{OFS = "\t"}} $0 !~ /^[[:space:]]*#/ && $3 == "swap" {{ if ($4 ~ /pri=/) sub(/pri=-?[0-9]+/, "pri=-2", $4); else $4 = $4 ",pri=-2" }} {{print}}' {etc}/fstab.last1-panel.bak > {etc}/fstab
+  systemctl daemon-reload
+fi
+awk 'NR > 1 && $1 !~ /^\/dev\/zram/ {{print $1, $4}}' /proc/swaps | while read -r disk used; do
+  avail=$(awk '/^MemAvailable/{{print $2}}' /proc/meminfo)
+  if [ "$used" -lt $((avail * 4 / 5)) ]; then swapoff "$disk" && swapon -p -2 "$disk" || true; fi
+done"#
                 ));
             }
             // Pilotes Vulkan des cartes du PC (64 et 32 bits) ; liste trop

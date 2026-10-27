@@ -598,6 +598,22 @@ pub fn run(src: &Sources) -> Report {
             t("Processeur à pleine vitesse.", "CPU at full speed."),
         ));
     }
+    // GameMode sans son groupe : il ne peut pas donner la priorité au jeu
+    // (processeur, disque), même quand le mode performance vient d'ailleurs.
+    if gamemode && !src.gamemode_allowed && !checks.iter().any(|c| c.fix == Some(Fix::GameMode)) {
+        checks.push(Check {
+            fix: Some(Fix::GameMode),
+            ..check(
+                "gamemode",
+                Level::Warning,
+                t("GameMode ne peut pas faire passer le jeu en premier", "GameMode can't put the game first"),
+                t(
+                    "Votre compte n'est pas dans son groupe « gamemode » : le jeu ne passe pas avant le reste pour le processeur et le disque. Un clic l'y ajoute.",
+                    "Your account is not in its “gamemode” group: the game doesn't go before the rest for the CPU and the disk. One click adds it.",
+                ),
+            )
+        });
+    }
 
     // Processeur X3D à deux blocs : les jeux sur celui qui a la 3D V-Cache.
     if let Some(mode) = fs::read_dir(src.sys.join("bus/platform/drivers/amd_x3d_vcache"))
@@ -1217,25 +1233,39 @@ pub fn run(src: &Sources) -> Report {
     // exprès les pages froides pour laisser la RAM au jeu) ou disque.
     // /proc/swaps, en Kio : nom, type, taille, utilisé, priorité.
     let (mut zram_kib, mut disk_kib, mut zram_on, mut zram_size) = (0u64, 0u64, false, 0u64);
+    // Priorités : la plus basse de zram, la plus haute des disques.
+    let (mut zram_priority, mut disk_priority) = (i64::MAX, i64::MIN);
     let mut swaps: Vec<String> = Vec::new();
     for line in read(&src.proc_dir.join("swaps")).unwrap_or_default().lines().skip(1) {
         let fields: Vec<&str> = line.split_whitespace().collect();
         let used = fields.get(3).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
         let size = fields.get(2).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+        let priority = fields.get(4).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
         let name = fields.first().copied().unwrap_or_default();
+        let gib = |kib: u64| (kib + 524_288) / 1_048_576;
+        let in_use = if used >= 524_288 { format!(", {} Go", gib(used)) } else { String::new() };
+        let in_use_en = in_use.replace("Go", "GB");
         if name.starts_with("/dev/zram") {
             zram_on = true;
             zram_kib += used;
             zram_size += size;
-            swaps.push(format!("zram {} Go", (size + 524_288) / 1_048_576));
+            zram_priority = zram_priority.min(priority);
+            swaps.push(t(
+                &format!("zram {} Go (priorité {priority}{in_use})", gib(size)),
+                &format!("zram {} GB (priority {priority}{in_use_en})", gib(size)),
+            ));
         } else {
             disk_kib += used;
+            disk_priority = disk_priority.max(priority);
             swaps.push(t(
-                &format!("{name} {} Go (disque)", (size + 524_288) / 1_048_576),
-                &format!("{name} {} GB (disk)", (size + 524_288) / 1_048_576),
+                &format!("{name} {} Go (disque, priorité {priority}{in_use})", gib(size)),
+                &format!("{name} {} GB (disk, priority {priority}{in_use_en})", gib(size)),
             ));
         }
     }
+    // Le disque servi avant zram, ou des pages restées sur le disque : chaque
+    // fois que le jeu ou le bureau y touche, l'image attend le disque.
+    let disk_first = zram_on && disk_priority >= zram_priority;
     if !swaps.is_empty() {
         let swappiness = read(&src.proc_dir.join("sys/vm/swappiness")).unwrap_or_else(|| "?".into());
         facts.push((t("Échange", "Swap"), format!("{} ; vm.swappiness {swappiness}", swaps.join(" ; "))));
@@ -1269,8 +1299,27 @@ pub fn run(src: &Sources) -> Report {
                 ),
             )
         });
-    } else if disk_kib > 1_048_576 && zram_on {
-        facts.push((t("Mémoire d'échange sur le disque", "Swap on disk"), format!("{} Go", gib(disk_kib))));
+    } else if zram_on && (disk_first || disk_kib > 1_048_576) {
+        let used = gib(disk_kib);
+        checks.push(Check {
+            fix: src.can_zram.then_some(Fix::Zram),
+            ..check(
+                "swap",
+                Level::Warning,
+                t("De la mémoire est encore sur le disque", "Some memory is still on the disk"),
+                if disk_first {
+                    t(
+                        "Le PC range la mémoire en trop sur le disque avant la mémoire compressée : chaque fois que le jeu en a besoin, l'image attend le disque. Un clic met le disque en dernier recours et remet en mémoire ce qui y est.",
+                        "The PC puts extra memory on the disk before compressed memory: every time the game needs it, the picture waits for the disk. One click makes the disk a last resort and brings back what is on it.",
+                    )
+                } else {
+                    t(
+                        &format!("{used} Go sont restés sur le disque : chaque fois que le jeu ou le bureau en a besoin, l'image attend le disque. Un clic les remet en mémoire, compressés."),
+                        &format!("{used} GB stayed on the disk: every time the game or the desktop needs them, the picture waits for the disk. One click brings them back to memory, compressed."),
+                    )
+                },
+            )
+        });
     } else if disk_kib > 1_048_576 {
         let used = gib(disk_kib);
         checks.push(Check {
@@ -1416,7 +1465,7 @@ pub fn run(src: &Sources) -> Report {
         let swapped = cpu_bound.iter().map(|s| s.swap_max).fold(0.0_f64, f64::max);
         if swapped >= 1.5 {
             let gb = swapped.round();
-            if small_zram && src.can_zram {
+            if (small_zram || (zram_on && (disk_first || disk_kib > 1_048_576))) && src.can_zram {
                 fix = fix.or(Some(Fix::Zram));
                 remedies.push(t(
                     &format!("Pendant ces parties, jusqu'à {gb} Go de mémoire partent sur le disque : le jeu attend le disque, et c'est le processeur qui semble lent. Un clic garde tout en mémoire, compressé, comme CachyOS."),
@@ -2202,14 +2251,23 @@ mod tests {
         let cachyos = report(None);
         assert!(cachyos.checks.iter().all(|c| c.id != "swap"));
         assert!(cachyos.facts.iter().any(|(name, value)| name.contains("zram") && value == "6 Go"));
-        // zram en service, et ce qui était déjà sur le disque y reste : plus
-        // rien à faire (le bouton a marché), un fait.
+        // zram en service, mais 7 Go restés sur le disque : le jeu les attend
+        // à chaque fois ; un clic les remet en mémoire.
         write(
             pc.proc_dir.join("swaps"),
             "Filename\tType\tSize\tUsed\tPriority\n/dev/zram0 partition\t16318460\t0\t100\n/swap/swapfile file\t8388604\t7340032\t-2\n",
         );
         let after = report(None);
-        assert!(after.checks.iter().all(|c| c.id != "swap"));
+        let left = after.checks.iter().find(|c| c.id == "swap").unwrap();
+        assert_eq!((left.level, left.fix), (Level::Warning, Some(Fix::Zram)));
+        assert!(left.detail.contains("7 Go sont restés sur le disque"), "{}", left.detail);
+        // Le disque servi avant zram (priorité plus haute).
+        write(
+            pc.proc_dir.join("swaps"),
+            "Filename\tType\tSize\tUsed\tPriority\n/dev/zram0 partition\t16318460\t0\t5\n/swap/swapfile file\t8388604\t0\t10\n",
+        );
+        let first = report(None);
+        assert!(first.checks.iter().find(|c| c.id == "swap").unwrap().detail.contains("avant la mémoire compressée"));
         // zram de 2 Go seulement pour 16 Go, et 7 Go sur le disque : elle
         // déborde ; un clic l'agrandit.
         write(pc.proc_dir.join("meminfo"), "MemTotal: 16000000 kB\n");
@@ -2220,14 +2278,9 @@ mod tests {
         let small = report(None);
         let swap = small.checks.iter().find(|c| c.id == "swap").unwrap();
         assert_eq!((swap.level, swap.fix), (Level::Warning, Some(Fix::Zram)));
-        assert!(
-            small
-                .facts
-                .iter()
-                .any(|(name, value)| name == "Échange" && value.starts_with("zram 2 Go ; /swapfile 16 Go (disque)"))
-        );
+        assert!(small.facts.iter().any(|(name, value)| name == "Échange"
+            && value.starts_with("zram 2 Go (priorité 100, 2 Go) ; /swapfile 16 Go (disque, priorité -2, 7 Go)")));
         write(pc.proc_dir.join("meminfo"), "MemTotal: 32768000 kB\n");
-        assert!(after.facts.iter().any(|(name, value)| name.contains("disque") && value == "7 Go"));
         // La carte ne se redimensionne pas : rien à régler dans le BIOS.
         let rebar = arch.checks.iter().find(|c| c.id == "rebar").unwrap();
         assert_eq!(rebar.level, Level::Ok);
