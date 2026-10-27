@@ -1,5 +1,6 @@
 //! Le PC : cartes graphiques et bureau de la session.
 
+pub mod cpu_users;
 pub mod desktop;
 pub mod diagnostic;
 pub mod edid;

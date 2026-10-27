@@ -323,6 +323,12 @@ pub fn compat_tool(root: &Path, key: &str) -> Option<String> {
 /// de GameUserSettings.ini dans son préfixe, 0 = la plus basse), d'après le
 /// programme mesuré par MangoHud (« PioneerGame.exe », « X-Win64-Shipping.exe »).
 pub fn texture_quality(root: &Path, program: &str) -> Option<u32> {
+    unreal_settings(root, program)?.get("TextureQuality").copied()
+}
+
+/// Les réglages « sg.* » d'un jeu Unreal Engine (distance d'affichage,
+/// ombres, végétation… ; 0 = le plus bas), sauf la résolution (en %).
+pub fn unreal_settings(root: &Path, program: &str) -> Option<BTreeMap<String, u32>> {
     let stem = program.strip_suffix(".exe").unwrap_or(program);
     let project = stem.split("-Win64-").next().unwrap_or(stem).split("-WinGDK-").next().unwrap_or(stem);
     if project.is_empty() || project.contains(['/', '.']) {
@@ -334,7 +340,17 @@ pub fn texture_quality(root: &Path, program: &str) -> Option<u32> {
                 prefix.path().join("pfx/drive_c/users/steamuser/AppData/Local").join(project).join("Saved/Config");
             ["WindowsClient", "Windows", "WinGDK"].iter().find_map(|platform| {
                 let text = fs::read_to_string(config.join(platform).join("GameUserSettings.ini")).ok()?;
-                text.lines().find_map(|line| line.trim().strip_prefix("sg.TextureQuality=")?.trim().parse().ok())
+                let settings: BTreeMap<String, u32> = text
+                    .lines()
+                    .filter_map(|line| {
+                        let (key, value) = line.trim().strip_prefix("sg.")?.split_once('=')?;
+                        if key == "ResolutionQuality" {
+                            return None;
+                        }
+                        Some((key.to_string(), value.trim().parse().ok()?))
+                    })
+                    .collect();
+                (!settings.is_empty()).then_some(settings)
             })
         })
     })
@@ -440,6 +456,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(texture_quality(root, "PioneerGame.exe"), Some(0));
+        assert_eq!(unreal_settings(root, "PioneerGame.exe").unwrap().len(), 1, "sans la résolution");
         assert_eq!(texture_quality(root, "Other-Win64-Shipping.exe"), None);
     }
 

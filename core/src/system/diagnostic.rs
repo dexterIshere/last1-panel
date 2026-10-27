@@ -149,6 +149,9 @@ pub struct Sources<'a> {
     /// Programmes des parties dont les textures sont déjà au plus bas
     /// (steam::texture_quality).
     pub minimal_textures: Vec<String>,
+    /// Programmes des parties dont tous les réglages graphiques sont au plus
+    /// bas (steam::unreal_settings).
+    pub lowest_settings: Vec<String>,
 }
 
 /// Variable posée pour toutes les sessions dans /etc/environment (pam_env) :
@@ -1408,12 +1411,47 @@ pub fn run(src: &Sources) -> Report {
                 &format!("It runs too hot and slows down ({throttles} times): raise the back of the laptop and clear its vents."),
             ));
         }
+        // Mémoire qui déborde sur le disque : le jeu attend le disque, ce
+        // qui ressemble à un processeur trop lent.
+        let swapped = cpu_bound.iter().map(|s| s.swap_max).fold(0.0_f64, f64::max);
+        if swapped >= 1.5 {
+            let gb = swapped.round();
+            if small_zram && src.can_zram {
+                fix = fix.or(Some(Fix::Zram));
+                remedies.push(t(
+                    &format!("Pendant ces parties, jusqu'à {gb} Go de mémoire partent sur le disque : le jeu attend le disque, et c'est le processeur qui semble lent. Un clic garde tout en mémoire, compressé, comme CachyOS."),
+                    &format!("During these games, up to {gb} GB of memory goes to the disk: the game waits for the disk, and the CPU looks slow. One click keeps everything in memory, compressed, like CachyOS."),
+                ));
+            } else {
+                remedies.push(t(
+                    &format!("Ces jeux remplissent la mémoire ({gb} Go mis de côté) : fermez le navigateur et Discord pendant la partie, le jeu la récupère."),
+                    &format!("These games fill the memory ({gb} GB set aside): close the browser and Discord while playing, the game gets it back."),
+                ));
+            }
+        }
+        if contexts.iter().any(|c| c.steam_shaders) {
+            remedies.push(t(
+                "Steam compilait des shaders pendant ces parties, sur le processeur du jeu : Last1 Panel les fait maintenant passer après le jeu.",
+                "Steam was compiling shaders during these games, on the game's CPU: Last1 Panel now makes them wait behind the game.",
+            ));
+        }
+        let lowest = cpu_bound.iter().find(|s| src.lowest_settings.contains(&s.program));
         let why = if !remedies.is_empty() {
             remedies.join(" ")
         } else if contexts.is_empty() {
             t(
                 "Last1 Panel regarde ce qui le ralentit pendant votre prochaine partie, puis le corrige ou dit ici quoi faire.",
                 "Last1 Panel checks what slows it down during your next game, then fixes it or says here what to do.",
+            )
+        } else if let Some(s) = lowest {
+            let game = s.program.strip_suffix(".exe").unwrap_or(&s.program);
+            t(
+                &format!(
+                    "{game} est déjà au plus bas et le processeur est à pleine vitesse : rien ne le bride. Last1 Panel relève à chaque partie ce qui le charge, pour trouver ce qui peut encore être gagné."
+                ),
+                &format!(
+                    "{game} is already at the lowest and the CPU is at full speed: nothing holds it back. Last1 Panel records what loads it every game, to find what can still be gained."
+                ),
             )
         } else {
             t(
@@ -1739,6 +1777,15 @@ fn session_details(s: &GameSession) -> Vec<String> {
     if let Some(razer) = &c.razer {
         details.push(format!("Razer {razer}"));
     }
+    if !c.cpu_users.is_empty() {
+        details.push(t(
+            &format!("processeur pris par {}", c.cpu_users.join(", ")),
+            &format!("CPU used by {}", c.cpu_users.join(", ")),
+        ));
+    }
+    if c.steam_shaders {
+        details.push(t("Steam compilait des shaders", "Steam was compiling shaders"));
+    }
     for change in &c.input_changes {
         details.push(t(&format!("à {change}"), &format!("at {change}")));
     }
@@ -1934,6 +1981,7 @@ mod tests {
             pacman: false,
             updates: Vec::new(),
             minimal_textures: Vec::new(),
+            lowest_settings: Vec::new(),
         });
         let ids =
             |level: Level| -> Vec<&str> { report.checks.iter().filter(|c| c.level == level).map(|c| c.id).collect() };
@@ -2048,6 +2096,7 @@ mod tests {
             pacman: false,
             updates: Vec::new(),
             minimal_textures: Vec::new(),
+            lowest_settings: Vec::new(),
         };
         let report = run(&sources);
         assert!(report.checks.iter().all(|c| c.level == Level::Ok), "{:#?}", report.checks);
@@ -2122,6 +2171,7 @@ mod tests {
                 pacman: false,
                 updates: Vec::new(),
                 minimal_textures: Vec::new(),
+                lowest_settings: Vec::new(),
             })
         };
         let arch = report(None);
@@ -2229,6 +2279,7 @@ mod tests {
             pacman: true,
             updates: vec!["firefox".into(), "nvidia-utils".into(), "lib32-nvidia-utils".into()],
             minimal_textures: Vec::new(),
+            lowest_settings: Vec::new(),
         });
         let find = |id: &str| report.checks.iter().find(|c| c.id == id);
         assert!(find("driver").is_none());
@@ -2281,6 +2332,8 @@ mod tests {
                 gpu_busy_samples: 0,
                 gpu_vram_total: None,
                 razer: Some("mode 4/4, processeur 3, carte 2".into()),
+                cpu_users: vec!["PioneerGame.exe 520 %".into(), "fossilize_repla 300 %".into()],
+                steam_shaders: true,
                 input_changes: vec!["12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e)".into()],
             }),
             details: Vec::new(),
@@ -2295,6 +2348,7 @@ mod tests {
              processeur en balance_performance ; limite de la carte 80 W sur 125 W possibles ; \
              carte freinée : limite de puissance ; processeur limité à 35 W, 90 W en pointe ; \
              processeur bridé par la chaleur 12 fois ; Razer mode 4/4, processeur 3, carte 2 ; \
+             processeur pris par PioneerGame.exe 520 %, fossilize_repla 300 % ; Steam compilait des shaders ; \
              à 12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e) ; \
              Dynamic Boost (nvidia-powerd) arrêté ; \
              image affichée par une autre puce (portable hybride)"
@@ -2340,6 +2394,7 @@ mod tests {
                 pacman,
                 updates: Vec::new(),
                 minimal_textures: Vec::new(),
+                lowest_settings: Vec::new(),
             });
             let check = report.checks.into_iter().find(|c| c.id == "power").unwrap();
             (check.level, check.fix)
@@ -2354,6 +2409,73 @@ mod tests {
         // … GameMode installé sur un portable.
         assert_eq!(power(&nothing, true, true, true), (Level::Warning, Some(Fix::GameMode)));
         assert_eq!(power(&nothing, true, true, false), (Level::Warning, None));
+    }
+
+    #[test]
+    fn cpu_bound_games_point_at_what_really_slows_them() {
+        let pc = pc();
+        write(pc.proc_dir.join("meminfo"), "MemTotal: 16000000 kB\n");
+        let exec = FakeExec::new();
+        let cpu = |swap_max: f64, shaders: bool, lowest: bool| {
+            let session = GameSession {
+                program: "PioneerGame.exe".into(),
+                minutes: 30.0,
+                limit: "cpu",
+                swap_max,
+                context: Some(crate::system::game_context::GameContext {
+                    steam_shaders: shaders,
+                    ..Default::default()
+                }),
+                ..GameSession::default()
+            };
+            run(&Sources {
+                sys: &pc.sys,
+                dev: &pc.dev,
+                proc_dir: &pc.proc_dir,
+                exec: &exec,
+                env: &|_| None,
+                next_login_env: &|_| None,
+                settings: &Settings::default(),
+                gpus: &[],
+                desktop: Desktop::Plasma,
+                default_proton: None,
+                recent_games: Vec::new(),
+                last_launch: None,
+                version: "0.1.0.r56".into(),
+                go_to_linux_version: None,
+                pcie_in_game: Vec::new(),
+                gamemode_allowed: true,
+                psr_off: false,
+                precache: None,
+                sessions: vec![session],
+                mangohud: true,
+                wrapped_games: Some((3, 3)),
+                go_to_linux: false,
+                can_zram: true,
+                pacman: true,
+                updates: Vec::new(),
+                minimal_textures: Vec::new(),
+                lowest_settings: if lowest { vec!["PioneerGame.exe".into()] } else { Vec::new() },
+            })
+            .checks
+            .into_iter()
+            .find(|c| c.id == "cpu-limited")
+            .unwrap()
+        };
+        // 2 Go de zram pour 16 Go, 7 Go partis sur le disque en jeu.
+        write(
+            pc.proc_dir.join("swaps"),
+            "Filename\tType\tSize\tUsed\tPriority\n/dev/zram0 partition\t2097148\t2097148\t100\n/swapfile file\t16777212\t7340032\t-2\n",
+        );
+        let swapping = cpu(7.0, true, true);
+        assert_eq!(swapping.fix, Some(Fix::Zram));
+        assert!(swapping.detail.contains("jusqu'à 7 Go de mémoire partent sur le disque"), "{}", swapping.detail);
+        assert!(swapping.detail.contains("Steam compilait des shaders"), "{}", swapping.detail);
+        assert!(!swapping.detail.contains("baissez"), "{}", swapping.detail);
+        // Rien à régler, jeu déjà au plus bas : pas de « baissez ».
+        let lowest = cpu(0.0, false, true);
+        assert!(lowest.detail.contains("PioneerGame est déjà au plus bas"), "{}", lowest.detail);
+        assert!(cpu(0.0, false, false).detail.contains("baissez la distance"));
     }
 
     #[test]
@@ -2399,6 +2521,7 @@ mod tests {
                 pacman: true,
                 updates: Vec::new(),
                 minimal_textures: if minimal { vec!["PioneerGame.exe".into()] } else { Vec::new() },
+                lowest_settings: Vec::new(),
             })
             .checks
             .into_iter()
@@ -2488,6 +2611,7 @@ mod tests {
                 pacman: false,
                 updates: Vec::new(),
                 minimal_textures: Vec::new(),
+                lowest_settings: Vec::new(),
             });
             let fact = report
                 .facts
@@ -2577,6 +2701,7 @@ mod tests {
             pacman: true,
             updates: Vec::new(),
             minimal_textures: Vec::new(),
+            lowest_settings: Vec::new(),
         });
         // Une seule carte vérifiée : la GTX 1650, et son pilote.
         assert_eq!(report.checks.iter().filter(|c| c.id == "rebar").count(), 1);
@@ -2648,6 +2773,7 @@ mod tests {
                 pacman: false,
                 updates: Vec::new(),
                 minimal_textures: Vec::new(),
+                lowest_settings: Vec::new(),
             })
             .checks
             .into_iter()

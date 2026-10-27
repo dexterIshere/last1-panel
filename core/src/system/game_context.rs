@@ -61,6 +61,11 @@ pub struct GameContext {
     /// Portable Razer : ce que dit son contrôleur pendant la partie
     /// (razer::state), ou pourquoi il refuse le réglage de jeu.
     pub razer: Option<String>,
+    /// Ce qui a pris le plus de processeur pendant la partie (au plus fort
+    /// sur 20 s, en % d'un cœur) : « PioneerGame.exe 520 % » (cpu_users.rs).
+    pub cpu_users: Vec<String>,
+    /// Steam compilait des shaders pendant la partie (mis en retrait).
+    pub steam_shaders: bool,
 }
 
 /// Un relevé.

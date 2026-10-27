@@ -505,6 +505,12 @@ fn watch_game() {
     let mut lifted = false;
     let mut tick: u32 = 0;
     let mut razer_error: Option<String> = None;
+    // Ce qui prend le processeur pendant la partie (system/cpu_users.rs).
+    use last1_panel_core::system::cpu_users;
+    let mut procs = cpu_users::snapshot(proc_dir);
+    let mut procs_at = std::time::Instant::now();
+    let mut cpu_peak: std::collections::BTreeMap<String, f64> = std::collections::BTreeMap::new();
+    let mut steam_shaders = false;
     // Par carte : la plus large, la plus rapide.
     let mut best: std::collections::BTreeMap<String, (u32, Option<f64>)> = std::collections::BTreeMap::new();
     loop {
@@ -551,6 +557,8 @@ fn watch_game() {
         }
         if !playing {
             playing = true;
+            cpu_peak.clear();
+            steam_shaders = false;
             best.clear();
             tick = 0;
             started = std::time::Instant::now();
@@ -573,6 +581,15 @@ fn watch_game() {
             }
             game_context::save(&log, &context);
         }
+        let now_procs = cpu_users::snapshot(proc_dir);
+        let seconds = procs_at.elapsed().as_secs_f64();
+        for (name, percent) in cpu_users::usage(&procs, &now_procs, seconds) {
+            let peak = cpu_peak.entry(name).or_default();
+            *peak = peak.max(percent);
+        }
+        // Steam compile des shaders pendant le jeu : le jeu passe avant.
+        steam_shaders |= cpu_users::shaders_to_background(proc_dir, &now_procs);
+        (procs, procs_at) = (now_procs, std::time::Instant::now());
         tick += 1;
         let gpus = gpu::detect(&SysPaths::default());
         for gpu in gpus.iter().filter(|g| g.discrete()) {
@@ -602,6 +619,10 @@ fn watch_game() {
         {
             let mut context = game_context::load(&log).unwrap_or_default();
             context.add(&game_context::sample(sys, &exec, &gpus));
+            let mut users: Vec<(&String, &f64)> = cpu_peak.iter().collect();
+            users.sort_by(|a, b| b.1.total_cmp(a.1));
+            context.cpu_users = users.iter().take(5).map(|(name, percent)| format!("{name} {percent:.0} %")).collect();
+            context.steam_shaders |= steam_shaders;
             if let Some(l) = laptop.as_ref().filter(|_| !battery) {
                 context.razer = Some(match (&razer_error, razer::state(l)) {
                     (Some(e), _) => format!("refusé : {e}"),

@@ -405,6 +405,18 @@ impl Panel {
                     programs
                 })
                 .unwrap_or_default(),
+            lowest_settings: steam
+                .as_deref()
+                .map(|root| {
+                    let mut programs: Vec<String> = sessions.iter().map(|s| s.program.clone()).collect();
+                    programs.sort();
+                    programs.dedup();
+                    programs.retain(|program| {
+                        steam::unreal_settings(root, program).is_some_and(|settings| settings.values().all(|v| *v == 0))
+                    });
+                    programs
+                })
+                .unwrap_or_default(),
             sessions,
             last_launch: last_launch(
                 &crate::paths::last_launch_file(),
