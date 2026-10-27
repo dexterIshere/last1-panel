@@ -378,14 +378,24 @@ export interface MouseState {
   ratbag: Ratbag;
 }
 
-/** Page Clips : Vice (core/src/clips.rs). */
+/** Une vidéo des clips (core/src/clips.rs). */
+export interface Clip {
+  name: string;
+  path: string;
+  /** Octets. */
+  size: number;
+  /** Secondes depuis 1970. */
+  modified: number;
+}
+
 export interface ClipsState {
+  /** gpu-screen-recorder installé. */
   installed: boolean;
-  /** Service de Vice démarré : ses touches marchent. */
-  running: boolean;
-  /** PC installé par go-to-linux (Vice s'installe par Applications). */
-  goToLinux: boolean;
+  /** Claviers lisibles : F8 et F9 marchent. */
+  hotkeys: boolean;
+  enabled: boolean;
   folder: string;
+  clips: Clip[];
 }
 
 /** Nouveautés de la version installée (core/src/release_notes.rs). */

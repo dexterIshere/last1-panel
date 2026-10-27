@@ -95,7 +95,10 @@ export const api = {
   dismissNews: () => invoke<void>("dismiss_news"),
 
   clipsState: () => invoke<ClipsState>("clips_state"),
-  /** Ouvre Vice, son dossier, go-to-linux ou la page de Vice. */
-  openClips: (target: "vice" | "folder" | "go-to-linux" | "web") => invoke<void>("open_clips", { target }),
-  startVice: () => invoke<void>("start_vice"),
+  setClips: (enabled: boolean) => invoke<void>("set_clips", { enabled }),
+  /** gpu-screen-recorder et les touches F8/F9 (pkexec, mot de passe demandé). */
+  installClips: () => invoke<void>("install_clips"),
+  /** Vidéo ou dossier ouvert par l'application du bureau. */
+  openClip: (path: string) => invoke<void>("open_clip", { path }),
+  deleteClip: (path: string) => invoke<void>("delete_clip", { path }),
 };

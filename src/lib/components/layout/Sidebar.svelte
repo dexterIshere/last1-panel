@@ -30,7 +30,7 @@
     },
     { id: "gpu", title: t("Carte graphique", "Graphics card"), detail: t("Puissance, ventilateurs", "Power, fans"), icon: Cpu },
     { id: "games", title: t("Jeux", "Games"), detail: t("Réglages 3D par jeu", "Per-game 3D settings"), icon: Gamepad2 },
-    { id: "clips", title: t("Clips", "Clips"), detail: t("F9 : les derniers instants du jeu", "F9: the game's last moments"), icon: Clapperboard },
+    { id: "clips", title: t("Clips", "Clips"), detail: t("F8 : la dernière minute du jeu", "F8: the game's last minute"), icon: Clapperboard },
     { id: "perf", title: t("Performances", "Performance"), detail: t("Diagnostic en jeu", "In-game diagnostic"), icon: Gauge },
   ]);
 

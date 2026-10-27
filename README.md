@@ -19,7 +19,7 @@ tuning, per-game 3D settings. Free software (GPL-3.0), part of the Last1 suite.*
 | Accélération et vitesse du pointeur ; DPI et fréquence d'une souris de jeu (G HUB) | **Matériel › Souris** | KWin (D-Bus), `hyprctl` ; [libratbag](https://github.com/libratbag/libratbag) (moteur de Piper) |
 | Limite de puissance, fréquences, ventilateurs (MSI Afterburner) | **Carte graphique** | [LACT](https://github.com/ilya-zlobintsev/LACT) |
 | Paramètres 3D par jeu : images/s max, V-Sync, faible latence, filtrage, DLSS | **Jeux** | Proton, DXVK, VKD3D-Proton, dxvk-nvapi, MangoHud |
-| Clips (ShadowPlay, Medal) | **Clips** | [Vice](https://github.com/splitshotz/Vice), installé par go-to-linux |
+| Clips (ShadowPlay, Medal) : F8 garde la dernière minute, F9 enregistre une vidéo | **Clips** | [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/) |
 | Couleurs propres à un jeu (profils de NVIDIA Profile Inspector, ReShade) | **Couleurs** (profils) et **Jeux** | [vkBasalt](https://github.com/DadSchoorse/vkBasalt) (zlib, inclus), dans la seule fenêtre du jeu |
 
 Chaque réglage passe par un outil existant et maintenu : Last1 Panel les

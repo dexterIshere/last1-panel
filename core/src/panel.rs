@@ -540,6 +540,12 @@ fn vibrance_values(settings: &Settings, gpu: &Gpu) -> BTreeMap<String, f64> {
 
 /// Dernier jeu lancé par Last1 Panel (fichier écrit par la CLI à chaque
 /// lancement) : son nom dans Steam, et si MangoHud a écrit un journal depuis.
+/// Nom du dernier jeu lancé par Last1 Panel (Steam, sinon son exécutable).
+pub fn last_game_name() -> Option<String> {
+    let steam = crate::games::steam::find_root(&crate::paths::home_dir());
+    last_launch(&crate::paths::last_launch_file(), &crate::paths::game_logs_dir(), steam.as_deref()).map(|l| l.name)
+}
+
 fn last_launch(file: &Path, logs: &Path, steam: Option<&Path>) -> Option<crate::system::diagnostic::LastLaunch> {
     let text = fs::read_to_string(file).ok()?;
     let launched = fs::metadata(file).and_then(|m| m.modified()).ok()?;

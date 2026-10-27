@@ -36,7 +36,9 @@ base64 = "0.22"
 # image de secours si le thème d'icônes n'a pas la nôtre.
 ksni = { version = "0.3", features = ["blocking"] }
 png = "0.18"
-# ioctl des rapports HID du contrôleur des portables Razer (system/razer.rs).
+# ioctl des rapports HID du contrôleur des portables Razer (system/razer.rs),
+# signaux envoyés à gpu-screen-recorder (clips.rs) : enregistrer la dernière
+# minute, lancer ou arrêter un enregistrement.
 libc = "0.2"
 
 [dev-dependencies]
