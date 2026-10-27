@@ -100,5 +100,6 @@ export const api = {
   installClips: () => invoke<void>("install_clips"),
   /** Vidéo ou dossier ouvert par l'application du bureau. */
   openClip: (path: string) => invoke<void>("open_clip", { path }),
+  openVice: () => invoke<void>("open_vice"),
   deleteClip: (path: string) => invoke<void>("delete_clip", { path }),
 };

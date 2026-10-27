@@ -357,7 +357,10 @@ fn clips() {
         let wanted = Settings::load().clips != Some(false)
             && clips::installed()
             && last1_panel_core::games::steam::game_running(std::path::Path::new("/proc"));
-        if wanted && recorder.is_none() && std::time::Instant::now() >= retry_at {
+        // Vice fait les clips : il garde ses touches, Last1 Panel ne lance rien.
+        if wanted && recorder.is_none() && std::time::Instant::now() >= retry_at && clips::vice_in_use() {
+            retry_at = std::time::Instant::now() + Duration::from_secs(60);
+        } else if wanted && recorder.is_none() && std::time::Instant::now() >= retry_at {
             let dir = clips::dir(&home);
             let _ = std::fs::create_dir_all(&dir);
             let cli = std::env::current_exe().unwrap_or_else(|_| "last1-panel-cli".into());

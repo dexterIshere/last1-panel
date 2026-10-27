@@ -90,12 +90,28 @@ pub struct ClipsState {
     /// Les claviers sont lisibles : F8 et F9 marchent.
     pub hotkeys: bool,
     pub enabled: bool,
+    /// Vice (splitshotz/Vice), installé par le joueur, fait les clips :
+    /// Last1 Panel s'efface (deux enregistreurs, et F9 pris par les deux).
+    pub vice: bool,
     pub folder: String,
     pub clips: Vec<Clip>,
 }
 
 pub fn installed() -> bool {
     which("gpu-screen-recorder").is_some()
+}
+
+/// Vice démarre avec la session (ou tourne) ?
+pub fn vice_in_use() -> bool {
+    ["is-enabled", "is-active"].iter().any(|query| {
+        std::process::Command::new("systemctl")
+            .args(["--user", query, "--quiet", "vice.service"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    })
 }
 
 /// Les claviers sont-ils lisibles par ce compte, par notre règle udev ? Celle
@@ -122,6 +138,7 @@ pub fn state(home: &Path, dev: &Path, enabled: bool) -> ClipsState {
         installed: installed(),
         hotkeys: hotkeys_ready(Path::new(UDEV_RULE), dev),
         enabled,
+        vice: vice_in_use(),
         clips: list(&folder),
         folder: folder.to_string_lossy().into_owned(),
     }

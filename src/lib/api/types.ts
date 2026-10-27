@@ -394,6 +394,8 @@ export interface ClipsState {
   /** Claviers lisibles : F8 et F9 marchent. */
   hotkeys: boolean;
   enabled: boolean;
+  /** Vice, installé par le joueur, fait les clips : Last1 Panel s'efface. */
+  vice: boolean;
   folder: string;
   clips: Clip[];
 }

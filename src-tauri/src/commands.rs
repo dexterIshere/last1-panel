@@ -389,6 +389,25 @@ pub async fn install_clips() -> Result<()> {
     .await
 }
 
+/// Ouvre Vice, hors de la fenêtre et sans l'environnement de l'AppImage.
+#[tauri::command]
+pub async fn open_vice() -> Result<()> {
+    blocking(|| {
+        let mut command = if which("vice-app").is_some() {
+            std::process::Command::new("vice-app")
+        } else {
+            let mut launch = std::process::Command::new("gtk-launch");
+            launch.arg("vice");
+            launch
+        };
+        command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        last1_panel_core::exec::without_appimage_env(&mut command);
+        command.spawn().map(|_| ()).map_err(|e| CoreError::message(e.to_string()))
+    })
+    .await
+}
+
 /// Ouvre une vidéo ou le dossier des clips avec l'application du bureau.
 #[tauri::command]
 pub async fn open_clip(path: String) -> Result<()> {

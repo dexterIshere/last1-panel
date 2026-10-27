@@ -91,7 +91,28 @@
 {#if loading}
   <p class="muted"><Spinner /> {t("Lecture des clips…", "Reading clips…")}</p>
 {:else if info}
-  {#if !ready}
+  {#if info.vice}
+    <section class="panel card setup">
+      <div>
+        <h2>{t("Vice fait vos clips", "Vice makes your clips")}</h2>
+        <p class="muted">
+          {t(
+            "Vous avez installé Vice : il garde ses touches et ses réglages, Last1 Panel n'enregistre rien pour ne pas le gêner.",
+            "You installed Vice: it keeps its keys and settings, Last1 Panel records nothing so as not to get in its way.",
+          )}
+        </p>
+      </div>
+      <div class="actions">
+        {#if !info.hotkeys && app.system?.tools.pacman !== false}
+          <!-- Sa règle udev part si son paquet est retiré : la nôtre ouvre les mêmes claviers. -->
+          <button class="btn btn--primary" onclick={install} disabled={installing}>
+            {#if installing}<Spinner />{/if}{t("Rendre ses touches à Vice", "Give Vice its keys back")}
+          </button>
+        {/if}
+        <button class={info.hotkeys ? "btn btn--primary" : "btn"} onclick={() => act(() => api.openVice())}>{t("Ouvrir Vice", "Open Vice")}</button>
+      </div>
+    </section>
+  {:else if !ready}
     <section class="panel card setup">
       <div>
         <h2>{t("Activer les clips", "Turn on clips")}</h2>
@@ -241,5 +262,11 @@
 
   .clip__delete:hover {
     color: var(--color-danger);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
   }
 </style>

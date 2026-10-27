@@ -84,6 +84,7 @@ pub fn run() {
             commands::set_clips,
             commands::install_clips,
             commands::open_clip,
+            commands::open_vice,
             commands::delete_clip,
             commands::mouse_state,
             commands::set_pointer,

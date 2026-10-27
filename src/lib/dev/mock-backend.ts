@@ -140,6 +140,8 @@ export function installMockBackend(): void {
     installed: params.get("clips") !== "absent",
     hotkeys: params.get("clips") !== "absent",
     enabled: true,
+    // ?clips=vice : Vice fait les clips.
+    vice: params.get("clips") === "vice",
     folder: "/home/joueur/Vidéos/Last1 Panel",
     clips: [
       { name: "ARC Raiders 2026-10-21 21-30-05", path: "/home/joueur/Vidéos/Last1 Panel/ARC Raiders 2026-10-21 21-30-05.mp4", size: 48_200_000, modified: 1792617005 },
@@ -331,6 +333,7 @@ export function installMockBackend(): void {
       clipsState.hotkeys = true;
     },
     open_clip: () => undefined,
+    open_vice: () => undefined,
     delete_clip: (args) => {
       clipsState.clips = clipsState.clips.filter((c) => c.path !== args.path);
     },
