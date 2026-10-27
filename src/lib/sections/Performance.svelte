@@ -215,7 +215,7 @@
                 <td class="mono">{session.fpsOnePercentLow}</td>
                 <td class="mono">{session.cpuLoad} %</td>
                 <td class="mono">{session.gpuLoad} %</td>
-                <td>{session.limit === "gpu" ? t("Carte graphique", "Graphics card") : session.limit === "cpu" ? t("Processeur", "CPU") : session.limit === "cap" ? t("Plafond d'images (synchro, limite)", "Frame cap (sync, limit)") : session.limit === "loading" ? t("Chargement (pas une vraie partie)", "Loading (not a real game)") : "?"}</td>
+                <td>{session.limit === "gpu" ? t("Carte graphique", "Graphics card") : session.limit === "cpu" ? t("Processeur", "CPU") : session.limit === "cap" ? t("Plafond d'images (synchro, limite)", "Frame cap (sync, limit)") : session.limit === "loading" ? t("Non mesurée (chargement, jeu en arrière-plan)", "Not measured (loading, game in the background)") : "?"}</td>
               </tr>
               {#if session.details.length > 0}
                 <tr class="details">

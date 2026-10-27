@@ -295,8 +295,13 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     let skipped = |i: usize| rows[i].loading() || menu[i];
     let playing = (0..rows.len()).filter(|i| !skipped(*i)).count();
     let mostly_loading = playing * 10 < rows.len();
-    let mostly_menus = mostly_loading && menu.iter().filter(|m| **m).count() * 2 >= rows.len();
+    // Menus tenus à leur plafond, pas des images figées à 1 i/s (jeu en
+    // arrière-plan ou en pause) : celles-là ne sont qu'un « loading ».
+    let mostly_menus =
+        mostly_loading && (0..rows.len()).filter(|i| menu[*i] && !rows[*i].loading()).count() * 2 >= rows.len();
     let used: Vec<&Row> = (0..rows.len()).filter(|i| mostly_loading || !skipped(*i)).map(|i| &rows[i]).collect();
+    // À-coups : seulement pendant le jeu, jamais dans un chargement ni un menu.
+    let played: Vec<&Row> = (0..rows.len()).filter(|i| !skipped(*i)).map(|i| &rows[i]).collect();
     let fps: Vec<f64> = used.iter().map(|row| row.fps).collect();
     let mut frametimes: Vec<f64> = used.iter().map(|row| row.frametime).collect();
     let cpu: Vec<f64> = used.iter().filter_map(|row| row.cpu).collect();
@@ -347,8 +352,8 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     };
     let round = |v: f64| (v * 10.0).round() / 10.0;
     // Saccades pendant le jeu (pas les chargements).
-    let spikes = |ms: f64| used.iter().filter(|row| row.frametime > ms).count() as u32;
-    let mut spike_minutes: Vec<f64> = used
+    let spikes = |ms: f64| played.iter().filter(|row| row.frametime > ms).count() as u32;
+    let mut spike_minutes: Vec<f64> = played
         .iter()
         .filter(|row| row.frametime > 100.0)
         .filter_map(|row| row.at)
@@ -359,7 +364,7 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     let peak = |f: fn(&Row) -> Option<f64>| round(used.iter().filter_map(|row| f(row)).fold(0.0_f64, f64::max));
     let p999 = frametimes[((frametimes.len() as f64 * 0.999) as usize).min(frametimes.len() - 1)];
     Some(GameSession {
-        frames_25_50: used.iter().filter(|row| (25.0..50.0).contains(&row.frametime)).count() as u32,
+        frames_25_50: played.iter().filter(|row| (25.0..50.0).contains(&row.frametime)).count() as u32,
         fps_point_one_low: round(1000.0 / p999),
         spikes_50: spikes(50.0),
         spikes_100: spikes(100.0),
@@ -500,6 +505,16 @@ mod tests {
         // Un jeu à 60 i/s tenus, processeur bien chargé : du jeu.
         let busy: Vec<_> = (0..300).map(|i| (60.0, 16.6, 60.0, 70.0, (i + 1) * 1_000_000_000)).collect();
         assert_eq!(summarize("Game.exe_2026-10-26_22-54-00", &log(&busy)).unwrap().fps_average, 60.0);
+    }
+
+    #[test]
+    fn game_left_in_the_background_counts_nothing() {
+        // 47 min à 1 i/s, processeur et carte au repos : pas une partie.
+        let idle: Vec<_> = (0..2820).map(|i| (1.0, 1000.0, 15.0, 10.0, (i + 1) * 1_000_000_000)).collect();
+        let session = summarize("PioneerGame.exe_2026-10-27_10-59-00", &log(&idle)).unwrap();
+        assert_eq!(session.limit, "loading");
+        assert_eq!((session.spikes_50, session.spikes_100, session.frames_25_50), (0, 0, 0));
+        assert!(session.spike_minutes.is_empty());
     }
 
     #[test]
