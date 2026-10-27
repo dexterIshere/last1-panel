@@ -201,6 +201,35 @@ impl Row {
     }
 }
 
+/// Menus et salons tenus à un plafond (30 ou 60 i/s, ARC Raiders) : au
+/// moins 2 s (3 relevés sans horodatage) d'images collées à la même cadence
+/// (±2 %), 65 i/s au plus, processeur et carte peu chargés. Pas du jeu : ils
+/// tireraient le 1 % bas vers le plafond et feraient croire le processeur en
+/// cause.
+fn menus(rows: &[Row]) -> Vec<bool> {
+    let idle = |row: &Row| row.fps <= 65.0 && row.cpu.is_none_or(|c| c < 25.0) && row.gpu.is_none_or(|g| g < 40.0);
+    let long = |run: &[Row]| match (run.first().and_then(|r| r.at), run.last().and_then(|r| r.at)) {
+        (Some(start), Some(end)) => end - start >= 2e9 && run.len() >= 3,
+        _ => run.len() >= 3,
+    };
+    let mut menu = vec![false; rows.len()];
+    let mut start = 0;
+    while start < rows.len() {
+        let mut end = start;
+        if idle(&rows[start]) {
+            let base = rows[start].fps;
+            while end < rows.len() && idle(&rows[end]) && (rows[end].fps - base).abs() <= base * 0.02 {
+                end += 1;
+            }
+            if long(&rows[start..end]) {
+                menu[start..end].fill(true);
+            }
+        }
+        start = end.max(start + 1);
+    }
+    menu
+}
+
 /// Résumé d'un journal ; `name` : son nom sans « .csv ».
 pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     // En tête : « os,cpu,gpu,… » puis ses valeurs : la carte qui a dessiné.
@@ -260,11 +289,14 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     if rows.is_empty() {
         return None;
     }
-    // Le chargement est compté à part : la partie, c'est le reste ; s'il n'y
-    // a presque que ça, la partie n'en est pas une.
-    let playing = rows.iter().filter(|row| !row.loading()).count();
+    // Le chargement et les menus sont comptés à part : la partie, c'est le
+    // reste ; s'il n'y a presque que ça, la partie n'en est pas une.
+    let menu = menus(&rows);
+    let skipped = |i: usize| rows[i].loading() || menu[i];
+    let playing = (0..rows.len()).filter(|i| !skipped(*i)).count();
     let mostly_loading = playing * 10 < rows.len();
-    let used: Vec<&Row> = rows.iter().filter(|row| mostly_loading || !row.loading()).collect();
+    let mostly_menus = mostly_loading && menu.iter().filter(|m| **m).count() * 2 >= rows.len();
+    let used: Vec<&Row> = (0..rows.len()).filter(|i| mostly_loading || !skipped(*i)).map(|i| &rows[i]).collect();
     let fps: Vec<f64> = used.iter().map(|row| row.fps).collect();
     let mut frametimes: Vec<f64> = used.iter().map(|row| row.frametime).collect();
     let cpu: Vec<f64> = used.iter().filter_map(|row| row.cpu).collect();
@@ -293,8 +325,10 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     // pas (carte trop récente pour lui, ou une autre carte) ; pas de limite
     // devinée.
     let unread = gpu_load < 5.0 && mean(&fps) > 30.0;
-    let limit = if gpu.is_empty() || (unread && !mostly_loading) {
+    let limit = if !mostly_menus && (gpu.is_empty() || (unread && !mostly_loading)) {
         "?"
+    } else if mostly_menus {
+        "cap"
     } else if mostly_loading {
         "loading"
     } else if gpu_bound * 2 >= gpu.len() {
@@ -446,6 +480,26 @@ mod tests {
         let rows: Vec<(f64, f64, f64, f64, u64)> =
             (0..100).map(|i| (143.0 + (i % 3) as f64, 6.9, 40.0, 70.0, (i as u64 + 1) * 1_200_000_000)).collect();
         assert_eq!(summarize("Game.exe_2026-10-18_21-04-33", &log(&rows)).unwrap().limit, "cap");
+    }
+
+    #[test]
+    fn capped_menus_are_set_apart() {
+        // ARC Raiders : 16 min de salon à 30 i/s pile, processeur à 10 %,
+        // puis 18 min de jeu entre 157 et 245 i/s, puis le salon encore.
+        let lobby = |from: u64| (0..960).map(move |i| (30.0, 33.3, 10.0, 8.0, (from + i) * 1_000_000_000));
+        let mut rows: Vec<(f64, f64, f64, f64, u64)> = lobby(1).collect();
+        rows.extend((0..1080).map(|i| (157.0 + (i % 9) as f64 * 11.0, 5.0, 45.0, 99.0, (961 + i) * 1_000_000_000)));
+        rows.extend(lobby(2041).take(180));
+        let session = summarize("PioneerGame.exe_2026-10-26_22-54-00", &log(&rows)).unwrap();
+        assert_eq!(session.limit, "gpu");
+        assert!(session.fps_one_percent_low > 150.0, "{}", session.fps_one_percent_low);
+        assert_eq!(session.frames_25_50, 0);
+        // Rien que le salon : plafond, pas processeur.
+        let only: Vec<_> = lobby(1).collect();
+        assert_eq!(summarize("PioneerGame.exe_2026-10-26_22-54-00", &log(&only)).unwrap().limit, "cap");
+        // Un jeu à 60 i/s tenus, processeur bien chargé : du jeu.
+        let busy: Vec<_> = (0..300).map(|i| (60.0, 16.6, 60.0, 70.0, (i + 1) * 1_000_000_000)).collect();
+        assert_eq!(summarize("Game.exe_2026-10-26_22-54-00", &log(&busy)).unwrap().fps_average, 60.0);
     }
 
     #[test]
