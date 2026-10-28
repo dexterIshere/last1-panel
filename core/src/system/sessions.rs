@@ -136,7 +136,7 @@ pub fn recent(dir: &Path, count: usize) -> Vec<GameSession> {
             if session.limit == "?"
                 && let Some(busy) = session.context.as_ref().and_then(|c| c.gpu_busy)
             {
-                session.limit = if busy >= 85.0 { "gpu" } else { "cpu" };
+                session.limit = if busy >= 80.0 { "gpu" } else { "cpu" };
             }
             Some(session)
         })
@@ -203,11 +203,12 @@ impl Row {
 
 /// Menus et salons tenus à un plafond (30 ou 60 i/s, ARC Raiders) : au
 /// moins 2 s (3 relevés sans horodatage) d'images collées à la même cadence
-/// (±2 %), 65 i/s au plus, processeur et carte peu chargés. Pas du jeu : ils
+/// (±2 %), 65 i/s au plus, processeur peu chargé (la carte non : une RX 9070
+/// XT se dit occupée à 30 i/s dans le salon, fréquence au plus bas). Pas du jeu : ils
 /// tireraient le 1 % bas vers le plafond et feraient croire le processeur en
 /// cause.
 fn menus(rows: &[Row]) -> Vec<bool> {
-    let idle = |row: &Row| row.fps <= 65.0 && row.cpu.is_none_or(|c| c < 25.0) && row.gpu.is_none_or(|g| g < 40.0);
+    let idle = |row: &Row| row.fps <= 65.0 && row.cpu.is_none_or(|c| c < 25.0);
     let long = |run: &[Row]| match (run.first().and_then(|r| r.at), run.last().and_then(|r| r.at)) {
         (Some(start), Some(end)) => end - start >= 2e9 && run.len() >= 3,
         _ => run.len() >= 3,
@@ -336,7 +337,7 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         "cap"
     } else if mostly_loading {
         "loading"
-    } else if gpu_bound * 2 >= gpu.len() {
+    } else if gpu_bound * 2 >= gpu.len() || gpu_load >= 80.0 {
         "gpu"
     } else if capped {
         "cap"
@@ -491,7 +492,8 @@ mod tests {
     fn capped_menus_are_set_apart() {
         // ARC Raiders : 16 min de salon à 30 i/s pile, processeur à 10 %,
         // puis 18 min de jeu entre 157 et 245 i/s, puis le salon encore.
-        let lobby = |from: u64| (0..960).map(move |i| (30.0, 33.3, 10.0, 8.0, (from + i) * 1_000_000_000));
+        // Carte « occupée » à 30 i/s (RX 9070 XT, fréquence au plus bas).
+        let lobby = |from: u64| (0..960).map(move |i| (30.0, 33.3, 10.0, 85.0, (from + i) * 1_000_000_000));
         let mut rows: Vec<(f64, f64, f64, f64, u64)> = lobby(1).collect();
         rows.extend((0..1080).map(|i| (157.0 + (i % 9) as f64 * 11.0, 5.0, 45.0, 99.0, (961 + i) * 1_000_000_000)));
         rows.extend(lobby(2041).take(180));
