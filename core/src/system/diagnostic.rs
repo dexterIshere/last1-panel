@@ -1485,6 +1485,8 @@ pub fn run(src: &Sources) -> Report {
             ));
         }
         let lowest = cpu_bound.iter().find(|s| src.lowest_settings.contains(&s.program));
+        // Relevés pris et rien à régler : il donne tout, pas d'alerte.
+        let at_best = remedies.is_empty() && !contexts.is_empty();
         let why = if !remedies.is_empty() {
             remedies.join(" ")
         } else if contexts.is_empty() {
@@ -1510,12 +1512,21 @@ pub fn run(src: &Sources) -> Report {
         };
         checks.push(Check {
             fix,
-            ..check(
-                "cpu-limited",
-                Level::Warning,
-                t("Votre processeur ralentit vos jeux", "Your CPU slows your games down"),
-                why,
-            )
+            ..if at_best {
+                check(
+                    "cpu-limited",
+                    Level::Ok,
+                    t("Votre processeur donne tout dans vos jeux", "Your CPU gives its all in your games"),
+                    why,
+                )
+            } else {
+                check(
+                    "cpu-limited",
+                    Level::Warning,
+                    t("Votre processeur ralentit vos jeux", "Your CPU slows your games down"),
+                    why,
+                )
+            }
         });
     }
 
@@ -2528,6 +2539,7 @@ mod tests {
         // Rien à régler, jeu déjà au plus bas : pas de « baissez ».
         let lowest = cpu(0.0, false, true);
         assert!(lowest.detail.contains("PioneerGame est déjà au plus bas"), "{}", lowest.detail);
+        assert_eq!((lowest.level, lowest.title.as_str()), (Level::Ok, "Votre processeur donne tout dans vos jeux"));
         assert!(cpu(0.0, false, false).detail.contains("baissez la distance"));
     }
 
