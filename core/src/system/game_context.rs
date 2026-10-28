@@ -66,6 +66,9 @@ pub struct GameContext {
     pub cpu_users: Vec<String>,
     /// Steam compilait des shaders pendant la partie (mis en retrait).
     pub steam_shaders: bool,
+    /// Applications d'à côté rangées en mémoire compressée pendant la partie
+    /// (background_memory.rs) : « discord 1.2 Go ».
+    pub background_compressed: Vec<String>,
 }
 
 /// Un relevé.

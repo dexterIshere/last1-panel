@@ -511,6 +511,15 @@ fn watch_game() {
     let mut procs_at = std::time::Instant::now();
     let mut cpu_peak: std::collections::BTreeMap<String, f64> = std::collections::BTreeMap::new();
     let mut steam_shaders = false;
+    // Discord, navigateur… rangés en mémoire compressée quand elle se remplit
+    // (system/background_memory.rs).
+    use last1_panel_core::system::background_memory;
+    let user_cgroup = background_memory::user_root(
+        &std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default(),
+        std::path::Path::new("/sys/fs/cgroup"),
+    );
+    let mut compressed_at: Option<std::time::Instant> = None;
+    let mut compressed: std::collections::BTreeMap<&str, u64> = std::collections::BTreeMap::new();
     // Par carte : la plus large, la plus rapide.
     let mut best: std::collections::BTreeMap<String, (u32, Option<f64>)> = std::collections::BTreeMap::new();
     loop {
@@ -559,6 +568,8 @@ fn watch_game() {
             playing = true;
             cpu_peak.clear();
             steam_shaders = false;
+            compressed.clear();
+            compressed_at = None;
             best.clear();
             tick = 0;
             started = std::time::Instant::now();
@@ -623,6 +634,19 @@ fn watch_game() {
             users.sort_by(|a, b| b.1.total_cmp(a.1));
             context.cpu_users = users.iter().take(5).map(|(name, percent)| format!("{name} {percent:.0} %")).collect();
             context.steam_shaders |= steam_shaders;
+            // La mémoire se remplit : les applications d'à côté rangées
+            // d'avance, au plus toutes les 10 min.
+            if let Some(root) = &user_cgroup
+                && compressed_at.is_none_or(|at| at.elapsed() >= Duration::from_secs(600))
+                && background_memory::memory_tight(&std::fs::read_to_string("/proc/meminfo").unwrap_or_default())
+            {
+                compressed_at = Some(std::time::Instant::now());
+                for (app, bytes) in background_memory::compress(&background_memory::groups(root, proc_dir)) {
+                    *compressed.entry(app).or_default() += bytes;
+                }
+            }
+            context.background_compressed =
+                compressed.iter().map(|(app, bytes)| format!("{app} {:.1} Go", *bytes as f64 / 1e9)).collect();
             if let Some(l) = laptop.as_ref().filter(|_| !battery) {
                 context.razer = Some(match (&razer_error, razer::state(l)) {
                     (Some(e), _) => format!("refusé : {e}"),

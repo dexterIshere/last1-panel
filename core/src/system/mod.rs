@@ -1,5 +1,6 @@
 //! Le PC : cartes graphiques et bureau de la session.
 
+pub mod background_memory;
 pub mod cpu_users;
 pub mod desktop;
 pub mod diagnostic;

@@ -1471,12 +1471,9 @@ pub fn run(src: &Sources) -> Report {
                     &format!("Pendant ces parties, jusqu'à {gb} Go de mémoire partent sur le disque : le jeu attend le disque, et c'est le processeur qui semble lent. Un clic garde tout en mémoire, compressé, comme CachyOS."),
                     &format!("During these games, up to {gb} GB of memory goes to the disk: the game waits for the disk, and the CPU looks slow. One click keeps everything in memory, compressed, like CachyOS."),
                 ));
-            } else {
-                remedies.push(t(
-                    &format!("Ces jeux remplissent la mémoire ({gb} Go mis de côté) : fermez le navigateur et Discord pendant la partie, le jeu la récupère."),
-                    &format!("These games fill the memory ({gb} GB set aside): close the browser and Discord while playing, the game gets it back."),
-                ));
             }
+            // Sinon la mémoire mise de côté va dans zram : c'est voulu (le
+            // service y range Discord et le navigateur pendant les jeux).
         }
         if contexts.iter().any(|c| c.steam_shaders) {
             remedies.push(t(
@@ -1845,6 +1842,12 @@ fn session_details(s: &GameSession) -> Vec<String> {
     }
     if c.steam_shaders {
         details.push(t("Steam compilait des shaders", "Steam was compiling shaders"));
+    }
+    if !c.background_compressed.is_empty() {
+        details.push(t(
+            &format!("rangé en mémoire compressée : {}", c.background_compressed.join(", ")),
+            &format!("moved to compressed memory: {}", c.background_compressed.join(", ")),
+        ));
     }
     for change in &c.input_changes {
         details.push(t(&format!("à {change}"), &format!("at {change}")));
@@ -2397,6 +2400,7 @@ mod tests {
                 gpu_vram_total: None,
                 razer: Some("mode 4/4, processeur 3, carte 2".into()),
                 cpu_users: vec!["PioneerGame.exe 520 %".into(), "fossilize_repla 300 %".into()],
+                background_compressed: vec!["discord 1.2 Go".into()],
                 steam_shaders: true,
                 input_changes: vec!["12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e)".into()],
             }),
@@ -2412,7 +2416,7 @@ mod tests {
              processeur en balance_performance ; limite de la carte 80 W sur 125 W possibles ; \
              carte freinée : limite de puissance ; processeur limité à 35 W, 90 W en pointe ; \
              processeur bridé par la chaleur 12 fois ; Razer mode 4/4, processeur 3, carte 2 ; \
-             processeur pris par PioneerGame.exe 520 %, fossilize_repla 300 % ; Steam compilait des shaders ; \
+             processeur pris par PioneerGame.exe 520 %, fossilize_repla 300 % ; Steam compilait des shaders ; rangé en mémoire compressée : discord 1.2 Go ; \
              à 12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e) ; \
              Dynamic Boost (nvidia-powerd) arrêté ; \
              image affichée par une autre puce (portable hybride)"
