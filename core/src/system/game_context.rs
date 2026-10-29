@@ -69,6 +69,29 @@ pub struct GameContext {
     /// Applications d'à côté rangées en mémoire compressée pendant la partie
     /// (background_memory.rs) : « discord 1.2 Go ».
     pub background_compressed: Vec<String>,
+    /// Échange le plus rempli pendant la partie (Go) : mémoire compressée
+    /// (zram) et disque, relevés chaque minute.
+    pub zram_used_max: Option<f64>,
+    pub swap_disk_max: Option<f64>,
+    /// Ce qui a pris le plus de mémoire pendant la partie (au plus fort, en
+    /// mémoire et dans l'échange) : « PioneerGame.exe 9.8 Go ».
+    pub memory_users: Vec<String>,
+}
+
+/// Échange utilisé maintenant (Go) : zram et disque (/proc/swaps).
+pub fn swap_used(swaps: &str) -> (f64, f64) {
+    let (mut zram, mut disk) = (0u64, 0u64);
+    for line in swaps.lines().skip(1) {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        let used = fields.get(3).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+        if fields.first().is_some_and(|name| name.starts_with("/dev/zram")) {
+            zram += used;
+        } else {
+            disk += used;
+        }
+    }
+    let gb = |kib: u64| (kib as f64 / 1_048_576.0 * 10.0).round() / 10.0;
+    (gb(zram), gb(disk))
 }
 
 /// Un relevé.
@@ -342,6 +365,12 @@ fn parse_nvidia_power(stdout: &str, slot: &str) -> Option<(Option<f64>, Option<f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn swap_is_split_between_zram_and_disk() {
+        let swaps = "Filename\tType\tSize\tUsed\tPriority\n/dev/zram0 partition\t15728636\t14680064\t100\n/swapfile file\t25165820\t1048576\t-1\n";
+        assert_eq!(swap_used(swaps), (14.0, 1.0));
+    }
     use crate::exec::FakeExec;
 
     fn write(path: PathBuf, text: &str) {

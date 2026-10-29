@@ -520,6 +520,7 @@ fn watch_game() {
     );
     let mut compressed_at: Option<std::time::Instant> = None;
     let mut compressed: std::collections::BTreeMap<&str, u64> = std::collections::BTreeMap::new();
+    let mut memory_peak: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     // Par carte : la plus large, la plus rapide.
     let mut best: std::collections::BTreeMap<String, (u32, Option<f64>)> = std::collections::BTreeMap::new();
     loop {
@@ -570,6 +571,7 @@ fn watch_game() {
             steam_shaders = false;
             compressed.clear();
             compressed_at = None;
+            memory_peak.clear();
             best.clear();
             tick = 0;
             started = std::time::Instant::now();
@@ -645,6 +647,17 @@ fn watch_game() {
                     *compressed.entry(app).or_default() += bytes;
                 }
             }
+            let (zram, disk) = game_context::swap_used(&std::fs::read_to_string("/proc/swaps").unwrap_or_default());
+            for (name, bytes) in background_memory::memory_users(proc_dir) {
+                let peak = memory_peak.entry(name).or_default();
+                *peak = (*peak).max(bytes);
+            }
+            let mut users: Vec<(&String, &u64)> = memory_peak.iter().collect();
+            users.sort_by(|a, b| b.1.cmp(a.1));
+            context.memory_users =
+                users.iter().take(6).map(|(name, bytes)| format!("{name} {:.1} Go", **bytes as f64 / 1e9)).collect();
+            context.zram_used_max = Some(context.zram_used_max.unwrap_or(0.0).max(zram));
+            context.swap_disk_max = Some(context.swap_disk_max.unwrap_or(0.0).max(disk));
             context.background_compressed =
                 compressed.iter().map(|(app, bytes)| format!("{app} {:.1} Go", *bytes as f64 / 1e9)).collect();
             if let Some(l) = laptop.as_ref().filter(|_| !battery) {

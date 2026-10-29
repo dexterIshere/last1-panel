@@ -44,9 +44,27 @@ impl State {
     }
 }
 
-/// Empreinte de ce PC (/etc/machine-id).
+/// Empreinte de ce PC (/etc/machine-id), gardée la première fois : elle ne
+/// change plus, même si machine-id change (refait à chaque démarrage sur
+/// certains systèmes, ou par une réinstallation de go-to-linux).
 pub fn this_pc() -> String {
-    pc_id(&fs::read_to_string("/etc/machine-id").unwrap_or_default())
+    kept_pc_id(&crate::paths::config_dir().join("pc-id"), &fs::read_to_string("/etc/machine-id").unwrap_or_default())
+}
+
+fn kept_pc_id(file: &Path, machine_id: &str) -> String {
+    if let Some(kept) = fs::read_to_string(file)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| s.len() == 16 && s.chars().all(|c| c.is_ascii_hexdigit()))
+    {
+        return kept;
+    }
+    let id = pc_id(machine_id);
+    if let Some(dir) = file.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let _ = fs::write(file, &id);
+    id
 }
 
 /// Empreinte du PC : jamais son identifiant (machine-id) lui-même.
@@ -225,6 +243,15 @@ pub fn os_name(os_release: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pc_id_stays_once_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("pc-id");
+        let first = kept_pc_id(&file, "aaaa\n");
+        assert_eq!(first, pc_id("aaaa"));
+        assert_eq!(kept_pc_id(&file, "bbbb\n"), first, "machine-id changé : même empreinte");
+    }
     use crate::system::sessions::GameSession;
 
     fn report(sessions: usize) -> Report {

@@ -1047,8 +1047,15 @@ pub fn run(src: &Sources) -> Report {
                 )
             });
         }
-        let driver_updates: Vec<&str> =
-            src.updates.iter().map(String::as_str).filter(|name| packages::is_driver(name)).collect();
+        // Carte des jeux NVIDIA : mesa (puce du processeur, Radeon) n'est pas
+        // son pilote.
+        let nvidia = crate::system::gpu::games_gpu(src.gpus).is_some_and(|g| g.vendor == Vendor::Nvidia);
+        let driver_updates: Vec<&str> = src
+            .updates
+            .iter()
+            .map(String::as_str)
+            .filter(|name| packages::is_driver(name) && (!nvidia || name.contains("nvidia")))
+            .collect();
         if driver_updates.is_empty() && !vulkan.is_empty() {
             // Celui de la carte des jeux.
             let driver = crate::system::gpu::games_gpu(src.gpus)
@@ -1843,6 +1850,18 @@ fn session_details(s: &GameSession) -> Vec<String> {
     if c.steam_shaders {
         details.push(t("Steam compilait des shaders", "Steam was compiling shaders"));
     }
+    if let (Some(zram), Some(disk)) = (c.zram_used_max, c.swap_disk_max) {
+        details.push(t(
+            &format!("échange jusqu'à {zram} Go en mémoire compressée, {disk} Go sur le disque"),
+            &format!("swap up to {zram} GB in compressed memory, {disk} GB on disk"),
+        ));
+    }
+    if !c.memory_users.is_empty() {
+        details.push(t(
+            &format!("mémoire prise par {}", c.memory_users.join(", ")),
+            &format!("memory used by {}", c.memory_users.join(", ")),
+        ));
+    }
     if !c.background_compressed.is_empty() {
         details.push(t(
             &format!("rangé en mémoire compressée : {}", c.background_compressed.join(", ")),
@@ -2401,6 +2420,9 @@ mod tests {
                 razer: Some("mode 4/4, processeur 3, carte 2".into()),
                 cpu_users: vec!["PioneerGame.exe 520 %".into(), "fossilize_repla 300 %".into()],
                 background_compressed: vec!["discord 1.2 Go".into()],
+                zram_used_max: Some(9.5),
+                swap_disk_max: Some(0.0),
+                memory_users: vec!["PioneerGame.exe 9.8 Go".into()],
                 steam_shaders: true,
                 input_changes: vec!["12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e)".into()],
             }),
@@ -2416,7 +2438,9 @@ mod tests {
              processeur en balance_performance ; limite de la carte 80 W sur 125 W possibles ; \
              carte freinée : limite de puissance ; processeur limité à 35 W, 90 W en pointe ; \
              processeur bridé par la chaleur 12 fois ; Razer mode 4/4, processeur 3, carte 2 ; \
-             processeur pris par PioneerGame.exe 520 %, fossilize_repla 300 % ; Steam compilait des shaders ; rangé en mémoire compressée : discord 1.2 Go ; \
+             processeur pris par PioneerGame.exe 520 %, fossilize_repla 300 % ; Steam compilait des shaders ; échange jusqu'à 9.5 Go en mémoire compressée, 0 Go sur le disque ; \
+             mémoire prise par PioneerGame.exe 9.8 Go ; \
+             rangé en mémoire compressée : discord 1.2 Go ; \
              à 12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e) ; \
              Dynamic Boost (nvidia-powerd) arrêté ; \
              image affichée par une autre puce (portable hybride)"

@@ -110,6 +110,31 @@ pub fn compress(groups: &[(PathBuf, &'static str)]) -> Vec<(&'static str, u64)> 
     freed
 }
 
+/// Mémoire prise par programme (en mémoire et dans l'échange : VmRSS +
+/// VmSwap), par nom, du plus gros au plus petit (octets).
+pub fn memory_users(proc_dir: &Path) -> Vec<(String, u64)> {
+    let mut by_name: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+    for entry in fs::read_dir(proc_dir).into_iter().flatten().flatten() {
+        if !entry.file_name().to_string_lossy().chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(status) = fs::read_to_string(entry.path().join("status")) else { continue };
+        let field = |key: &str| {
+            status.lines().find_map(|l| l.strip_prefix(key)?.split_whitespace().next()?.parse::<u64>().ok())
+        };
+        let Some(name) = status.lines().find_map(|l| l.strip_prefix("Name:")).map(|n| n.trim().to_string()) else {
+            continue;
+        };
+        let kib = field("VmRSS:").unwrap_or(0) + field("VmSwap:").unwrap_or(0);
+        if kib > 0 {
+            *by_name.entry(name).or_default() += kib * 1024;
+        }
+    }
+    let mut list: Vec<(String, u64)> = by_name.into_iter().collect();
+    list.sort_by_key(|(_, bytes)| std::cmp::Reverse(*bytes));
+    list
+}
+
 /// La mémoire se remplit : moins d'un tiers disponible.
 pub fn memory_tight(meminfo: &str) -> bool {
     let kib =
@@ -147,6 +172,10 @@ mod tests {
         found.sort();
         assert_eq!(found, ["discord", "firefox"]);
 
+        fs::write(proc_dir.join("10/status"), "Name:\tDiscord\nVmRSS:\t 1048576 kB\nVmSwap:\t 524288 kB\n").unwrap();
+        fs::create_dir_all(proc_dir.join("14")).unwrap();
+        fs::write(proc_dir.join("14/status"), "Name:\tDiscord\nVmRSS:\t 524288 kB\n").unwrap();
+        assert_eq!(memory_users(&proc_dir), [("Discord".to_string(), 2 << 30)]);
         assert!(memory_tight("MemTotal: 16000000 kB\nMemAvailable: 4000000 kB\n"));
         assert!(!memory_tight("MemTotal: 32000000 kB\nMemAvailable: 16000000 kB\n"));
     }
