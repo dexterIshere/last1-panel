@@ -752,7 +752,23 @@ pub fn run(src: &Sources) -> Report {
     // prochaine connexion.
     let nvidia = src.gpus.iter().any(|g| g.vendor == Vendor::Nvidia);
     let cache_var = if nvidia { "__GL_SHADER_DISK_CACHE_SIZE" } else { "MESA_SHADER_CACHE_MAX_SIZE" };
+    // NVIDIA efface lui-même les shaders les plus anciens de son cache :
+    // ceux d'un jeu peu joué sont à refaire. Pas avec SKIP_CLEANUP.
+    let cleanup = "__GL_SHADER_DISK_CACHE_SKIP_CLEANUP";
+    let cleaned = nvidia && (src.env)(cleanup).is_none() && (src.next_login_env)(cleanup).is_none();
     checks.push(match ((src.env)(cache_var), (src.next_login_env)(cache_var)) {
+        (Some(_), _) if cleaned => Check {
+            fix: Some(Fix::ShaderCache),
+            ..check(
+                "shader-cache",
+                Level::Warning,
+                t("Le pilote efface des shaders déjà faits", "The driver deletes shaders already built"),
+                t(
+                    "Le pilote NVIDIA vide les plus anciens de son cache : ceux des jeux moins joués sont à refaire au lancement suivant. Un clic l'en empêche.",
+                    "The NVIDIA driver empties the oldest ones from its cache: those of less played games must be rebuilt at the next launch. One click stops it.",
+                ),
+            )
+        },
         (Some(value), _) => check(
             "shader-cache",
             Level::Ok,
@@ -2133,7 +2149,11 @@ mod tests {
             "0x00000000fb000000 0x00000000fbffffff 0x0000000000040200\n0x000000c000000000 0x000000c3ffffffff 0x000000000014220c\n",
         );
         let exec = FakeExec::new().on("powerprofilesctl", "performance\n");
-        let env = |name: &str| (name == "__GL_SHADER_DISK_CACHE_SIZE").then(|| "12000000000".to_string());
+        let env = |name: &str| match name {
+            "__GL_SHADER_DISK_CACHE_SIZE" => Some("12000000000".to_string()),
+            "__GL_SHADER_DISK_CACHE_SKIP_CLEANUP" => Some("1".to_string()),
+            _ => None,
+        };
         let mut sources = Sources {
             sys: &pc.sys,
             dev: &pc.dev,

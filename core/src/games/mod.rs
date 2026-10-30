@@ -3,6 +3,7 @@
 
 pub mod launch;
 pub mod profile;
+pub mod shader_runs;
 pub mod shaders;
 pub mod steam;
 pub mod vdf;

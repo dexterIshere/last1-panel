@@ -83,10 +83,10 @@ chmod 0666 /dev/ntsync"#
             Fix::ShaderCache => parts.push(format!(
                 r#"touch {etc}/environment
 if [ -s {etc}/environment ] && [ -n "$(tail -c 1 {etc}/environment)" ]; then echo >> {etc}/environment; fi
-sed -i -e '/^# Last1 Panel : cache des shaders/d' -e '/^[[:space:]]*\(export[[:space:]]\{{1,\}}\)\{{0,1\}}__GL_SHADER_DISK_CACHE_SIZE=/d' -e '/^[[:space:]]*\(export[[:space:]]\{{1,\}}\)\{{0,1\}}MESA_SHADER_CACHE_MAX_SIZE=/d' {etc}/environment
-printf '%s\n' '# Last1 Panel : cache des shaders de 12 Go' '__GL_SHADER_DISK_CACHE_SIZE=12000000000' 'MESA_SHADER_CACHE_MAX_SIZE=12G' >> {etc}/environment
+sed -i -e '/^# Last1 Panel : cache des shaders/d' -e '/^[[:space:]]*\(export[[:space:]]\{{1,\}}\)\{{0,1\}}__GL_SHADER_DISK_CACHE_SIZE=/d' -e '/^[[:space:]]*\(export[[:space:]]\{{1,\}}\)\{{0,1\}}MESA_SHADER_CACHE_MAX_SIZE=/d' -e '/^[[:space:]]*\(export[[:space:]]\{{1,\}}\)\{{0,1\}}__GL_SHADER_DISK_CACHE_SKIP_CLEANUP=/d' {etc}/environment
+printf '%s\n' '# Last1 Panel : cache des shaders de 12 Go' '__GL_SHADER_DISK_CACHE_SIZE=12000000000' '__GL_SHADER_DISK_CACHE_SKIP_CLEANUP=1' 'MESA_SHADER_CACHE_MAX_SIZE=12G' >> {etc}/environment
 mkdir -p {etc}/environment.d
-printf '%s\n' '__GL_SHADER_DISK_CACHE_SIZE=12000000000' 'MESA_SHADER_CACHE_MAX_SIZE=12G' > {etc}/environment.d/90-last1-panel-shader-cache.conf"#
+printf '%s\n' '__GL_SHADER_DISK_CACHE_SIZE=12000000000' '__GL_SHADER_DISK_CACHE_SKIP_CLEANUP=1' 'MESA_SHADER_CACHE_MAX_SIZE=12G' > {etc}/environment.d/90-last1-panel-shader-cache.conf"#
             )),
             // Comme SteamOS.
             Fix::SplitLock => parts.push(format!(
@@ -438,6 +438,7 @@ mod tests {
                 "PATH=/usr/bin",
                 "EDITOR=nano",
                 "__GL_SHADER_DISK_CACHE_SIZE=12000000000",
+                "__GL_SHADER_DISK_CACHE_SKIP_CLEANUP=1",
                 "MESA_SHADER_CACHE_MAX_SIZE=12G"
             ]
         );
@@ -447,6 +448,9 @@ mod tests {
         );
         // Et pour le gestionnaire systemd de la session.
         let session = fs::read_to_string(dir.path().join("environment.d/90-last1-panel-shader-cache.conf")).unwrap();
-        assert_eq!(session, "__GL_SHADER_DISK_CACHE_SIZE=12000000000\nMESA_SHADER_CACHE_MAX_SIZE=12G\n");
+        assert_eq!(
+            session,
+            "__GL_SHADER_DISK_CACHE_SIZE=12000000000\n__GL_SHADER_DISK_CACHE_SKIP_CLEANUP=1\nMESA_SHADER_CACHE_MAX_SIZE=12G\n"
+        );
     }
 }

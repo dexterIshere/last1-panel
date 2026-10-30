@@ -737,6 +737,34 @@ fn watch_shaders() {
         }
         let Some(now) = precache else { continue };
         absent = 0;
+        // Une nouvelle recompilation : notée, avec ce qui a changé depuis la
+        // fois d'avant (games/shader_runs.rs).
+        if current.is_none()
+            && let Some((library, app_id)) = shaders::running_game(std::path::Path::new("/proc"))
+        {
+            use last1_panel_core::games::shader_runs;
+            let gpus = gpu::detect(&SysPaths::default());
+            let driver = std::fs::read_to_string("/sys/module/nvidia/version")
+                .ok()
+                .map(|v| format!("nvidia {}", v.trim()))
+                .or_else(|| {
+                    gpu::games_gpu(&gpus).and_then(|g| {
+                        g.driver_version.as_ref().map(|v| format!("{} {v}", g.driver.clone().unwrap_or_default()))
+                    })
+                })
+                .unwrap_or_default();
+            let (proton, build) = shader_runs::game_versions(&library, app_id);
+            shader_runs::record(
+                &last1_panel_core::paths::cache_dir().join("shader-runs.tsv"),
+                &shader_runs::Run {
+                    at: update::now().max(0) as u64,
+                    game: now.game.clone().unwrap_or_else(|| format!("AppId {app_id}")),
+                    driver,
+                    proton,
+                    build,
+                },
+            );
+        }
         let tracked = current.get_or_insert_with(|| Tracked {
             game: now.game.clone(),
             since: std::time::Instant::now(),

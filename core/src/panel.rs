@@ -383,7 +383,7 @@ impl Panel {
             })
             .unwrap_or_default();
         let sessions = crate::system::sessions::recent(&crate::paths::game_logs_dir(), 10);
-        crate::system::diagnostic::run(&crate::system::diagnostic::Sources {
+        let mut report = crate::system::diagnostic::run(&crate::system::diagnostic::Sources {
             sys: &self.sys.sys,
             dev: Path::new("/dev"),
             proc_dir: Path::new("/proc"),
@@ -462,7 +462,23 @@ impl Panel {
             } else {
                 Vec::new()
             },
-        })
+        });
+        // Shaders refaits ces deux dernières semaines, et pourquoi
+        // (games/shader_runs.rs).
+        use crate::games::shader_runs;
+        let runs = shader_runs::parse(
+            &fs::read_to_string(crate::paths::cache_dir().join("shader-runs.tsv")).unwrap_or_default(),
+        );
+        let causes = shader_runs::recent(&runs, crate::update::now().max(0) as u64, 14);
+        let total: u32 = causes.iter().map(|(_, n)| n).sum();
+        if total > 0 {
+            let detail: Vec<String> = causes.iter().map(|(cause, n)| format!("{} {n}", cause.label())).collect();
+            report.facts.push((
+                t("Shaders refaits (14 jours)", "Shaders rebuilt (14 days)"),
+                format!("{total} : {}", detail.join(", ")),
+            ));
+        }
+        report
     }
 
     /// Faible latence rendue aux jeux, partout (correction du diagnostic).

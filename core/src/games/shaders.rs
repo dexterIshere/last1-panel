@@ -185,6 +185,22 @@ fn running_with(proc_dir: &Path, steam_root: Option<&Path>, cores: u32) -> Optio
     })
 }
 
+/// Bibliothèque et AppId du jeu dont les shaders sont compilés.
+pub fn running_game(proc_dir: &Path) -> Option<(PathBuf, u32)> {
+    fs::read_dir(proc_dir).ok()?.flatten().find_map(|entry| {
+        let comm = fs::read_to_string(entry.path().join("comm")).ok()?;
+        if comm.trim() != "fossilize_repla" {
+            return None;
+        }
+        let cmdline = fs::read(entry.path().join("cmdline")).ok()?;
+        cmdline.split(|&b| b == 0).find_map(|arg| {
+            let arg = String::from_utf8_lossy(arg);
+            let (library, rest) = arg.split_once("/steamapps/shadercache/")?;
+            Some((PathBuf::from(library), rest.split('/').next()?.parse::<u32>().ok()?))
+        })
+    })
+}
+
 /// Nom d'un jeu dans sa bibliothèque Steam (son appmanifest).
 fn manifest_name(library: &Path, app_id: u32) -> Option<String> {
     let text = fs::read_to_string(library.join(format!("steamapps/appmanifest_{app_id}.acf"))).ok()?;
@@ -426,6 +442,7 @@ mod tests {
         )
         .unwrap();
         let precache = running_with(&proc_dir, None, 16).unwrap();
+        assert_eq!(running_game(&proc_dir), Some((library.clone(), 1962700)));
         assert_eq!(
             precache,
             Precache {
