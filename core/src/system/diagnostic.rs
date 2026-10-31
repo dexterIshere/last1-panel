@@ -1306,9 +1306,12 @@ pub fn run(src: &Sources) -> Report {
     // disque, d'où les à-coups (relevé des parties : échange bien plus grand
     // qu'elle).
     let game_swap = src.sessions.iter().map(|s| s.swap_max).fold(0.0_f64, f64::max);
+    // Taille voulue : deux fois la mémoire jusqu'à 16 Go (zstd compresse
+    // environ 3:1 ; les jeux la remplissent), la mémoire au-delà.
+    let zram_target = mem_total.map(|total| if total <= 17_000_000 { total * 2 } else { total });
     let small_zram = zram_on
-        && mem_total.is_some_and(|total| zram_size < total / 2)
-        && (disk_kib > 1_048_576 || game_swap * 1_048_576.0 > zram_size as f64 * 1.2);
+        && zram_target.is_some_and(|target| zram_size < target * 9 / 10)
+        && (disk_kib > 1_048_576 || game_swap * 1_048_576.0 > zram_size as f64 * 0.9);
     if small_zram {
         checks.push(Check {
             fix: src.can_zram.then_some(Fix::Zram),
@@ -1317,8 +1320,8 @@ pub fn run(src: &Sources) -> Report {
                 Level::Warning,
                 t("La mémoire compressée est trop petite", "Compressed memory is too small"),
                 t(
-                    &format!("Elle ne fait que {} Go : pendant les jeux, le reste part sur le disque, d'où des à-coups. Un clic l'agrandit à la taille de la mémoire, comme CachyOS.", gib(zram_size)),
-                    &format!("It's only {} GB: during games, the rest goes to the disk, hence hitches. One click enlarges it to the size of the memory, like CachyOS.", gib(zram_size)),
+                    &format!("Elle ne fait que {} Go : pendant les jeux, elle se remplit et le reste part sur le disque, d'où des à-coups. Un clic l'agrandit à {} Go.", gib(zram_size), gib(zram_target.unwrap_or(zram_size))),
+                    &format!("It's only {} GB: during games, it fills up and the rest goes to the disk, hence hitches. One click enlarges it to {} GB.", gib(zram_size), gib(zram_target.unwrap_or(zram_size))),
                 ),
             )
         });
@@ -2333,6 +2336,17 @@ mod tests {
         assert_eq!((swap.level, swap.fix), (Level::Warning, Some(Fix::Zram)));
         assert!(small.facts.iter().any(|(name, value)| name == "Échange"
             && value.starts_with("zram 2 Go (priorité 100, 2 Go) ; /swapfile 16 Go (disque, priorité -2, 7 Go)")));
+        // 15 Go de mémoire, zram de 15 Go pleine, 2 Go partis sur le disque :
+        // deux fois la mémoire.
+        write(pc.proc_dir.join("meminfo"), "MemTotal: 15700000 kB\n");
+        write(
+            pc.proc_dir.join("swaps"),
+            "Filename\tType\tSize\tUsed\tPriority\n/dev/zram0 partition\t15700000\t15600000\t100\n/swapfile file\t25165820\t2097152\t-1\n",
+        );
+        let full = report(None);
+        let swap = full.checks.iter().find(|c| c.id == "swap").unwrap();
+        assert_eq!(swap.fix, Some(Fix::Zram));
+        assert!(swap.detail.contains("Un clic l'agrandit à 30 Go"), "{}", swap.detail);
         write(pc.proc_dir.join("meminfo"), "MemTotal: 32768000 kB\n");
         // La carte ne se redimensionne pas : rien à régler dans le BIOS.
         let rebar = arch.checks.iter().find(|c| c.id == "rebar").unwrap();
