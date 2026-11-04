@@ -173,7 +173,7 @@ configure_file(layer/last1-framegen.json.in "${CMAKE_BINARY_DIR}/layer/VkLayer_l
 
 install(TARGETS afmf-linux LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 install(FILES "${CMAKE_BINARY_DIR}/layer/VkLayer_last1_framegen.json"
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/vulkan/implicit_layer.d")
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/vulkan/explicit_layer.d")
 
 if(AFMF_SANITIZE)
     foreach(target afmf-linux)

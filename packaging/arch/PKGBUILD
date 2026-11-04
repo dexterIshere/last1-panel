@@ -91,10 +91,11 @@ package() {
   install -Dm644 "$srcdir/vkBasalt-$_vkbasalt/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/vkBasalt-LICENSE"
   install -Dm644 "$srcdir/vkBasalt-$_vkbasalt/src/reshade/LICENSE.md" "$pkgdir/usr/share/licenses/$pkgname/vkBasalt-reshade-LICENSE"
 
-  # Génération d'images : couche Vulkan active seulement pour un jeu que
-  # Last1 Panel lance avec LAST1_FRAMEGEN=1.
+  # Génération d'images : couche Vulkan explicite, allumée seulement pour un
+  # jeu que Last1 Panel lance avec VK_LOADER_LAYERS_ENABLE (placée sous les
+  # couches implicites : MangoHud, vkBasalt, overlay Steam).
   install -Dm755 "$srcdir/framegen-build/layer/libVkLayer_last1_framegen.so" "$pkgdir/usr/lib/last1-panel/framegen/libVkLayer_last1_framegen.so"
-  install -Dm644 packaging/last1-panel-framegen.json "$pkgdir/usr/share/vulkan/implicit_layer.d/last1-panel-framegen.json"
+  install -Dm644 packaging/last1-panel-framegen.json "$pkgdir/usr/share/vulkan/explicit_layer.d/last1-panel-framegen.json"
   install -Dm644 framegen/LICENSE "$pkgdir/usr/share/licenses/$pkgname/afmf-linux-LICENSE"
   install -Dm644 framegen/shaders/fidelityfx/LICENSE.txt "$pkgdir/usr/share/licenses/$pkgname/FidelityFX-LICENSE"
   install -Dm644 framegen/NOTICE.md "$pkgdir/usr/share/licenses/$pkgname/framegen-NOTICE.md"

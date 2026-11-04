@@ -64,8 +64,12 @@ pub fn game_logs_dir() -> PathBuf {
 /// Couche Vulkan des couleurs des jeux (vkBasalt livré avec Last1 Panel) :
 /// manifeste du paquet, ou celui posé par l'AppImage.
 pub const COLOR_LAYER: &str = "last1-panel-color.json";
-/// Couche Vulkan de génération d'images (framegen/, d'après afmf-linux).
+/// Couche Vulkan de génération d'images (framegen/, d'après afmf-linux) :
+/// explicite (explicit_layer.d), allumée par `VK_LOADER_LAYERS_ENABLE` pour
+/// la placer sous les couches implicites (MangoHud, vkBasalt, overlay Steam).
 pub const FRAMEGEN_LAYER: &str = "last1-panel-framegen.json";
+/// Nom de la couche (manifeste).
+pub const FRAMEGEN_LAYER_NAME: &str = "VK_LAYER_LAST1_framegen";
 
 pub fn color_layer_installed() -> bool {
     Path::new("/usr/share/vulkan/implicit_layer.d").join(COLOR_LAYER).is_file()

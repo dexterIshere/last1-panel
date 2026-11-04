@@ -41,7 +41,8 @@ pub struct Layout {
     pub units: PathBuf,
     /// Couche Vulkan des couleurs des jeux.
     pub color_layer: PathBuf,
-    /// Couche Vulkan de génération d'images (éteinte tant que Last1 Panel ne l'allume pas).
+    /// Couche Vulkan explicite de génération d'images (éteinte tant que Last1 Panel ne
+    /// l'allume pas pour un jeu).
     pub framegen_layer: PathBuf,
 }
 
@@ -63,7 +64,7 @@ impl Layout {
             lib: home.join(".local/lib/last1-panel"),
             units: config.join("systemd/user"),
             color_layer: data.join("vulkan/implicit_layer.d").join(last1_panel_core::paths::COLOR_LAYER),
-            framegen_layer: data.join("vulkan/implicit_layer.d").join(last1_panel_core::paths::FRAMEGEN_LAYER),
+            framegen_layer: data.join("vulkan/explicit_layer.d").join(last1_panel_core::paths::FRAMEGEN_LAYER),
         }
     }
 
@@ -312,12 +313,12 @@ mod tests {
         assert_eq!(manifest["layer"]["library_path"], library.display().to_string());
         assert_eq!(manifest["layer"]["enable_environment"]["LAST1_PANEL_COLOR"], "1");
         assert_eq!(fs::read(library).unwrap(), b"vkbasalt");
-        // Génération d'images : éteinte tant que LAST1_FRAMEGEN=1 n'est pas posé.
+        // Génération d'images : couche explicite, éteinte sauf VK_LOADER_LAYERS_ENABLE.
         let manifest: serde_json::Value = serde_json::from_slice(&fs::read(&layout.framegen_layer).unwrap()).unwrap();
         let library = layout.lib.join("framegen/libVkLayer_last1_framegen.so");
         assert_eq!(manifest["layer"]["library_path"], library.display().to_string());
         assert_eq!(manifest["layer"]["name"], "VK_LAYER_LAST1_framegen");
-        assert_eq!(manifest["layer"]["enable_environment"]["LAST1_FRAMEGEN"], "1");
+        assert!(manifest["layer"].get("enable_environment").is_none(), "couche explicite");
         assert_eq!(fs::read(library).unwrap(), b"framegen");
         assert_eq!(fs::read(&layout.icon).unwrap(), ICON);
 

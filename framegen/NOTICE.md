@@ -1,7 +1,10 @@
 # Génération d'images de Last1 Panel
 
-Couche Vulkan `VK_LAYER_LAST1_framegen`, active seulement quand Last1 Panel lance
-un jeu avec `LAST1_FRAMEGEN=1`.
+Couche Vulkan **explicite** `VK_LAYER_LAST1_framegen`, allumée seulement quand
+Last1 Panel lance un jeu avec `VK_LOADER_LAYERS_ENABLE=VK_LAYER_LAST1_framegen` :
+le chargeur la place alors sous les couches implicites (MangoHud, vkBasalt,
+overlay Steam), qui voient les vraies images ; un nom inconnu n'empêche pas le
+jeu de démarrer.
 
 ## Origine
 
@@ -21,9 +24,9 @@ Pas repris : tests, empaquetage, documentation, CI.
 Vérifiés par une revue du code (sécurité, robustesse, NVIDIA), 2026-11-04.
 
 - Nom de couche, variables et bibliothèque propres (`VK_LAYER_LAST1_framegen`,
-  `LAST1_FRAMEGEN`, `DISABLE_LAST1_FRAMEGEN`, `LAST1_FG_*`,
-  `libVkLayer_last1_framegen.so`) : aucun conflit avec un afmf-linux installé par
-  le joueur, et ses variables `AFMF_*` sont ignorées.
+  `LAST1_FG_*`, `libVkLayer_last1_framegen.so`), couche explicite : aucun conflit
+  avec un afmf-linux installé par le joueur, et ses variables `AFMF_*` sont
+  ignorées.
 - Écriture d'images sur le disque (`AFMF_DUMP_DIR`) retirée.
 - Journal dans un fichier seulement par `LAST1_FG_LOG_FILE` (ajout, sans lien
   symbolique, 0600).
