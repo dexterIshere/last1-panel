@@ -211,6 +211,47 @@ pub fn tidy(exec: &dyn Exec, hypr_dir: &Path) -> Vec<String> {
     notes
 }
 
+/// Bureau Signal posé par go-to-linux sous Hyprland 0.57 : les changements
+/// du joueur dans son ancien hyprland.conf (fond d'écran, raccourcis,
+/// réglages) ajoutés par-dessus (hypr_overlay.rs), après lecture par le
+/// Hyprland installé. `None` : rien à faire ; sinon les lancements à faire
+/// dans la session en cours, et ce qui n'a pas pu être repris.
+/// Lancements à faire tout de suite, et lignes non reprises.
+pub type Overlay = (Vec<String>, Vec<String>);
+
+pub fn personal_overlay(exec: &dyn Exec, home: &Path) -> Option<Result<Overlay, String>> {
+    use super::hypr_overlay;
+    let hypr_dir = home.join(".config/hypr");
+    if !hypr_dir.join("gtl-machine.conf").exists()
+        || !hypr_overlay::signal_lua_in_place(&hypr_dir, Path::new(hypr_overlay::MODEL))
+    {
+        return None;
+    }
+    let overlay = hypr_overlay::personal(&hypr_dir.join("hyprland.conf"), home, &[])?;
+    let conversion = hypr_convert::convert(&overlay);
+    let text = format!(
+        "-- Vos changements du bureau Signal (ancien hyprland.conf), repris par Last1 Panel.\n{}",
+        conversion.lua
+    );
+    let target = hypr_dir.join(hypr_overlay::FILE);
+    if fs::read_to_string(&target).is_ok_and(|old| old == text) {
+        return None;
+    }
+    let main = fs::read_to_string(hypr_dir.join("hyprland.lua")).ok()?;
+    let check = hypr_dir.join("hyprland.lua.last1-panel.check");
+    let checked = fs::write(&check, format!("{main}\n{text}"))
+        .map_err(|e| e.to_string())
+        .and_then(|()| verify(exec, None, &check));
+    let _ = fs::remove_file(&check);
+    if let Err(errors) = checked {
+        return Some(Err(errors));
+    }
+    let placed = fs::write(&target, &text)
+        .map_err(|e| e.to_string())
+        .and_then(|()| hypr_lua::ensure_required(&hypr_dir, hypr_overlay::FILE).map_err(|e| e.to_string()));
+    Some(placed.map(|()| (conversion.start, conversion.skipped)))
+}
+
 /// Prépare la conversion sans rien poser : le texte Lua, les scripts à
 /// réécrire ; `Err` avec ce qui n'a pas d'équivalent sûr.
 pub fn prepare(home: &Path) -> Result<(String, Vec<hypr_scripts::Change>, Vec<String>), Vec<String>> {

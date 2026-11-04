@@ -71,6 +71,11 @@ fn strip_comment(line: &str) -> String {
 }
 
 impl Config {
+    /// Configuration faite de ces éléments seuls (déjà lus ailleurs).
+    pub fn with_items(items: Vec<Item>) -> Config {
+        Config { items, ..Config::default() }
+    }
+
     /// Lit `main` et tout ce qu'il inclut.
     pub fn read(main: &Path, home: &Path) -> Config {
         let mut config = Config { home: home.to_path_buf(), ..Config::default() };

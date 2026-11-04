@@ -576,6 +576,7 @@ fn keep_hyprland_config() {
     // reprend la configuration que si rien n'est revenu après 10 minutes.
     let mut lost_since: Option<std::time::Instant> = None;
     let failed = last1_panel_core::paths::cache_dir().join("hypr-restore-failed.txt");
+    let mut overlay_failed = false;
     loop {
         // Pas pendant une transaction de pacman : le crochet de go-to-linux
         // pose le bureau Signal à la fin de celle qui met Hyprland à jour.
@@ -625,6 +626,36 @@ fn keep_hyprland_config() {
                         tried = version;
                     }
                 }
+            }
+        }
+        // Bureau Signal remis par go-to-linux : les réglages du joueur
+        // (fond d'écran, raccourcis…) ajoutés par-dessus, une fois.
+        if !busy && !overlay_failed {
+            match hypr_migrate::personal_overlay(&exec, &home) {
+                Some(Ok((start, skipped))) => {
+                    for line in &skipped {
+                        eprintln!("last1-panel-cli : Hyprland : réglage perso non repris : {line}");
+                    }
+                    if reload() {
+                        for line in &start {
+                            let _ = last1_panel_core::exec::Exec::run(
+                                &exec,
+                                "hyprctl",
+                                &["eval".to_string(), line.clone()],
+                            );
+                        }
+                    }
+                    desktop::notify(&t(
+                        "Vos réglages du bureau (fond d'écran, raccourcis…) sont revenus.",
+                        "Your desktop settings (wallpaper, shortcuts…) are back.",
+                    ));
+                }
+                Some(Err(errors)) => {
+                    eprintln!("last1-panel-cli : Hyprland : réglages perso refusés : {errors}");
+                    let _ = std::fs::write(&failed, format!("réglages perso du bureau Signal : {errors}"));
+                    overlay_failed = true;
+                }
+                None => {}
             }
         }
         std::thread::sleep(Duration::from_secs(60));

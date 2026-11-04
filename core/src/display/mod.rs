@@ -8,6 +8,7 @@ pub mod hypr_health;
 pub mod hypr_lua;
 pub mod hypr_migrate;
 pub mod hypr_options;
+pub mod hypr_overlay;
 pub mod hypr_rules;
 pub mod hypr_scripts;
 pub mod hyprland;
