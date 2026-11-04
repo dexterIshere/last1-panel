@@ -1006,8 +1006,8 @@ fn watch_shaders() {
 }
 
 /// Rapports de performances partagés avec last1.fun (system/sharing.rs) :
-/// avec l'accord du joueur, et toujours sur un PC go-to-linux (comme les
-/// rapports de go-to-linux, envoyés sans rien demander). Regardé dix minutes après la connexion, puis toutes les 5 minutes
+/// seulement avec l'accord du joueur, et hors go-to-linux (qui envoie les
+/// siens). Regardé dix minutes après la connexion, puis toutes les 5 minutes
 /// hors des jeux : envoyé après chaque nouvelle partie.
 fn share_reports() {
     use last1_panel_core::system::sharing;
@@ -1015,10 +1015,7 @@ fn share_reports() {
     let state_path = last1_panel_core::paths::cache_dir().join("sharing.json");
     let read = |path: &str| std::fs::read_to_string(path).unwrap_or_default().trim().to_string();
     loop {
-        // PC go-to-linux : envoyés sans rien demander (règle de go-to-linux,
-        // qui envoyait ce même diagnostic) et sans dépendre de son envoi.
-        let go_to_linux = std::path::Path::new("/var/lib/gtl").exists();
-        if go_to_linux || Settings::load().share_reports == Some(true) {
+        if Settings::load().share_reports == Some(true) && !std::path::Path::new("/var/lib/gtl").exists() {
             wait_for_no_game();
             let report = Panel::system().performance_report();
             let mut state = sharing::State::load(&state_path);
