@@ -308,7 +308,10 @@ pub async fn enable_lact() -> Result<()> {
         let script =
             if which("lact").is_some() { enable.to_string() } else { format!("{{ {INSTALL_LACT}; }} && {enable}") };
         let exec = SystemExec { timeout: Duration::from_secs(1800), ..SystemExec::default() };
-        exec.run_ok("pkexec", &["/bin/sh".into(), "-c".into(), script])?;
+        exec.run_ok(
+            "pkexec",
+            &["/bin/sh".into(), "-c".into(), last1_panel_core::system::system_update::guarded(&script)],
+        )?;
         // Le socket apparaît un instant après le démarrage du service.
         for _ in 0..30 {
             if lact::find_socket().is_some() {
@@ -383,7 +386,7 @@ pub async fn install_clips() -> Result<()> {
              udevadm trigger --subsystem-match=input --action=change"
         );
         let exec = SystemExec { timeout: Duration::from_secs(1800), ..SystemExec::default() };
-        exec.run_ok("pkexec", &["/bin/sh".into(), "-c".into(), script])?;
+        exec.run_ok("pkexec", &["/bin/sh".into(), "-c".into(), last1_panel_core::system::system_update::guarded(&script)])?;
         Ok(())
     })
     .await
@@ -477,7 +480,10 @@ pub async fn install_ratbag() -> Result<()> {
         }
         let exec = SystemExec { timeout: Duration::from_secs(1800), ..SystemExec::default() };
         let script = "pacman -S --needed --noconfirm libratbag || pacman -Syu --needed --noconfirm libratbag";
-        exec.run_ok("pkexec", &["/bin/sh".into(), "-c".into(), script.into()])?;
+        exec.run_ok(
+            "pkexec",
+            &["/bin/sh".into(), "-c".into(), last1_panel_core::system::system_update::guarded(script)],
+        )?;
         Ok(())
     })
     .await

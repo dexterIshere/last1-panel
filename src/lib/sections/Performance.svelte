@@ -84,6 +84,8 @@
   /** Tout ce qui se règle d'un clic (le redémarrage reste à part). */
   const fixable = $derived(report?.checks.flatMap((c) => (c.fix && c.fix !== "restart" ? [c.fix] : [])) ?? []);
   let confirmRestart = $state(false);
+  // Mise à jour complète : dite avant (paquets, bureau, noyau, pilote).
+  let confirmUpdate = $state<string | null>(null);
   const fixLabel = (kind: PerfFix) =>
     ({
       "low-latency": t("Rendre la latence aux jeux", "Give latency back to games"),
@@ -98,7 +100,7 @@
       zram: t("Garder la mémoire hors du disque", "Keep memory off the disk"),
       restart: t("Redémarrer le PC", "Restart the PC"),
       "vulkan-driver": t("Installer le pilote Vulkan", "Install the Vulkan driver"),
-      "system-update": t("Mettre à jour le pilote", "Update the driver"),
+      "system-update": t("Mettre à jour le système", "Update the system"),
       "game-mode": t("Faire passer le jeu en premier", "Put the game first"),
       "panel-self-refresh": t("Couper le Panel Self Refresh", "Turn off Panel Self Refresh"),
       "cpu-power-limit": t("Libérer le processeur", "Unlock the CPU"),
@@ -154,7 +156,12 @@
               <button
                 class="btn"
                 class:btn--primary={check.level === "problem" || check.level === "warning"}
-                onclick={() => (check.fix === "restart" ? (confirmRestart = true) : fix([check.fix!]))}
+                onclick={() =>
+                  check.fix === "restart"
+                    ? (confirmRestart = true)
+                    : check.fix === "system-update"
+                      ? (confirmUpdate = check.detail)
+                      : fix([check.fix!])}
                 disabled={fixing.length > 0}
               >
                 {#if fixing.includes(check.fix)}<Spinner />{/if}{fixLabel(check.fix)}
@@ -275,6 +282,26 @@
     oncancel={() => (confirmRestart = false)}
   >
     <p>{t("Les programmes ouverts seront fermés : enregistrez votre travail avant.", "Open programs will be closed: save your work first.")}</p>
+  </WarningDialog>
+{/if}
+
+{#if confirmUpdate}
+  <WarningDialog
+    title={t("Mettre à jour tout le système ?", "Update the whole system?")}
+    confirmLabel={t("Mettre à jour", "Update")}
+    onconfirm={() => {
+      confirmUpdate = null;
+      fix(["system-update"]);
+    }}
+    oncancel={() => (confirmUpdate = null)}
+  >
+    <p>{confirmUpdate}</p>
+    <p>
+      {t(
+        "Last1 Panel vérifie avant que rien ne cassera le bureau, et s'arrête sinon. Comptez quelques minutes, puis redémarrez le PC.",
+        "Last1 Panel checks first that nothing will break the desktop, and stops otherwise. Allow a few minutes, then restart the PC.",
+      )}
+    </p>
   </WarningDialog>
 {/if}
 

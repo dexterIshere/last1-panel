@@ -256,7 +256,9 @@ systemd-tmpfiles --create "$conf""#
             Fix::Performance | Fix::LowLatency | Fix::WrapGames | Fix::Restart | Fix::SystemUpdate => {}
         }
     }
-    Ok((!parts.is_empty()).then(|| format!("set -e\n{}\n", parts.join("\n"))))
+    // Jamais de mise à jour complète qui casserait le bureau
+    // (system_update.rs).
+    Ok((!parts.is_empty()).then(|| crate::system::system_update::guarded(&format!("set -e\n{}\n", parts.join("\n")))))
 }
 
 /// pkexec refusé (fenêtre de mot de passe fermée) : rien n'a changé.
@@ -328,7 +330,8 @@ mod tests {
             assert!(script.contains(expected), "{expected}\n{script}");
         }
         // La mise à jour du système passe avant tout le reste.
-        assert!(script.starts_with("set -e\npacman -Syu --noconfirm\n"), "{script}");
+        assert!(script.contains("\nset -e\nlast1_syu --noconfirm\n"), "{script}");
+        assert!(script.starts_with("last1_syu() {"), "{script}");
         // Le shell le lit sans erreur.
         let check = Command::new("/bin/sh").args(["-n", "-c", &script]).status().unwrap();
         assert!(check.success());

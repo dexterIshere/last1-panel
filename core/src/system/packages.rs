@@ -51,13 +51,24 @@ pub fn refresh(exec: &dyn Exec, cache: &Path) {
     }
 }
 
-/// Paquet du pilote graphique (NVIDIA, ou Mesa pour AMD et Intel).
+/// Paquet du pilote graphique (NVIDIA, ou Mesa pour AMD et Intel). Pas
+/// les micrologiciels (linux-firmware-nvidia : pas le pilote).
 pub fn is_driver(name: &str) -> bool {
-    name.starts_with("nvidia")
-        || name.starts_with("lib32-nvidia")
-        || name.contains("-nvidia")
-        || ["mesa", "lib32-mesa", "vulkan-radeon", "lib32-vulkan-radeon", "vulkan-intel", "lib32-vulkan-intel"]
+    !name.starts_with("linux-firmware")
+        && (name.starts_with("nvidia")
+            || name.starts_with("lib32-nvidia")
+            || name.contains("-nvidia")
+            || ["mesa", "lib32-mesa", "vulkan-radeon", "lib32-vulkan-radeon", "vulkan-intel", "lib32-vulkan-intel"]
+                .contains(&name))
+}
+
+/// Paquets qui changent le bureau, le noyau ou le pilote : dits avant une
+/// mise à jour complète.
+pub fn is_sensitive(name: &str) -> bool {
+    (is_driver(name) && !name.starts_with("lib32-"))
+        || ["hyprland", "plasma-desktop", "plasma-workspace", "kwin", "gnome-shell", "mutter", "systemd", "glibc"]
             .contains(&name)
+        || (name.starts_with("linux") && !name.starts_with("linux-firmware") && !name.starts_with("linux-api"))
 }
 
 /// Pilotes Vulkan dont les jeux ont besoin (DXVK, VKD3D-Proton), en 64 et
@@ -126,6 +137,11 @@ mod tests {
         assert!(is_driver("nvidia-utils") && is_driver("lib32-nvidia-utils") && is_driver("linux-cachyos-nvidia-open"));
         assert!(is_driver("mesa") && is_driver("lib32-vulkan-radeon"));
         assert!(!is_driver("firefox") && !is_driver("mesa-demos"));
+        // Rapport du 2026-11-04 : le micrologiciel n'est pas le pilote.
+        assert!(!is_driver("linux-firmware-nvidia") && !is_driver("linux-firmware"));
+        assert!(is_sensitive("hyprland") && is_sensitive("linux") && is_sensitive("linux-zen"));
+        assert!(is_sensitive("nvidia-utils") && !is_sensitive("lib32-nvidia-utils"));
+        assert!(!is_sensitive("linux-firmware-nvidia") && !is_sensitive("firefox"));
         let exec = FakeExec::new()
             .on_args(
                 "pacman",

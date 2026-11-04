@@ -14,3 +14,4 @@ pub mod razer;
 pub mod repair;
 pub mod sessions;
 pub mod sharing;
+pub mod system_update;

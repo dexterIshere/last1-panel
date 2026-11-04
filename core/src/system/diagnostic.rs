@@ -1113,10 +1113,23 @@ pub fn run(src: &Sources) -> Report {
                             &format!("A newer version is in the repositories ({}): go-to-linux offers it in its “Update” bubble.", driver_updates.join(", ")),
                         )
                     } else {
-                        t(
-                            &format!("Une version plus récente est dans les dépôts ({}). Elle s'installe avec le reste du système, comme le veut Arch (jamais à moitié).", driver_updates.join(", ")),
-                            &format!("A newer version is in the repositories ({}). It installs with the rest of the system, as Arch requires (never halfway).", driver_updates.join(", ")),
-                        )
+                        {
+                            // Tout le système, comme le veut Arch : dit avant.
+                            let count = src.updates.len();
+                            let sensitive: Vec<&str> = src
+                                .updates
+                                .iter()
+                                .map(String::as_str)
+                                .filter(|name| packages::is_sensitive(name))
+                                .collect();
+                            let among = if sensitive.is_empty() { String::new() } else { format!(", dont {}", sensitive.join(", ")) };
+                            let among_en =
+                                if sensitive.is_empty() { String::new() } else { format!(", including {}", sensitive.join(", ")) };
+                            t(
+                                &format!("Une version plus récente est dans les dépôts ({}). Sous Arch, elle s'installe avec tout le système (jamais à moitié) : {count} paquets{among}.", driver_updates.join(", ")),
+                                &format!("A newer version is in the repositories ({}). On Arch, it installs with the whole system (never halfway): {count} packages{among_en}.", driver_updates.join(", ")),
+                            )
+                        }
                     },
                 )
             });
