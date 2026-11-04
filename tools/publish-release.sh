@@ -16,6 +16,8 @@
 # Cloudflare refuse les envois de plus de 100 Mo. Le site redémarre à chaque
 # mise à jour (30 à 90 s sans réponse : 502, 503) : chaque envoi est retenté
 # 6 fois, à 15 s d'écart (la publication d'un même fichier est idempotente).
+# PUBLISH_CRITICAL=1 : version critique (correction grave, web/critical.go),
+# installée sans clic par les PC plus anciens (en-tête X-Critical).
 # La copie de ce script dans les autres dépôts doit rester identique.
 set -euo pipefail
 
@@ -87,5 +89,6 @@ for entry in "$@"; do
 done
 
 curl --fail-with-body -sS --retry 6 --retry-delay 15 --retry-all-errors --max-time 60 -X POST \
-  -H "Authorization: Bearer $(oidc)" -H "X-Commit-SHA: $commit" "$site/api/publish/$product/$version/release" | jq .
+  -H "Authorization: Bearer $(oidc)" -H "X-Commit-SHA: $commit" -H "X-Critical: ${PUBLISH_CRITICAL:-0}" \
+  "$site/api/publish/$product/$version/release" | jq .
 echo "$product $version en ligne sur $site"
