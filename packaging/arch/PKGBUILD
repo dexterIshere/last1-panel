@@ -14,7 +14,7 @@ arch=('x86_64')
 url="https://last1.fun/last1-panel"
 license=('GPL-3.0-or-later' 'MIT' 'Zlib' 'BSD-3-Clause')
 depends=('webkit2gtk-4.1' 'gtk3' 'lcms2' 'hicolor-icon-theme' 'systemd' 'lact' 'libx11')
-makedepends=('cargo' 'bun' 'meson' 'cmake' 'ninja' 'glslang' 'spirv-headers' 'spirv-tools' 'vulkan-headers')
+makedepends=('cargo' 'bun' 'meson' 'cmake' 'ninja' 'glslang' 'spirv-headers' 'spirv-tools' 'vulkan-headers' 'vulkan-icd-loader')
 optdepends=(
   'mangohud: on-screen performance and frame limiter for native games'
   'kscreen: KDE Plasma screen settings (kscreen-doctor)'

@@ -17,6 +17,11 @@ pub fn home_dir() -> PathBuf {
     home()
 }
 
+/// ~/.local/share : données des logiciels (couches Vulkan, journaux).
+pub fn data_home() -> PathBuf {
+    xdg("XDG_DATA_HOME", ".local/share")
+}
+
 /// ~/.config/last1-panel : réglages.
 pub fn config_dir() -> PathBuf {
     xdg("XDG_CONFIG_HOME", ".config").join("last1-panel")

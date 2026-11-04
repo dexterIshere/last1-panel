@@ -67,7 +67,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Outils
-        run: pacman -Syu --noconfirm --needed base-devel cmake ninja glslang spirv-tools vulkan-headers binutils
+        run: pacman -Syu --noconfirm --needed base-devel cmake ninja glslang spirv-tools vulkan-headers vulkan-icd-loader binutils
       - uses: actions/checkout@v4
       - name: Couche Vulkan
         run: |
@@ -137,7 +137,7 @@ jobs:
       - name: Outils de construction
         run: |
           pacman -Syu --noconfirm --needed base-devel git rust bun webkit2gtk-4.1 gtk3 lcms2 lact jq curl \
-            meson cmake ninja glslang spirv-headers spirv-tools vulkan-headers libx11
+            meson cmake ninja glslang spirv-headers spirv-tools vulkan-headers vulkan-icd-loader libx11
           useradd -m builder
       - uses: actions/checkout@v4
         with:

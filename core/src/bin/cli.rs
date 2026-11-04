@@ -226,16 +226,52 @@ fn run(command: &[String]) -> ExitCode {
             Err(error) => eprintln!("last1-panel-cli : profil de couleurs : {error}"),
         }
     }
-    let env = plan.environment(|name| std::env::var(name).ok());
+    let mut env = plan.environment(|name| std::env::var(name).ok());
+    // Génération d'images : en essai chez les testeurs, sur tous leurs jeux,
+    // un journal par partie (résumé dans le diagnostic, donc les rapports).
+    {
+        use last1_panel_core::games::framegen;
+        let data = last1_panel_core::paths::data_home();
+        if framegen::tester(std::path::Path::new("/var/lib/gtl"), &last1_panel_core::paths::config_dir())
+            && framegen::installed(&data)
+        {
+            let game = std::env::var("SteamAppId").ok().filter(|id| !id.is_empty()).unwrap_or_else(|| {
+                std::path::Path::new(program).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+            });
+            if let Some(log) = framegen::new_log(&framegen::log_dir(&data), &game, update::now()) {
+                env.retain(|(name, _)| !name.starts_with("LAST1_FG_") && name != framegen::LOADER_ENABLE);
+                env.extend(framegen::environment(
+                    |name| std::env::var(name).ok(),
+                    &log,
+                    framegen::under_gamescope(command),
+                ));
+            }
+        }
+    }
     log_launch(command, &env, &plan.wrappers);
 
     let mut full: Vec<&String> = plan.wrappers.iter().collect();
     full.push(program);
     full.extend(rest);
-    let error = Command::new(full[0]).args(&full[1..]).envs(env.iter().map(|(k, v)| (k, v))).exec();
+    // Réglages de la couche de génération d'images : jamais hérités (seuls les
+    // nôtres comptent).
+    let inherited: Vec<String> = std::env::vars_os()
+        .filter_map(|(name, _)| name.into_string().ok())
+        .filter(|name| name.starts_with("LAST1_FG_") && !env.iter().any(|(ours, _)| ours == name))
+        .collect();
+    let command_for = |program: &str, args: &[&String]| {
+        let mut cmd = Command::new(program);
+        cmd.args(args).envs(env.iter().map(|(k, v)| (k, v)));
+        for name in &inherited {
+            cmd.env_remove(name);
+        }
+        cmd
+    };
+    let error = command_for(full[0], &full[1..]).exec();
     // Outil chaîné introuvable : le jeu seul, avec nos variables.
     eprintln!("last1-panel-cli : {error}");
-    let error = Command::new(program).args(rest).envs(env.iter().map(|(k, v)| (k, v))).exec();
+    let rest_refs: Vec<&String> = rest.iter().collect();
+    let error = command_for(program, &rest_refs).exec();
     eprintln!("last1-panel-cli : {program} : {error}");
     ExitCode::from(127)
 }

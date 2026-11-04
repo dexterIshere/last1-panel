@@ -520,6 +520,13 @@ impl Panel {
                 format!("{total} : {}", detail.join(", ")),
             ));
         }
+        // Génération d'images en essai (testeurs) : la dernière partie.
+        use crate::games::framegen;
+        if framegen::tester(Path::new("/var/lib/gtl"), &crate::paths::config_dir())
+            && let Some(summary) = framegen::summary(&framegen::log_dir(&crate::paths::data_home()))
+        {
+            report.facts.push((t("Génération d'images (essai)", "Frame generation (test)"), summary));
+        }
         report
     }
 
