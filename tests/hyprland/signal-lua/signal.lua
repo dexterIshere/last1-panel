@@ -172,7 +172,7 @@ part("apparence", function()
         input = {
             follow_mouse = 1,
             touchpad = {
-                ["tap-to-click"] = true,
+                tap_to_click = true,
                 natural_scroll = false,
             },
         },
