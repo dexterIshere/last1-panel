@@ -34,6 +34,29 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      - name: Outil de conversion pour l'essai avec Hyprland
+        run: cargo build -p last1-panel-core --bin last1-panel-cli --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: last1-panel-cli
+          path: target/debug/last1-panel-cli
+
+  # Configurations Hyprland converties en Lua, lues par le vrai Hyprland des
+  # dépôts d'Arch (tools/hypr-verify.sh) : la conversion n'est jamais livrée
+  # sans être acceptée par la version que les joueurs vont recevoir.
+  hyprland:
+    needs: check
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - name: Hyprland et outils
+        run: pacman -Syu --noconfirm --needed hyprland git curl
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: last1-panel-cli
+          path: cli
+      - run: chmod +x cli/last1-panel-cli && tools/hypr-verify.sh "$PWD/cli/last1-panel-cli" /tmp/hypr-verify
 
   # AppImage construite dans Debian 12 (packaging/appimage), comme celle de
   # SoundFence : elle tourne sur tous les systèmes plus récents.

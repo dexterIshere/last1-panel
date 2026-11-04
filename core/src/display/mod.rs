@@ -1,7 +1,10 @@
 //! Écrans : définition, fréquence, échelle, orientation, G-SYNC/FreeSync,
 //! HDR et profondeur de couleur, par l'outil du bureau de la session.
 
+pub mod hypr_conf;
+pub mod hypr_convert;
 pub mod hypr_lua;
+pub mod hypr_options;
 pub mod hyprland;
 pub mod kde;
 pub mod model;

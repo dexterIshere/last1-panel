@@ -54,6 +54,9 @@ fn main() -> ExitCode {
         Some("fix") if args.get(1).is_some_and(|a| a == "wrap-games") => wrap_games(),
         // Appelé par gpu-screen-recorder pour chaque vidéo enregistrée.
         Some("clip-saved") => clip_saved(&args[1..]),
+        // hyprland.conf → Lua (display/hypr_convert.rs) : vers la sortie, ou
+        // dans un fichier ; ce qui n'est pas repris sur la sortie d'erreur.
+        Some("hypr-convert") => hypr_convert(&args[1..]),
         _ => {
             eprintln!(
                 "{}",
@@ -65,6 +68,35 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+/// `hypr-convert <hyprland.conf> [sortie.lua]` : code 0 si tout est repris,
+/// 1 si des lignes ne l'ont pas été (listées), 2 si illisible.
+fn hypr_convert(args: &[String]) -> ExitCode {
+    use last1_panel_core::display::{hypr_conf, hypr_convert};
+    let Some(input) = args.first() else {
+        eprintln!("last1-panel-cli hypr-convert <hyprland.conf> [sortie.lua]");
+        return ExitCode::from(2);
+    };
+    let config = hypr_conf::Config::read(std::path::Path::new(input), &last1_panel_core::paths::home_dir());
+    if config.files.is_empty() {
+        eprintln!("{}", config.problems.join("\n"));
+        return ExitCode::from(2);
+    }
+    let conversion = hypr_convert::convert(&config);
+    match args.get(1) {
+        Some(out) => {
+            if let Err(error) = std::fs::write(out, &conversion.lua) {
+                eprintln!("{out} : {error}");
+                return ExitCode::from(2);
+            }
+        }
+        None => print!("{}", conversion.lua),
+    }
+    for line in config.problems.iter().chain(&conversion.skipped) {
+        eprintln!("non repris : {line}");
+    }
+    if config.problems.is_empty() && conversion.skipped.is_empty() { ExitCode::SUCCESS } else { ExitCode::from(1) }
 }
 
 /// Lance le jeu avec nos réglages. Quoi qu'il arrive, le jeu est lancé :

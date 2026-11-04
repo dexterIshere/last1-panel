@@ -15,3 +15,4 @@ pub mod repair;
 pub mod sessions;
 pub mod sharing;
 pub mod system_update;
+pub mod update_check;
