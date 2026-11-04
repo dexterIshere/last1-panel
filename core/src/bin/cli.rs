@@ -372,7 +372,7 @@ fn watch() -> ExitCode {
             lines.join("\n")
         ));
     }
-    std::thread::spawn(tidy_hyprland);
+    std::thread::spawn(keep_hyprland_config);
     std::thread::spawn(share_reports);
     std::thread::spawn(watch_updates);
     std::thread::spawn(watch_shaders);
@@ -543,17 +543,58 @@ fn wait_for_no_game() {
     }
 }
 
-/// Configuration convertie par une version précédente : plus de réglage
-/// déprécié par Hyprland 0.57 (avertissement à chaque ouverture de session).
-fn tidy_hyprland() {
+/// La configuration du joueur suit Hyprland 0.57, qui ne lit plus que le
+/// Lua, quel que soit ce qui l'a mis à jour (go-to-linux, pacman, un autre
+/// outil) : dès que Hyprland 0.57 est installé et que hyprland.conf n'a pas
+/// d'équivalent Lua (ou que Hyprland a posé son exemple à la place), elle est
+/// convertie, lue par ce Hyprland, puis posée ; rechargée si c'est lui qui
+/// tourne. Le bureau Signal reste à go-to-linux. Les réglages dépréciés d'une
+/// conversion précédente sont retirés au démarrage du service.
+fn keep_hyprland_config() {
+    use last1_panel_core::display::hypr_migrate;
     let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) else { return };
+    let hypr_dir = home.join(".config/hypr");
     let exec = SystemExec { timeout: Duration::from_secs(60), ..SystemExec::default() };
-    let notes = last1_panel_core::display::hypr_migrate::tidy(&exec, &home.join(".config/hypr"));
+    let reload = || {
+        // Seulement le Hyprland qui lit le Lua : un 0.56 encore en cours garde
+        // hyprland.conf jusqu'à la prochaine session.
+        let running = last1_panel_core::display::hypr_health::read(&exec);
+        if running.is_some_and(|h| last1_panel_core::system::update_check::needs_lua(&h.version)) {
+            let _ = last1_panel_core::exec::Exec::run(&exec, "hyprctl", &["reload".to_string()]);
+        }
+    };
+    let notes = hypr_migrate::tidy(&exec, &hypr_dir);
     if !notes.is_empty() {
         for note in &notes {
             eprintln!("last1-panel-cli : Hyprland : {note}");
         }
-        let _ = last1_panel_core::exec::Exec::run(&exec, "hyprctl", &["reload".to_string()]);
+        reload();
+    }
+    // Une conversion impossible n'est pas refaite pour la même version de
+    // Hyprland (la fenêtre propose « Reprendre ma configuration »).
+    let mut tried: Option<String> = None;
+    loop {
+        if hypr_migrate::needed(&hypr_dir) {
+            let version = last1_panel_core::system::packages::installed_version(&exec, "hyprland");
+            let lua_era = version.as_deref().is_some_and(last1_panel_core::system::update_check::needs_lua);
+            if lua_era && tried != version {
+                match hypr_migrate::migrate(&exec, &home, None) {
+                    Ok(done) => {
+                        eprintln!("last1-panel-cli : Hyprland : configuration reprise en Lua ({})", done.lua.display());
+                        reload();
+                        desktop::notify(&t(
+                            "Votre bureau a été repris pour la nouvelle version de Hyprland.",
+                            "Your desktop was carried over to the new Hyprland version.",
+                        ));
+                    }
+                    Err(missing) => {
+                        eprintln!("last1-panel-cli : Hyprland : conversion pas sûre : {}", missing.join(" ; "));
+                        tried = version;
+                    }
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_secs(60));
     }
 }
 
