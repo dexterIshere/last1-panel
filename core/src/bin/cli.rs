@@ -559,36 +559,69 @@ fn keep_hyprland_config() {
         // Seulement le Hyprland qui lit le Lua : un 0.56 encore en cours garde
         // hyprland.conf jusqu'à la prochaine session.
         let running = last1_panel_core::display::hypr_health::read(&exec);
-        if running.is_some_and(|h| last1_panel_core::system::update_check::needs_lua(&h.version)) {
-            let _ = last1_panel_core::exec::Exec::run(&exec, "hyprctl", &["reload".to_string()]);
-        }
+        let lua = running.is_some_and(|h| last1_panel_core::system::update_check::needs_lua(&h.version));
+        lua && last1_panel_core::exec::Exec::run(&exec, "hyprctl", &["reload".to_string()]).is_ok_and(|o| o.success())
     };
     let notes = hypr_migrate::tidy(&exec, &hypr_dir);
     if !notes.is_empty() {
         for note in &notes {
             eprintln!("last1-panel-cli : Hyprland : {note}");
         }
-        reload();
+        let _ = reload();
     }
-    // Une conversion impossible n'est pas refaite pour la même version de
-    // Hyprland (la fenêtre propose « Reprendre ma configuration »).
+    // Une reprise refusée par Hyprland n'est pas refaite pour la même version
+    // (la fenêtre propose « Reprendre ma configuration »).
     let mut tried: Option<String> = None;
+    // Bureau Signal : go-to-linux pose son propre Lua ; Last1 Panel ne
+    // reprend la configuration que si rien n'est revenu après 10 minutes.
+    let mut lost_since: Option<std::time::Instant> = None;
+    let failed = last1_panel_core::paths::cache_dir().join("hypr-restore-failed.txt");
     loop {
-        if hypr_migrate::needed(&hypr_dir) {
+        // Pas pendant une transaction de pacman : le crochet de go-to-linux
+        // pose le bureau Signal à la fin de celle qui met Hyprland à jour.
+        let busy = std::path::Path::new("/var/lib/pacman/db.lck").exists();
+        let lost = hypr_migrate::lost(&hypr_dir);
+        lost_since = if lost { lost_since.or_else(|| Some(std::time::Instant::now())) } else { None };
+        let signal = hypr_dir.join("gtl-machine.conf").exists();
+        let waited = lost_since.is_some_and(|t| !signal || t.elapsed() >= Duration::from_secs(600));
+        if !busy && lost && waited {
             let version = last1_panel_core::system::packages::installed_version(&exec, "hyprland");
             let lua_era = version.as_deref().is_some_and(last1_panel_core::system::update_check::needs_lua);
+            // Session ouverte sur l'exemple : ses lancements (barre, fond
+            // d'écran…) n'ont pas eu lieu.
+            let on_example = last1_panel_core::display::hypr_lua::config_lost(&hypr_dir);
             if lua_era && tried != version {
-                match hypr_migrate::migrate(&exec, &home, None) {
+                match hypr_migrate::restore(&exec, &home) {
                     Ok(done) => {
+                        let _ = std::fs::remove_file(&failed);
                         eprintln!("last1-panel-cli : Hyprland : configuration reprise en Lua ({})", done.lua.display());
-                        reload();
+                        for note in &done.notes {
+                            eprintln!("last1-panel-cli : Hyprland : {note}");
+                        }
+                        if reload() && on_example {
+                            // L'accueil de Hyprland (ouvert pour l'exemple) n'a plus lieu d'être.
+                            let _ = last1_panel_core::exec::Exec::run(
+                                &exec,
+                                "pkill",
+                                &["-x".to_string(), "hyprland-welcome".to_string()],
+                            );
+                            for line in &done.start {
+                                let _ = last1_panel_core::exec::Exec::run(
+                                    &exec,
+                                    "hyprctl",
+                                    &["eval".to_string(), line.clone()],
+                                );
+                            }
+                        }
                         desktop::notify(&t(
                             "Votre bureau a été repris pour la nouvelle version de Hyprland.",
                             "Your desktop was carried over to the new Hyprland version.",
                         ));
                     }
-                    Err(missing) => {
-                        eprintln!("last1-panel-cli : Hyprland : conversion pas sûre : {}", missing.join(" ; "));
+                    Err(errors) => {
+                        eprintln!("last1-panel-cli : Hyprland : reprise refusée : {}", errors.join(" ; "));
+                        // Joint aux rapports (hypr_health::desktop).
+                        let _ = std::fs::write(&failed, errors.join(" ; "));
                         tried = version;
                     }
                 }
@@ -987,7 +1020,14 @@ fn share_reports() {
             let report = Panel::system().performance_report();
             let mut state = sharing::State::load(&state_path);
             let now = update::now();
-            let hyprland = last1_panel_core::display::hypr_health::read(&SystemExec::default());
+            let hyprland = last1_panel_core::display::hypr_health::read(&SystemExec::default()).map(|h| {
+                let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+                last1_panel_core::display::hypr_health::with_desktop(
+                    h,
+                    &home.join(".config/hypr"),
+                    &last1_panel_core::paths::cache_dir().join("hypr-restore-failed.txt"),
+                )
+            });
             if let Some((sum, occasion)) = sharing::due(&report, hyprland.as_ref(), &state, now) {
                 let gpus = gpu::detect(&SysPaths::default());
                 let body = sharing::body(

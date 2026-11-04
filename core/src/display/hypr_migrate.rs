@@ -19,6 +19,8 @@ pub struct Done {
     /// Le Hyprland installé lit déjà la conversion (sinon seul le futur :
     /// à défaire si la mise à jour n'a pas lieu).
     pub read_by_installed: bool,
+    /// Lancements de l'ouverture de session (`hl.exec_cmd(…)`).
+    pub start: Vec<String>,
 }
 
 /// Remet tout comme avant (mise à jour annulée après la conversion).
@@ -52,8 +54,18 @@ pub fn by_go_to_linux(hypr_dir: &Path, hook: &Path) -> bool {
 /// La configuration à convertir : hyprland.conf, s'il n'y a pas déjà un
 /// hyprland.lua à soi (l'exemple généré par Hyprland ne compte pas).
 pub fn needed(hypr_dir: &Path) -> bool {
-    !by_go_to_linux(hypr_dir, Path::new(GTL_HOOK))
-        && hypr_dir.join("hyprland.conf").exists()
+    // L'exemple de Hyprland à la place : quoi qu'il arrive, la configuration
+    // du joueur revient (même sur le bureau Signal, si go-to-linux n'a pas pu).
+    hypr_lua::config_lost(hypr_dir)
+        || !by_go_to_linux(hypr_dir, Path::new(GTL_HOOK))
+            && hypr_dir.join("hyprland.conf").exists()
+            && !hypr_dir.join("hyprland.lua").exists()
+}
+
+/// Hyprland 0.57 installé ne trouvera pas la configuration du joueur :
+/// hyprland.conf sans hyprland.lua, ou l'exemple de Hyprland à sa place.
+pub fn lost(hypr_dir: &Path) -> bool {
+    hypr_dir.join("hyprland.conf").exists()
         && (!hypr_dir.join("hyprland.lua").exists() || hypr_lua::config_lost(hypr_dir))
 }
 
@@ -202,6 +214,13 @@ pub fn tidy(exec: &dyn Exec, hypr_dir: &Path) -> Vec<String> {
 /// Prépare la conversion sans rien poser : le texte Lua, les scripts à
 /// réécrire ; `Err` avec ce qui n'a pas d'équivalent sûr.
 pub fn prepare(home: &Path) -> Result<(String, Vec<hypr_scripts::Change>, Vec<String>), Vec<String>> {
+    let (conversion, changes, missing) = convert_all(home);
+    if missing.is_empty() { Ok((conversion.lua, changes, conversion.notes)) } else { Err(missing) }
+}
+
+/// Conversion de hyprland.conf et des scripts, et ce qui n'a pas
+/// d'équivalent sûr.
+fn convert_all(home: &Path) -> (hypr_convert::Conversion, Vec<hypr_scripts::Change>, Vec<String>) {
     let hypr_dir = home.join(".config/hypr");
     let config = hypr_conf::Config::read(&hypr_dir.join("hyprland.conf"), home);
     let conversion = hypr_convert::convert(&config);
@@ -213,14 +232,41 @@ pub fn prepare(home: &Path) -> Result<(String, Vec<hypr_scripts::Change>, Vec<St
             missing.push(format!("{} : {left}", change.path.display()));
         }
     }
-    if missing.is_empty() { Ok((conversion.lua, changes, conversion.notes)) } else { Err(missing) }
+    (conversion, changes, missing)
 }
 
 /// Convertit, vérifie (Hyprland installé s'il lit le Lua, sinon `root`, le
 /// futur Hyprland d'un essai), puis pose. `Err` : rien n'a changé.
 pub fn migrate(exec: &dyn Exec, home: &Path, root: Option<&Path>) -> Result<Done, Vec<String>> {
+    let (conversion, changes, missing) = convert_all(home);
+    if !missing.is_empty() {
+        return Err(missing);
+    }
+    place(exec, home, root, conversion, changes, Vec::new())
+}
+
+/// Hyprland 0.57 est déjà là (mis à jour par n'importe quel chemin) : la
+/// configuration du joueur est reprise même si quelques lignes n'ont pas
+/// d'équivalent sûr (listées dans les notes, et en commentaire du fichier) —
+/// bien mieux que l'exemple de Hyprland. Le fichier doit être lu par le
+/// Hyprland installé.
+pub fn restore(exec: &dyn Exec, home: &Path) -> Result<Done, Vec<String>> {
+    let (conversion, changes, missing) = convert_all(home);
+    let left = missing.into_iter().map(|m| format!("non repris : {m}")).collect();
+    place(exec, home, None, conversion, changes, left)
+}
+
+fn place(
+    exec: &dyn Exec,
+    home: &Path,
+    root: Option<&Path>,
+    conversion: hypr_convert::Conversion,
+    changes: Vec<hypr_scripts::Change>,
+    left: Vec<String>,
+) -> Result<Done, Vec<String>> {
     let hypr_dir = home.join(".config/hypr");
-    let (lua, changes, notes) = prepare(home)?;
+    let start = conversion.start.clone();
+    let (lua, notes) = (conversion.lua, [conversion.notes, left].concat());
     let staged = hypr_dir.join("hyprland.lua.last1-panel.new");
     let mut notes = notes;
     // Le Hyprland qui lira le fichier ; à défaut celui de l'essai.
@@ -244,7 +290,7 @@ pub fn migrate(exec: &dyn Exec, home: &Path, root: Option<&Path>) -> Result<Done
     }
     fs::rename(&staged, &main).map_err(|e| vec![e.to_string()])?;
     hypr_scripts::apply(&changes).map_err(|e| vec![e.to_string()])?;
-    Ok(Done { lua: main, scripts: changes.into_iter().map(|c| c.path).collect(), notes, read_by_installed })
+    Ok(Done { lua: main, scripts: changes.into_iter().map(|c| c.path).collect(), notes, read_by_installed, start })
 }
 
 #[cfg(test)]
@@ -339,5 +385,31 @@ mod tests {
         ));
         assert!(new.ends_with("hl.config({ layers = { layers_hog_keyboard_focus = false } })\n"));
         assert!(clean_deprecated(&new).is_none());
+    }
+
+    #[test]
+    fn example_in_place_is_always_restored_even_partly() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let hypr = home.join(".config/hypr");
+        fs::create_dir_all(&hypr).unwrap();
+        fs::write(
+            hypr.join("hyprland.conf"),
+            "exec-once = waybar\nbind = SUPER, R, resizeactive, 10% 0\nbind = SUPER, Q, killactive,\n",
+        )
+        .unwrap();
+        // Hyprland 0.57 a posé son exemple : à reprendre, bureau Signal compris.
+        fs::write(hypr.join("hyprland.lua"), "-- AUTOGENERATED HYPRLAND CONFIG.\n").unwrap();
+        fs::write(hypr.join("gtl-machine.conf"), "").unwrap();
+        assert!(needed(&hypr) && lost(&hypr));
+        let ok = Output { status: 0, stdout: "Config parsing result:\n\nconfig ok\n".into(), stderr: String::new() };
+        let done = restore(&FakeExec::new().on_output("env", ok), home).unwrap();
+        let text = fs::read_to_string(hypr.join("hyprland.lua")).unwrap();
+        assert!(text.contains("hl.dsp.window.close()") || text.contains("SUPER + Q"), "{text}");
+        assert!(done.notes.iter().any(|n| n.contains("resizeactive")), "{:?}", done.notes);
+        assert_eq!(done.start, ["hl.exec_cmd(\"waybar\")"]);
+        assert!(!lost(&hypr) && !needed(&hypr));
+        // L'exemple gardé à côté.
+        assert!(fs::read_to_string(hypr.join("hyprland.lua.last1-panel.bak")).unwrap().contains("AUTOGENERATED"));
     }
 }

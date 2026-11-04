@@ -19,6 +19,9 @@ pub struct Conversion {
     pub skipped: Vec<String>,
     /// Changements faits pour que Hyprland 0.57 accepte (valeur bornée…).
     pub notes: Vec<String>,
+    /// Ce qui se lance à l'ouverture de session (`exec-once`…), en Lua :
+    /// relancé à la main quand la session a démarré sur l'exemple.
+    pub start: Vec<String>,
 }
 
 /// Arbre des options (`general = { gaps_in = 5 }`), dans l'ordre d'écriture.
@@ -483,6 +486,7 @@ pub fn convert(config: &Config) -> Conversion {
     }
     section("Raccourcis", &binds);
     section("Sous-menus de raccourcis", &submaps);
+    conversion.start = start.iter().map(|l| l.trim().to_string()).collect();
     if !start.is_empty() {
         section("Au démarrage", &[format!("hl.on(\"hyprland.start\", function()\n{}\nend)", start.join("\n"))]);
     }
