@@ -94,7 +94,8 @@ local function hyprlang(path)
                     t[s] = t[s] or {}
                     t = t[s]
                 end
-                t[key] = value(v)
+                -- En Lua, les tirets des noms d'options deviennent « _ » (tap-to-click).
+                t[(key:gsub("-", "_"))] = value(v)
             end
         end
     end
@@ -138,46 +139,50 @@ hl.on("hyprland.start", function()
     end
 end)
 
-part("apparence", function()
-    hl.config({
-        general = {
-            gaps_in = 4,
-            gaps_out = 12,
-            border_size = 2,
-            col = {
-                active_border = "rgb(9b8cff)",
-                inactive_border = "rgb(262b35)",
-            },
-            layout = "dwindle",
-            resize_on_border = true,
+-- Une section par appel : une option refusée (nom changé par une version de
+-- Hyprland) ne fait sauter que la sienne.
+local looks = {
+    general = {
+        gaps_in = 4,
+        gaps_out = 12,
+        border_size = 2,
+        col = {
+            active_border = "rgb(9b8cff)",
+            inactive_border = "rgb(262b35)",
         },
-        decoration = {
-            rounding = 10,
-            shadow = { enabled = false },
-            blur = { enabled = false },
+        layout = "dwindle",
+        resize_on_border = true,
+    },
+    decoration = {
+        rounding = 10,
+        shadow = { enabled = false },
+        blur = { enabled = false },
+    },
+    animations = { enabled = true },
+    dwindle = { preserve_split = true },
+    misc = {
+        disable_hyprland_logo = true,
+        disable_splash_rendering = true,
+        force_default_wallpaper = 0,
+        background_color = "rgb(0a0c10)",
+        -- Fréquence variable (FreeSync, G-Sync) en plein écran seulement : jeux.
+        vrr = 2,
+        middle_click_paste = false,
+        mouse_move_enables_dpms = true,
+        key_press_enables_dpms = true,
+    },
+    -- En Lua, les tirets des noms d'options deviennent « _ » (tap-to-click).
+    input = {
+        follow_mouse = 1,
+        touchpad = {
+            tap_to_click = true,
+            natural_scroll = false,
         },
-        animations = { enabled = true },
-        dwindle = { preserve_split = true },
-        misc = {
-            disable_hyprland_logo = true,
-            disable_splash_rendering = true,
-            force_default_wallpaper = 0,
-            background_color = "rgb(0a0c10)",
-            -- Fréquence variable (FreeSync, G-Sync) en plein écran seulement : jeux.
-            vrr = 2,
-            middle_click_paste = false,
-            mouse_move_enables_dpms = true,
-            key_press_enables_dpms = true,
-        },
-        input = {
-            follow_mouse = 1,
-            touchpad = {
-                tap_to_click = true,
-                natural_scroll = false,
-            },
-        },
-    })
-end)
+    },
+}
+for _, section in ipairs({ "general", "decoration", "animations", "dwindle", "misc", "input" }) do
+    part("apparence (" .. section .. ")", function() hl.config({ [section] = looks[section] }) end)
+end
 
 -- Mouvements courts et doux (150 ms), sans rebond.
 part("animations", function()
