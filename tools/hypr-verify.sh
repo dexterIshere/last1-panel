@@ -48,4 +48,20 @@ for name in signal hypr056 kool; do
     failed=1
   fi
 done
+# Bureau Signal de go-to-linux écrit en Lua (copie de linux/desktop/hypr de
+# go-to-linux) : lu tel quel, avec ses fichiers gtl-machine.conf et
+# monitors.conf.
+lua="$work/signal-lua"
+cp -r tests/hyprland/signal-lua "$lua"
+HOME="$work/home-signal-lua" && mkdir -p "$HOME/.config" && ln -sfn "$lua" "$HOME/.config/hypr"
+sed -i "s|/usr/local/share/gtl/desktop/hypr/signal.lua|$lua/signal.lua|" "$lua/hyprland.lua"
+[ "$(id -u)" = 0 ] && chown -R hyprverify "$work/run" && chmod 700 "$work/run" && chmod -R a+rwX "$work"
+result=$(run_as HOME="$HOME" Hyprland --verify-config -c "$lua/hyprland.lua" 2>&1)
+status=$?
+echo "== signal-lua (go-to-linux, Lua écrit à la main)"
+echo "$result" | sed 's/^/   | /'
+if [ $status -ne 0 ] || ! echo "$result" | grep -q "config ok" || echo "$result" | grep -q "go-to-linux, "; then
+  echo "::error::signal-lua : Hyprland refuse le bureau Signal en Lua"
+  failed=1
+fi
 exit $failed
