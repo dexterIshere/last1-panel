@@ -35,10 +35,11 @@ fn version(text: &str) -> String {
     tag.trim_start_matches('v').split('-').next().unwrap_or_default().to_string()
 }
 
-/// L'état de Hyprland en cours ; `None` hors Hyprland.
+/// L'état de Hyprland en cours (`-i 0` : la session du joueur, même sans
+/// HYPRLAND_INSTANCE_SIGNATURE dans le service) ; `None` hors Hyprland.
 pub fn read(exec: &dyn Exec) -> Option<Health> {
     let run = |what: &str| {
-        exec.run("hyprctl", &["-j".to_string(), what.to_string()])
+        exec.run("hyprctl", &["-i".to_string(), "0".to_string(), "-j".to_string(), what.to_string()])
             .ok()
             .filter(|out| out.success())
             .map(|out| out.stdout)
@@ -65,15 +66,15 @@ mod tests {
         let exec = FakeExec::new()
             .on_args(
                 "hyprctl",
-                &["-j", "version"],
+                &["-i", "0", "-j", "version"],
                 ok(r#"{"branch": "v0.57.1", "tag": "v0.57.1", "version": "0.57.1"}"#),
             )
             .on_args(
                 "hyprctl",
-                &["-j", "deprecated-config"],
+                &["-i", "0", "-j", "deprecated-config"],
                 ok(r#"["dwindle:special_scale_factor: Use workspace rules to achieve the same effect"]"#),
             )
-            .on_args("hyprctl", &["-j", "configerrors"], ok("[\n\t\"\"\n]\n"));
+            .on_args("hyprctl", &["-i", "0", "-j", "configerrors"], ok("[\n\t\"\"\n]\n"));
         assert_eq!(
             read(&exec).unwrap(),
             Health {

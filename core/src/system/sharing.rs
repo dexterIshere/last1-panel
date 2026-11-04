@@ -112,20 +112,29 @@ fn replace_word(text: &str, word: &str, mask: &str) -> String {
 /// dernier (« game »), 10 minutes au moins après lui, pas d'échec récent ;
 /// le tout premier part dès l'accord, pour le matériel (« firstboot »). Rend
 /// son empreinte et son occasion.
-pub fn due(report: &Report, state: &State, now: i64) -> Option<(String, &'static str)> {
+pub fn due(
+    report: &Report,
+    hyprland: Option<&crate::display::hypr_health::Health>,
+    state: &State,
+    now: i64,
+) -> Option<(String, &'static str)> {
     let first = state.sent_at == 0;
     if (report.sessions.is_empty() && !first) || now < state.retry_at || now - state.sent_at < EVERY {
         return None;
     }
-    let sum = content_sum(report);
+    let sum = content_sum(report, hyprland);
     let occasion = if report.sessions.is_empty() { "firstboot" } else { "game" };
     (sum != state.sum).then_some((sum, occasion))
 }
 
 /// Empreinte des parties : un rapport par nouvelle partie, pas à chaque
-/// constat qui bouge (shaders en cours, mise à jour…).
-pub fn content_sum(report: &Report) -> String {
-    let content = serde_json::json!({ "sessions": report.sessions });
+/// constat qui bouge (shaders en cours, mise à jour…). Et quand Hyprland
+/// reproche autre chose à la configuration (après une mise à jour).
+pub fn content_sum(report: &Report, hyprland: Option<&crate::display::hypr_health::Health>) -> String {
+    let content = match hyprland {
+        Some(h) => serde_json::json!({ "sessions": report.sessions, "hyprland": h }),
+        None => serde_json::json!({ "sessions": report.sessions }),
+    };
     Sha256::digest(content.to_string()).iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
@@ -328,20 +337,35 @@ mod tests {
         assert_eq!(scrub("cachyos-settings", "j", "cachyos"), "cachyos-settings");
     }
 
+    fn due_(report: &Report, state: &State, now: i64) -> Option<(String, &'static str)> {
+        due(report, None, state, now)
+    }
+
     #[test]
     fn after_each_new_game() {
         let now = 1_800_000_000;
         // Tout premier rapport, dès l'accord : le matériel, sans partie.
-        assert_eq!(due(&report(0), &State::default(), now).unwrap().1, "firstboot");
-        let (sum, occasion) = due(&report(1), &State::default(), now).unwrap();
+        assert_eq!(due_(&report(0), &State::default(), now).unwrap().1, "firstboot");
+        let (sum, occasion) = due_(&report(1), &State::default(), now).unwrap();
         assert_eq!(occasion, "game");
         let sent = State { sent_at: now, sum: sum.clone(), retry_at: 0 };
-        assert_eq!(due(&report(0), &sent, now + EVERY), None, "ensuite, seulement après des parties");
-        assert_eq!(due(&report(2), &sent, now + 60), None, "moins de 10 minutes");
-        assert_eq!(due(&report(1), &sent, now + EVERY), None, "rien de changé");
-        assert!(due(&report(2), &sent, now + EVERY).is_some());
+        assert_eq!(due_(&report(0), &sent, now + EVERY), None, "ensuite, seulement après des parties");
+        assert_eq!(due_(&report(2), &sent, now + 60), None, "moins de 10 minutes");
+        assert_eq!(due_(&report(1), &sent, now + EVERY), None, "rien de changé");
+        assert!(due_(&report(2), &sent, now + EVERY).is_some());
         let failed = State { retry_at: now + RETRY, ..State::default() };
-        assert_eq!(due(&report(1), &failed, now + 60), None, "échec récent");
+        assert_eq!(due_(&report(1), &failed, now + 60), None, "échec récent");
+        // Hyprland reproche autre chose (mise à jour) : renvoyé.
+        let health = crate::display::hypr_health::Health {
+            version: "0.57.1".into(),
+            deprecated: vec!["dwindle:special_scale_factor: x".into()],
+            config_errors: Vec::new(),
+        };
+        let (sum, _) = due(&report(1), Some(&health), &State::default(), now).unwrap();
+        let sent = State { sent_at: now, sum, retry_at: 0 };
+        assert_eq!(due(&report(1), Some(&health), &sent, now + EVERY), None);
+        let fixed = crate::display::hypr_health::Health { deprecated: Vec::new(), ..health };
+        assert!(due(&report(1), Some(&fixed), &sent, now + EVERY).is_some());
     }
 
     #[test]

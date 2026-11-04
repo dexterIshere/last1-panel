@@ -946,7 +946,8 @@ fn share_reports() {
             let report = Panel::system().performance_report();
             let mut state = sharing::State::load(&state_path);
             let now = update::now();
-            if let Some((sum, occasion)) = sharing::due(&report, &state, now) {
+            let hyprland = last1_panel_core::display::hypr_health::read(&SystemExec::default());
+            if let Some((sum, occasion)) = sharing::due(&report, hyprland.as_ref(), &state, now) {
                 let gpus = gpu::detect(&SysPaths::default());
                 let body = sharing::body(
                     &report,
@@ -956,7 +957,7 @@ fn share_reports() {
                     &sharing::system(std::path::Path::new("/"), &gpus),
                     &std::env::var("USER").unwrap_or_default(),
                     &read("/proc/sys/kernel/hostname"),
-                    last1_panel_core::display::hypr_health::read(&SystemExec::default()).as_ref(),
+                    hyprland.as_ref(),
                 );
                 let exec = SystemExec { timeout: Duration::from_secs(60), ..SystemExec::default() };
                 if sharing::post(&exec, &body, &state_path.with_extension("pending")) {
