@@ -246,8 +246,10 @@ fn without_sandbox(exec: &dyn Exec, pending: Vec<Pending>, home: &Path, hyprland
     let hypr_dir = home.join(".config/hypr");
     let mut reasons = Vec::new();
     let mut conversion = false;
+    let by_gtl =
+        crate::display::hypr_migrate::by_go_to_linux(&hypr_dir, Path::new(crate::display::hypr_migrate::GTL_HOOK));
     if hyprland.as_deref().is_some_and(needs_lua) {
-        if main_config(&hypr_dir).is_some_and(|c| c.extension().is_some_and(|e| e == "conf")) {
+        if !by_gtl && main_config(&hypr_dir).is_some_and(|c| c.extension().is_some_and(|e| e == "conf")) {
             match crate::display::hypr_migrate::prepare(home) {
                 Ok((lua, _, _)) => {
                     let file = crate::paths::cache_dir().join("update-check-converted.lua");
@@ -321,8 +323,12 @@ pub fn run(exec: &dyn Exec, pending: Vec<Pending>, home: &Path, work: &Path, dbp
     }
     let mut reasons = Vec::new();
     let mut verdict_conversion = false;
-    // Le futur Hyprland lit la configuration actuelle, ou sa conversion.
-    if let Some(config) = main_config(&hypr_dir) {
+    // Le futur Hyprland lit la configuration actuelle, ou sa conversion ;
+    // le bureau Signal, go-to-linux le convertit lui-même pendant la mise à
+    // jour (crochet de pacman).
+    let by_gtl =
+        crate::display::hypr_migrate::by_go_to_linux(&hypr_dir, Path::new(crate::display::hypr_migrate::GTL_HOOK));
+    if let Some(config) = main_config(&hypr_dir).filter(|_| !by_gtl) {
         let has_binary = sandbox.root().join("usr/bin/Hyprland").exists();
         let target = if has_binary { Some(sandbox.root()) } else { None };
         match target {
