@@ -169,9 +169,7 @@
 
   .brand__by {
     color: var(--color-text-faint);
-    font: var(--text-2xs) / 1.4 var(--font-mono);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font: var(--text-xs) / 1.4 var(--font-body);
   }
 
   .lang {
