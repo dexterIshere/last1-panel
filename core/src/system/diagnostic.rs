@@ -1477,13 +1477,13 @@ pub fn run(src: &Sources) -> Report {
             if !crate::system::razer::writable(laptop) {
                 fix = Some(Fix::RazerCooling);
                 remedies.push(t(
-                    &format!("Il chauffe trop et ralentit : sous Linux, le Razer garde ses ventilateurs au calme. Un clic le règle pendant les jeux comme Synapse sous Windows : processeur Boost, ventilateurs à fond."),
-                    &format!("It runs too hot and slows down: on Linux, the Razer keeps its fans quiet. One click sets it during games like Synapse on Windows: CPU Boost, fans at full speed."),
+                    "Il chauffe trop et ralentit : sous Linux, le Razer garde ses ventilateurs au calme. Un clic le règle pendant les jeux comme Synapse sous Windows : processeur Boost, ventilateurs à fond.",
+                    "It runs too hot and slows down: on Linux, the Razer keeps its fans quiet. One click sets it during games like Synapse on Windows: CPU Boost, fans at full speed.",
                 ));
             } else if states.iter().any(|s| crate::system::razer::applied(s)) {
                 remedies.push(t(
-                    &format!("Le Razer est déjà réglé comme Synapse pendant les jeux (processeur Boost, ventilateurs à fond) et chauffe encore : surélevez l'arrière du portable, dégagez ses aérations ; s'il n'a jamais été nettoyé, la poussière et la pâte thermique sèche le brident."),
-                    &format!("The Razer is already set like Synapse during games (CPU Boost, fans at full speed) and still runs hot: raise the back of the laptop, clear its vents; if it was never cleaned, dust and dry thermal paste hold it back."),
+                    "Le Razer est déjà réglé comme Synapse pendant les jeux (processeur Boost, ventilateurs à fond) et chauffe encore : surélevez l'arrière du portable, dégagez ses aérations ; s'il n'a jamais été nettoyé, la poussière et la pâte thermique sèche le brident.",
+                    "The Razer is already set like Synapse during games (CPU Boost, fans at full speed) and still runs hot: raise the back of the laptop, clear its vents; if it was never cleaned, dust and dry thermal paste hold it back.",
                 ));
             } else if let Some(state) = states.first() {
                 remedies.push(t(
@@ -1498,8 +1498,8 @@ pub fn run(src: &Sources) -> Report {
             }
         } else if throttles > 0 {
             remedies.push(t(
-                &format!("Il chauffe trop et ralentit : surélevez l'arrière du portable et dégagez ses aérations."),
-                &format!("It runs too hot and slows down: raise the back of the laptop and clear its vents."),
+                "Il chauffe trop et ralentit : surélevez l'arrière du portable et dégagez ses aérations.",
+                "It runs too hot and slows down: raise the back of the laptop and clear its vents.",
             ));
         }
         // Mémoire qui déborde sur le disque : le jeu attend le disque, ce
