@@ -3,8 +3,10 @@
 
 pub mod hypr_conf;
 pub mod hypr_convert;
+pub mod hypr_dispatch;
 pub mod hypr_lua;
 pub mod hypr_options;
+pub mod hypr_rules;
 pub mod hyprland;
 pub mod kde;
 pub mod model;

@@ -17,6 +17,8 @@ use super::hypr_options::{Kind, OPTIONS};
 pub struct Conversion {
     pub lua: String,
     pub skipped: Vec<String>,
+    /// Changements faits pour que Hyprland 0.57 accepte (valeur bornée…).
+    pub notes: Vec<String>,
 }
 
 /// Arbre des options (`general = { gaps_in = 5 }`), dans l'ordre d'écriture.
@@ -80,12 +82,72 @@ fn lua_key(key: &str) -> String {
     if simple { key.to_string() } else { format!("[{}]", string(key)) }
 }
 
+/// Champs acceptés par hl.device (docs/hyprland-lua.md §4.6).
+const DEVICE_FIELDS: &[&str] = &[
+    "sensitivity",
+    "accel_profile",
+    "rotation",
+    "kb_file",
+    "kb_layout",
+    "kb_variant",
+    "kb_options",
+    "kb_rules",
+    "kb_model",
+    "repeat_rate",
+    "repeat_delay",
+    "natural_scroll",
+    "tap_button_map",
+    "numlock_by_default",
+    "resolve_binds_by_sym",
+    "disable_while_typing",
+    "clickfinger_behavior",
+    "middle_button_emulation",
+    "tap_to_click",
+    "tap_and_drag",
+    "drag_lock",
+    "left_handed",
+    "scroll_method",
+    "scroll_button",
+    "scroll_button_lock",
+    "scroll_points",
+    "scroll_factor",
+    "transform",
+    "output",
+    "enabled",
+    "region_position",
+    "absolute_region_position",
+    "region_size",
+    "relative_input",
+    "active_area_position",
+    "active_area_size",
+    "flip_x",
+    "flip_y",
+    "drag_3fg",
+    "keybinds",
+    "share_states",
+    "release_pressed_on_close",
+    "tags",
+];
+
 fn kind_of(path: &str) -> Option<Kind> {
     OPTIONS.iter().find(|(name, _)| *name == path).map(|(_, kind)| *kind)
 }
 
+/// Options de hyprland.conf (0.54 à 0.56) supprimées par Hyprland 0.57 :
+/// sans effet, retirées avec une note (comparaison des listes d'options des
+/// sources de Hyprland).
+const REMOVED: [&str; 5] = [
+    "debug:fifo_pending_workaround",
+    "decoration:shadow:ignore_window",
+    "dwindle:pseudotile",
+    "misc:vfr",
+    "render:cm_fs_passthrough",
+];
+
 fn bool_value(value: &str) -> Option<bool> {
-    match value.to_ascii_lowercase().as_str() {
+    // hyprlang lit le début : « yes, please :) » de son propre exemple.
+    let word: String = value.trim().chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+    match word.to_ascii_lowercase().as_str() {
         "true" | "yes" | "on" | "1" => Some(true),
         "false" | "no" | "off" | "0" => Some(false),
         _ => None,
@@ -158,17 +220,29 @@ fn skip(conversion: &mut Conversion, line: &Line, reason: &str) {
 pub fn convert(config: &Config) -> Conversion {
     let mut conversion = Conversion::default();
     let mut options = Tree::default();
-    let (mut env, mut monitors, mut curves, mut animations, mut devices, mut start, mut reload) =
+    let (mut env, mut monitors, mut curves, mut animations, mut devices, mut start, mut shutdown) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut rules, mut workspaces, mut gestures, mut binds, mut extras) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    // Sous-menu en cours (`submap = nom[, retour]` … `submap = reset`).
+    let mut submap: Option<(String, Option<String>, Vec<String>)> = None;
+    let mut submaps: Vec<String> = Vec::new();
     for item in &config.items {
         let line = match item {
             Item::Line(line) => line,
             Item::Block { kind, fields, file, number } if kind == "device" => {
-                let name = fields.iter().find(|(k, _)| k == "name").map(|(_, v)| v.clone());
+                let name = fields.iter().find(|(k, _)| k == "name").map(|(_, v)| v.replace(' ', "-"));
                 let mut parts = vec![format!("name = {}", string(name.as_deref().unwrap_or("")))];
                 for (key, raw) in fields.iter().filter(|(k, _)| k != "name") {
-                    match kind_of(&format!("input:{key}")).and_then(|kind| value(kind, raw)) {
-                        Some(v) => parts.push(format!("{} = {v}", lua_key(&key.replace(':', "_")))),
+                    let field = key.replace('-', "_");
+                    let typed = DEVICE_FIELDS.contains(&field.as_str()).then(|| {
+                        ["input:", "input:touchpad:", "input:tablet:"]
+                            .iter()
+                            .find_map(|prefix| kind_of(&format!("{prefix}{key}")))
+                            .and_then(|kind| value(kind, raw))
+                    });
+                    match typed.flatten() {
+                        Some(v) => parts.push(format!("{field} = {v}")),
                         None => conversion.skipped.push(format!(
                             "{}:{number} device {{ {key} = {raw} }} (réglage de périphérique inconnu)",
                             file.display()
@@ -180,8 +254,11 @@ pub fn convert(config: &Config) -> Conversion {
                 }
                 continue;
             }
-            Item::Block { kind, file, number, .. } => {
-                conversion.skipped.push(format!("{}:{number} bloc {kind} (pas encore repris)", file.display()));
+            Item::Block { kind, fields, file, number } => {
+                match super::hypr_rules::rule_block(kind, fields) {
+                    Some(lua) => rules.push(lua),
+                    None => conversion.skipped.push(format!("{}:{number} bloc {kind} (non repris)", file.display())),
+                }
                 continue;
             }
         };
@@ -189,9 +266,74 @@ pub fn convert(config: &Config) -> Conversion {
         let keyword = line.key.rsplit(':').next().unwrap_or(&line.key);
         match keyword {
             "env" | "envd" => match line.value.split_once(',') {
-                Some((name, val)) => env.push(format!("hl.env({}, {})", string(name.trim()), string(val.trim()))),
+                Some((name, val)) => env.push(format!(
+                    "hl.env({}, {}{})",
+                    string(name.trim()),
+                    string(val.trim()),
+                    if keyword == "envd" { ", true" } else { "" }
+                )),
                 None => skip(&mut conversion, line, "variable d'environnement illisible"),
             },
+            "submap" => {
+                if let Some((name, reset, inner)) = submap.take() {
+                    let reset = reset.map(|r| format!("{}, ", string(&r))).unwrap_or_default();
+                    submaps.push(format!(
+                        "hl.define_submap({}, {reset}function()\n{}\nend)",
+                        string(&name),
+                        inner.iter().map(|b| format!("    {b}")).collect::<Vec<_>>().join("\n")
+                    ));
+                }
+                let (name, reset) = match line.value.split_once(',') {
+                    Some((n, r)) => (n.trim().to_string(), Some(r.trim().to_string())),
+                    None => (line.value.trim().to_string(), None),
+                };
+                if name != "reset" {
+                    submap = Some((name, reset, Vec::new()));
+                }
+            }
+            "unbind" => {
+                let target = if line.value.trim() == "all" {
+                    Some("all".to_string())
+                } else {
+                    line.value.split_once(',').and_then(|(m, k)| super::hypr_dispatch::keys(m, k))
+                };
+                match target {
+                    Some(t) => binds.push(format!("hl.unbind({})", string(&t))),
+                    None => skip(&mut conversion, line, "unbind illisible"),
+                }
+            }
+            k if k.starts_with("bind") => match super::hypr_dispatch::bind(&k[4..], &line.value) {
+                Some(lua) => match &mut submap {
+                    Some((_, _, inner)) => inner.push(lua),
+                    None => binds.push(lua),
+                },
+                None => skip(&mut conversion, line, "raccourci sans équivalent sûr"),
+            },
+            "windowrule" | "windowrulev2" => match super::hypr_rules::window_rule(&line.value) {
+                Some(lua) => rules.push(lua),
+                None => skip(&mut conversion, line, "règle de fenêtre sans équivalent sûr"),
+            },
+            "layerrule" => match super::hypr_rules::layer_rule(&line.value) {
+                Some(lua) => rules.push(lua),
+                None => skip(&mut conversion, line, "règle de couche sans équivalent sûr"),
+            },
+            "workspace" => match super::hypr_rules::workspace_rule(&line.value) {
+                Some(lua) => workspaces.push(lua),
+                None => skip(&mut conversion, line, "règle d'espace de travail sans équivalent sûr"),
+            },
+            k if k.starts_with("gesture") => match super::hypr_rules::gesture(&k[7..], &line.value) {
+                Some(lua) => gestures.push(lua),
+                None => skip(&mut conversion, line, "geste sans équivalent sûr"),
+            },
+            "permission" => {
+                let parts: Vec<&str> = line.value.split(',').map(str::trim).collect();
+                match parts.as_slice() {
+                    [bin, kind, mode] => {
+                        extras.push(format!("hl.permission({}, {}, {})", string(bin), string(kind), string(mode)))
+                    }
+                    _ => skip(&mut conversion, line, "permission illisible"),
+                }
+            }
             "monitor" => match super::hyprland::Rule::parse(&format!("monitor = {}", line.value)) {
                 Some(rule) => monitors.push(rule.lua()),
                 None => skip(&mut conversion, line, "règle d'écran non reprise"),
@@ -202,6 +344,24 @@ pub fn convert(config: &Config) -> Conversion {
                     .get(1..5)
                     .map(|p| p.to_vec())
                     .and_then(|p| p.iter().map(|n| number(n)).collect::<Option<Vec<String>>>());
+                // Hyprland 0.57 borne chaque coordonnée à [-1, 2].
+                let points = points.map(|p| {
+                    p.iter()
+                        .map(|n| {
+                            let v: f64 = n.parse().unwrap_or(0.0);
+                            if (-1.0..=2.0).contains(&v) { n.clone() } else { v.clamp(-1.0, 2.0).to_string() }
+                        })
+                        .collect::<Vec<String>>()
+                });
+                if line
+                    .value
+                    .split(',')
+                    .skip(1)
+                    .filter_map(|n| n.trim().parse::<f64>().ok())
+                    .any(|v| !(-1.0..=2.0).contains(&v))
+                {
+                    conversion.notes.push(format!("{}:{} courbe bornée à [-1, 2]", line.file.display(), line.number));
+                }
                 match (args.first(), points) {
                     (Some(name), Some(p)) if p.len() == 4 => curves.push(format!(
                         "hl.curve({}, {{ type = \"bezier\", points = {{ {{{}, {}}}, {{{}, {}}} }} }})",
@@ -220,7 +380,9 @@ pub fn convert(config: &Config) -> Conversion {
                 match (args.first(), enabled) {
                     (Some(leaf), Some(enabled)) => {
                         let mut fields = vec![format!("leaf = {}", string(leaf)), format!("enabled = {enabled}")];
-                        if let Some(speed) = args.get(2).and_then(|s| number(s)) {
+                        if let Some(speed) =
+                            args.get(2).and_then(|s| number(s)).filter(|s| s.parse::<f64>().is_ok_and(|v| v > 0.0))
+                        {
                             fields.push(format!("speed = {speed}"));
                         }
                         if let Some(curve) = args.get(3).filter(|c| !c.is_empty()) {
@@ -234,19 +396,31 @@ pub fn convert(config: &Config) -> Conversion {
                     _ => skip(&mut conversion, line, "animation illisible"),
                 }
             }
-            "exec-once" => start.push(format!("    hl.exec_cmd({})", string(&line.value))),
-            "exec" => reload.push(format!("hl.exec_cmd({})", string(&line.value))),
+            // `exec` aussi au démarrage : en Lua, hl.exec_cmd hors d'un
+            // évènement part avant que le bureau existe (et à chaque essai
+            // --verify-config).
+            "exec-once" | "exec" => start.push(format!("    hl.exec_cmd({})", string(&line.value))),
+            "execr-once" | "execr" => start.push(format!("    hl.dispatch(hl.dsp.exec_raw({}))", string(&line.value))),
+            "exec-shutdown" => shutdown.push(format!("    hl.exec_cmd({})", string(&line.value))),
             _ if line.key.starts_with("plugin:") || keyword == "plugin" => {
                 skip(&mut conversion, line, "extension (plugin) : à reprendre à la main")
             }
             _ => match kind_of(&line.key) {
                 Some(kind) => match value(kind, &line.value) {
                     Some(v) => {
-                        let path: Vec<&str> = line.key.split([':', '.']).collect();
+                        let key = line.key.replace('-', "_");
+                        let path: Vec<&str> = key.split([':', '.']).collect();
                         options.set(&path, v);
                     }
                     None => skip(&mut conversion, line, "valeur illisible pour ce réglage"),
                 },
+                None if REMOVED.contains(&line.key.as_str()) => conversion.notes.push(format!(
+                    "{}:{} {} = {} (option supprimée par Hyprland 0.57, sans effet : retirée)",
+                    line.file.display(),
+                    line.number,
+                    line.key,
+                    line.value
+                )),
                 None => skip(&mut conversion, line, "réglage inconnu de Hyprland 0.57"),
             },
         }
@@ -270,9 +444,31 @@ pub fn convert(config: &Config) -> Conversion {
     section("Courbes", &curves);
     section("Animations", &animations);
     section("Périphériques", &devices);
-    section("À chaque chargement de la configuration", &reload);
+    section("Espaces de travail", &workspaces);
+    section("Règles de fenêtres et de couches", &rules);
+    section("Gestes", &gestures);
+    section("Permissions", &extras);
+    if let Some((name, reset, inner)) = submap.take() {
+        let reset = reset.map(|r| format!("{}, ", string(&r))).unwrap_or_default();
+        submaps.push(format!(
+            "hl.define_submap({}, {reset}function()\n{}\nend)",
+            string(&name),
+            inner.iter().map(|b| format!("    {b}")).collect::<Vec<_>>().join("\n")
+        ));
+    }
+    section("Raccourcis", &binds);
+    section("Sous-menus de raccourcis", &submaps);
     if !start.is_empty() {
         section("Au démarrage", &[format!("hl.on(\"hyprland.start\", function()\n{}\nend)", start.join("\n"))]);
+    }
+    if !shutdown.is_empty() {
+        section("À l'arrêt", &[format!("hl.on(\"hyprland.shutdown\", function()\n{}\nend)", shutdown.join("\n"))]);
+    }
+    if !conversion.notes.is_empty() {
+        lua.push_str("-- Changements faits pour Hyprland 0.57 :\n");
+        for n in &conversion.notes {
+            lua.push_str(&format!("-- {n}\n"));
+        }
     }
     if !conversion.skipped.is_empty() {
         lua.push_str("-- Non repris automatiquement :\n");

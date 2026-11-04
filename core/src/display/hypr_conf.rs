@@ -43,12 +43,17 @@ pub struct Config {
     /// Ce qui n'a pas pu être lu (fichier introuvable, accolade en trop…).
     pub problems: Vec<String>,
     variables: Vec<(String, String)>,
+    home: PathBuf,
 }
 
 type OpenBlock = (String, Vec<(String, String)>, usize, usize);
 
 /// Retire le commentaire d'une ligne (`##` est un `#`).
 fn strip_comment(line: &str) -> String {
+    // Ligne qui commence par « # » : commentaire, même « ####### ».
+    if line.trim_start().starts_with('#') {
+        return String::new();
+    }
     let mut out = String::new();
     let mut chars = line.chars().peekable();
     while let Some(c) = chars.next() {
@@ -68,14 +73,14 @@ fn strip_comment(line: &str) -> String {
 impl Config {
     /// Lit `main` et tout ce qu'il inclut.
     pub fn read(main: &Path, home: &Path) -> Config {
-        let mut config = Config::default();
+        let mut config = Config { home: home.to_path_buf(), ..Config::default() };
         config.read_file(main, home, &mut Vec::new(), 0);
         config
     }
 
     /// Lit un texte comme s'il était le fichier `path` (tests).
     pub fn parse(text: &str, path: &Path, home: &Path) -> Config {
-        let mut config = Config::default();
+        let mut config = Config { home: home.to_path_buf(), ..Config::default() };
         config.read_text(text, path, home, &mut Vec::new(), 0);
         config
     }
@@ -87,6 +92,17 @@ impl Config {
         names.sort_by_key(|(name, _)| std::cmp::Reverse(name.len()));
         for (name, val) in names {
             out = out.replace(&format!("${name}"), val);
+        }
+        // Puis les variables d'environnement, comme hyprlang ($HOME…).
+        while let Some(start) = out.find('$') {
+            let name: String =
+                out[start + 1..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+            let value =
+                if name == "HOME" { Some(self.home.to_string_lossy().into_owned()) } else { std::env::var(&name).ok() };
+            match value.filter(|_| !name.is_empty()) {
+                Some(value) => out.replace_range(start..start + 1 + name.len(), &value),
+                None => break,
+            }
         }
         out
     }
@@ -229,7 +245,8 @@ mod tests {
 $mod = SUPER
 $term = kitty # le terminal
 $modShift = SUPER SHIFT
-source = ~/.config/hypr/keys.conf
+##########
+source = $HOME/.config/hypr/keys.conf
 source = ./conf/*.conf
 general {
     gaps_in = 5
