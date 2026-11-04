@@ -63,6 +63,14 @@ files+=", \"/usr/share/licenses/last1-panel/nvibrant-LICENSE\": \"/tmp/nvibrant-
 files+=", \"/usr/lib/last1-panel/vkbasalt/libvkbasalt.so\": \"/tmp/vkbasalt-build/src/libvkbasalt.so\""
 files+=", \"/usr/share/licenses/last1-panel/vkBasalt-LICENSE\": \"/tmp/vkBasalt-$vkbasalt/LICENSE\""
 files+=", \"/usr/share/licenses/last1-panel/vkBasalt-reshade-LICENSE\": \"/tmp/vkBasalt-$vkbasalt/src/reshade/LICENSE.md\""
+# Génération d'images : compilée par la CI sous Arch (CMake et en-têtes Vulkan
+# trop anciens dans Debian 12), posée dans framegen-dist/ ; absente en local.
+if [ -f /work/framegen-dist/libVkLayer_last1_framegen.so ]; then
+    files+=", \"/usr/lib/last1-panel/framegen/libVkLayer_last1_framegen.so\": \"/work/framegen-dist/libVkLayer_last1_framegen.so\""
+    files+=", \"/usr/share/licenses/last1-panel/afmf-linux-LICENSE\": \"/work/framegen/LICENSE\""
+    files+=", \"/usr/share/licenses/last1-panel/FidelityFX-LICENSE\": \"/work/framegen/shaders/fidelityfx/LICENSE.txt\""
+    files+=", \"/usr/share/licenses/last1-panel/framegen-NOTICE.md\": \"/work/framegen/NOTICE.md\""
+fi
 for binary in /tmp/nvibrant/nvibrant/resources/nvibrant-*; do
     files+=", \"/usr/lib/last1-panel/nvibrant/${binary##*/}\": \"$binary\""
 done

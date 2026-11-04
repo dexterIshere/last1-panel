@@ -23,6 +23,8 @@ const DESKTOP_ENTRY: &str = include_str!("../../packaging/last1-panel.desktop");
 const SERVICE_UNIT: &str = include_str!("../../packaging/last1-panel-apply.service");
 /// Manifeste de la couche Vulkan des couleurs des jeux (vkBasalt).
 const COLOR_LAYER: &str = include_str!("../../packaging/last1-panel-color.json");
+/// Manifeste de la couche Vulkan de génération d'images (framegen/).
+const FRAMEGEN_LAYER: &str = include_str!("../../packaging/last1-panel-framegen.json");
 
 /// Où vont les fichiers. Les noms sont ceux du paquet : l'entrée du menu et
 /// l'icône de l'utilisateur prennent le pas sur celles du système.
@@ -39,6 +41,8 @@ pub struct Layout {
     pub units: PathBuf,
     /// Couche Vulkan des couleurs des jeux.
     pub color_layer: PathBuf,
+    /// Couche Vulkan de génération d'images (éteinte tant que Last1 Panel ne l'allume pas).
+    pub framegen_layer: PathBuf,
 }
 
 impl Layout {
@@ -59,6 +63,7 @@ impl Layout {
             lib: home.join(".local/lib/last1-panel"),
             units: config.join("systemd/user"),
             color_layer: data.join("vulkan/implicit_layer.d").join(last1_panel_core::paths::COLOR_LAYER),
+            framegen_layer: data.join("vulkan/implicit_layer.d").join(last1_panel_core::paths::FRAMEGEN_LAYER),
         }
     }
 
@@ -114,7 +119,12 @@ pub fn integrate(appimage: &Path, appdir: &Path, layout: &Layout) -> io::Result<
     sync_dir(&appdir.join("usr/lib/last1-panel/vkbasalt"), &layout.lib.join("vkbasalt"))?;
     let vkbasalt = layout.lib.join("vkbasalt/libvkbasalt.so");
     if vkbasalt.is_file() {
-        write_if_changed(&layout.color_layer, color_layer(&vkbasalt).as_bytes())?;
+        write_if_changed(&layout.color_layer, layer_manifest(COLOR_LAYER, &vkbasalt).as_bytes())?;
+    }
+    sync_dir(&appdir.join("usr/lib/last1-panel/framegen"), &layout.lib.join("framegen"))?;
+    let framegen = layout.lib.join("framegen/libVkLayer_last1_framegen.so");
+    if framegen.is_file() {
+        write_if_changed(&layout.framegen_layer, layer_manifest(FRAMEGEN_LAYER, &framegen).as_bytes())?;
     }
     if fs::read_link(&layout.command).ok() != Some(layout.cli()) {
         let _ = fs::remove_file(&layout.command);
@@ -146,6 +156,7 @@ pub fn yield_to_package(layout: &Layout) -> io::Result<bool> {
         &layout.command,
         &layout.binary,
         &layout.color_layer,
+        &layout.framegen_layer,
     ] {
         match fs::remove_file(path) {
             Ok(()) => removed = true,
@@ -179,8 +190,8 @@ fn service_unit(cli: &Path) -> String {
 }
 
 /// Le manifeste du paquet, avec la bibliothèque de l'utilisateur.
-fn color_layer(library: &Path) -> String {
-    let mut manifest: serde_json::Value = serde_json::from_str(COLOR_LAYER).expect("manifeste de couche valide");
+fn layer_manifest(package_manifest: &str, library: &Path) -> String {
+    let mut manifest: serde_json::Value = serde_json::from_str(package_manifest).expect("manifeste de couche valide");
     manifest["layer"]["library_path"] = library.display().to_string().into();
     serde_json::to_string_pretty(&manifest).expect("manifeste sérialisable") + "\n"
 }
@@ -279,6 +290,8 @@ mod tests {
         fs::create_dir_all(appdir.join("usr/lib/last1-panel/nvibrant")).unwrap();
         fs::create_dir_all(appdir.join("usr/lib/last1-panel/vkbasalt")).unwrap();
         fs::write(appdir.join("usr/lib/last1-panel/vkbasalt/libvkbasalt.so"), b"vkbasalt").unwrap();
+        fs::create_dir_all(appdir.join("usr/lib/last1-panel/framegen")).unwrap();
+        fs::write(appdir.join("usr/lib/last1-panel/framegen/libVkLayer_last1_framegen.so"), b"framegen").unwrap();
         fs::write(appdir.join("usr/bin/last1-panel-cli"), b"cli v1").unwrap();
         fs::write(appdir.join("usr/lib/last1-panel/nvibrant/nvibrant-570.86.16"), b"nv570").unwrap();
         (dir, layout, appimage, appdir)
@@ -299,6 +312,13 @@ mod tests {
         assert_eq!(manifest["layer"]["library_path"], library.display().to_string());
         assert_eq!(manifest["layer"]["enable_environment"]["LAST1_PANEL_COLOR"], "1");
         assert_eq!(fs::read(library).unwrap(), b"vkbasalt");
+        // Génération d'images : éteinte tant que LAST1_FRAMEGEN=1 n'est pas posé.
+        let manifest: serde_json::Value = serde_json::from_slice(&fs::read(&layout.framegen_layer).unwrap()).unwrap();
+        let library = layout.lib.join("framegen/libVkLayer_last1_framegen.so");
+        assert_eq!(manifest["layer"]["library_path"], library.display().to_string());
+        assert_eq!(manifest["layer"]["name"], "VK_LAYER_LAST1_framegen");
+        assert_eq!(manifest["layer"]["enable_environment"]["LAST1_FRAMEGEN"], "1");
+        assert_eq!(fs::read(library).unwrap(), b"framegen");
         assert_eq!(fs::read(&layout.icon).unwrap(), ICON);
 
         let entry = fs::read_to_string(&layout.desktop_entry).unwrap();
@@ -361,7 +381,7 @@ mod tests {
         let unit = service_unit(Path::new("/home/a b/100%/last1-panel-cli"));
         assert!(unit.contains(r#"ExecStart="/home/a b/100%%/last1-panel-cli" watch"#));
         assert!(
-            color_layer(Path::new("/home/a\"b/libvkbasalt.so"))
+            layer_manifest(COLOR_LAYER, Path::new("/home/a\"b/libvkbasalt.so"))
                 .contains(r#""library_path": "/home/a\"b/libvkbasalt.so""#)
         );
     }

@@ -64,6 +64,8 @@ pub fn game_logs_dir() -> PathBuf {
 /// Couche Vulkan des couleurs des jeux (vkBasalt livré avec Last1 Panel) :
 /// manifeste du paquet, ou celui posé par l'AppImage.
 pub const COLOR_LAYER: &str = "last1-panel-color.json";
+/// Couche Vulkan de génération d'images (framegen/, d'après afmf-linux).
+pub const FRAMEGEN_LAYER: &str = "last1-panel-framegen.json";
 
 pub fn color_layer_installed() -> bool {
     Path::new("/usr/share/vulkan/implicit_layer.d").join(COLOR_LAYER).is_file()

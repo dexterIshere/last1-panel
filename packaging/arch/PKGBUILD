@@ -4,7 +4,8 @@
 # nvibrant (MIT) est livré dans le paquet, ses binaires pris tels quels dans sa
 # version publiée sur PyPI (empreinte vérifiée) ; vkBasalt (zlib), compilé
 # depuis sa version publiée, applique les profils de couleurs dans la seule
-# fenêtre des jeux, sous son propre nom de couche Vulkan.
+# fenêtre des jeux, sous son propre nom de couche Vulkan ; la génération
+# d'images (framegen/, d'après afmf-linux, MIT) est compilée depuis le dépôt.
 pkgname=last1-panel
 pkgver=0.1.0
 pkgrel=1
@@ -13,7 +14,7 @@ arch=('x86_64')
 url="https://last1.fun/last1-panel"
 license=('GPL-3.0-or-later' 'MIT' 'Zlib' 'BSD-3-Clause')
 depends=('webkit2gtk-4.1' 'gtk3' 'lcms2' 'hicolor-icon-theme' 'systemd' 'lact' 'libx11')
-makedepends=('cargo' 'bun' 'meson' 'glslang' 'spirv-headers' 'vulkan-headers')
+makedepends=('cargo' 'bun' 'meson' 'cmake' 'ninja' 'glslang' 'spirv-headers' 'spirv-tools' 'vulkan-headers')
 optdepends=(
   'mangohud: on-screen performance and frame limiter for native games'
   'kscreen: KDE Plasma screen settings (kscreen-doctor)'
@@ -53,6 +54,10 @@ build() {
   # vkBasalt : la bibliothèque seule, notre manifeste de couche à la place du sien.
   arch-meson "$srcdir/vkBasalt-$_vkbasalt" "$srcdir/vkbasalt-build" -Dwith_json=false
   meson compile -C "$srcdir/vkbasalt-build"
+
+  # Génération d'images : la couche seule (le manifeste du paquet a le chemin complet).
+  cmake -S framegen -B "$srcdir/framegen-build" -G Ninja -DCMAKE_BUILD_TYPE=Release
+  ninja -C "$srcdir/framegen-build"
 }
 
 check() {
@@ -85,4 +90,12 @@ package() {
   install -Dm644 packaging/last1-panel-color.json "$pkgdir/usr/share/vulkan/implicit_layer.d/last1-panel-color.json"
   install -Dm644 "$srcdir/vkBasalt-$_vkbasalt/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/vkBasalt-LICENSE"
   install -Dm644 "$srcdir/vkBasalt-$_vkbasalt/src/reshade/LICENSE.md" "$pkgdir/usr/share/licenses/$pkgname/vkBasalt-reshade-LICENSE"
+
+  # Génération d'images : couche Vulkan active seulement pour un jeu que
+  # Last1 Panel lance avec LAST1_FRAMEGEN=1.
+  install -Dm755 "$srcdir/framegen-build/layer/libVkLayer_last1_framegen.so" "$pkgdir/usr/lib/last1-panel/framegen/libVkLayer_last1_framegen.so"
+  install -Dm644 packaging/last1-panel-framegen.json "$pkgdir/usr/share/vulkan/implicit_layer.d/last1-panel-framegen.json"
+  install -Dm644 framegen/LICENSE "$pkgdir/usr/share/licenses/$pkgname/afmf-linux-LICENSE"
+  install -Dm644 framegen/shaders/fidelityfx/LICENSE.txt "$pkgdir/usr/share/licenses/$pkgname/FidelityFX-LICENSE"
+  install -Dm644 framegen/NOTICE.md "$pkgdir/usr/share/licenses/$pkgname/framegen-NOTICE.md"
 }

@@ -58,17 +58,48 @@ jobs:
           path: cli
       - run: chmod +x cli/last1-panel-cli && tools/hypr-verify.sh "$PWD/cli/last1-panel-cli" /tmp/hypr-verify
 
+  # Génération d'images (framegen/, d'après afmf-linux) : compilée sous Arch
+  # (CMake 3.28 et en-têtes Vulkan récents), avertissements en erreurs, puis
+  # vérifiée : un seul symbole exporté, et rien de plus récent que la glibc de
+  # Debian 12 (celle de l'AppImage).
+  framegen:
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - name: Outils
+        run: pacman -Syu --noconfirm --needed base-devel cmake ninja glslang spirv-tools vulkan-headers binutils
+      - uses: actions/checkout@v4
+      - name: Couche Vulkan
+        run: |
+          cmake -S framegen -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          ninja -C build
+          lib=build/layer/libVkLayer_last1_framegen.so
+          exported=$(nm -D --defined-only "$lib" | awk '$2 ~ /^[TW]$/ {print $3}')
+          [ "$exported" = vkNegotiateLoaderLayerInterfaceVersion ] || { echo "::error::symboles exportés : $exported"; exit 1; }
+          newest=$(objdump -T "$lib" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -Vu | tail -n 1)
+          [ "$(printf '%s\n2.36\n' "$newest" | sort -V | tail -n 1)" = 2.36 ] || { echo "::error::glibc $newest demandée (Debian 12 : 2.36)"; exit 1; }
+          mkdir -p framegen-dist && cp "$lib" framegen-dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: last1-framegen
+          path: framegen-dist/
+          if-no-files-found: error
+
   # AppImage construite dans Debian 12 (packaging/appimage), comme celle de
   # SoundFence : elle tourne sur tous les systèmes plus récents.
   appimage:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: check
+    needs: [check, framegen]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           # Les notes de mise à jour viennent des messages des commits.
           fetch-depth: 500
+      - uses: actions/download-artifact@v4
+        with:
+          name: last1-framegen
+          path: framegen-dist
       - id: version
         name: Version (celle de Cargo.toml, et le numéro de la construction)
         run: echo "value=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1).r${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
@@ -106,7 +137,7 @@ jobs:
       - name: Outils de construction
         run: |
           pacman -Syu --noconfirm --needed base-devel git rust bun webkit2gtk-4.1 gtk3 lcms2 lact jq curl \
-            meson glslang spirv-headers vulkan-headers libx11
+            meson cmake ninja glslang spirv-headers spirv-tools vulkan-headers libx11
           useradd -m builder
       - uses: actions/checkout@v4
         with:
