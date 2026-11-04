@@ -140,6 +140,17 @@ jobs:
           fi
           packages=(/home/builder/out/last1-panel-*.pkg.tar.zst)
           appimages=(/home/builder/appimage/Last1Panel_*_amd64.AppImage)
+          # Correction critique (ligne « Critique: oui » dans un commit) pas encore
+          # publiée comme telle : la version part marquée critique, installée sans
+          # clic (criticalSince du manifeste signé). Depuis le commit de la dernière
+          # version critique (criticalCommit), sinon les 50 derniers commits.
+          since=$(curl -fsS --max-time 20 "${SITE_URL%/}/api/public/last1-panel/manifest" \
+            | jq -r '.manifest | split(".")[0] | gsub("-";"+") | gsub("_";"/") | @base64d | fromjson | .criticalCommit // empty' 2>/dev/null || true)
+          if [ -n "$since" ] && git cat-file -e "$since^{commit}" 2>/dev/null; then range="$since..HEAD"; else range="-50"; fi
+          if git log --format='%(trailers:key=Critique,valueonly)' $range | grep -qix 'oui'; then
+            export PUBLISH_CRITICAL=1
+            echo "Version critique : installée sans clic."
+          fi
           # L'AppImage d'abord : c'est le téléchargement proposé aux joueurs.
           tools/publish-release.sh last1-panel '${{ steps.version.outputs.value }}' \
             "download:${appimages[0]}" "download:${packages[0]}"

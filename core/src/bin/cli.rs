@@ -1075,6 +1075,27 @@ fn propose_updates() {
     loop {
         let exec = SystemExec { timeout: Duration::from_secs(90), ..SystemExec::default() };
         let wait = match update::check(&exec, update::now()) {
+            // Correction critique (bureau cassé…) : installée sans attendre de
+            // clic, jamais pendant un jeu.
+            Ok(Some(release)) if release.critical_for(update::RELEASE.unwrap_or(env!("CARGO_PKG_VERSION"))) => {
+                wait_for_no_game();
+                match update_appimage() {
+                    Ok(version) => {
+                        let version = version.unwrap_or_else(|| release.version.clone());
+                        desktop::notify(&t(
+                            &format!(
+                                "Last1 Panel s'est mis à jour tout seul (version {version}) : correction importante."
+                            ),
+                            &format!("Last1 Panel updated itself (version {version}): important fix."),
+                        ));
+                        restart_after_update();
+                    }
+                    Err(error) => {
+                        eprintln!("last1-panel-cli : mise à jour critique : {error}");
+                        Duration::from_secs(1800)
+                    }
+                }
+            }
             Ok(Some(_)) => {
                 // Jamais par-dessus un jeu : proposée à la fin de la partie.
                 wait_for_no_game();

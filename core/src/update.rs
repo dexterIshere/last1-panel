@@ -49,6 +49,17 @@ pub struct Download {
 pub struct Release {
     pub version: String,
     pub appimage: Download,
+    /// Dernière version marquée critique par last1.fun (`criticalSince`,
+    /// signée avec le reste) : plus ancienne qu'elle, la version installée
+    /// est remplacée sans attendre de clic.
+    pub critical_since: Option<String>,
+}
+
+impl Release {
+    /// La version installée `current` manque une correction critique.
+    pub fn critical_for(&self, current: &str) -> bool {
+        self.critical_since.as_deref().is_some_and(|critical| newer(critical, current))
+    }
 }
 
 #[derive(Deserialize)]
@@ -59,6 +70,8 @@ struct Manifest {
     exp: i64,
     #[serde(default)]
     downloads: Vec<Download>,
+    #[serde(default, rename = "criticalSince")]
+    critical_since: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -185,7 +198,7 @@ pub fn parse_release(payload: &[u8], now: i64) -> CoreResult<Release> {
         .into_iter()
         .find(|d| d.name.ends_with(".AppImage") && !d.name.contains('/') && d.sha256.len() == 64)
         .ok_or_else(|| refused("AppImage absente"))?;
-    Ok(Release { version: manifest.rel, appimage })
+    Ok(Release { version: manifest.rel, appimage, critical_since: manifest.critical_since })
 }
 
 /// `candidate` est-elle plus récente que `current` ? Versions « 0.1.0.r42 » :
@@ -482,6 +495,7 @@ mod tests {
         let release = Release {
             version: "0.1.0.r30".into(),
             appimage: Download { name: name.into(), size: 1, sha256: "0".repeat(64) },
+            critical_since: None,
         };
         let error = download(&exec, &release, &target).unwrap_err().to_string();
         assert!(error.contains("last1.fun/last1-panel") && error.contains("404"), "{error}");
@@ -622,5 +636,17 @@ mod tests {
             "{lasted:?}"
         );
         server.join().unwrap();
+    }
+
+    #[test]
+    fn critical_release_is_installed_without_asking() {
+        let release = Release {
+            version: "0.1.0.r130".into(),
+            appimage: Download { name: "Last1Panel_0.1.0.r130_amd64.AppImage".into(), size: 1, sha256: "0".repeat(64) },
+            critical_since: Some("0.1.0.r127".into()),
+        };
+        assert!(release.critical_for("0.1.0.r123"));
+        assert!(!release.critical_for("0.1.0.r127"), "déjà corrigée");
+        assert!(!Release { critical_since: None, ..release }.critical_for("0.1.0.r1"));
     }
 }

@@ -25,6 +25,14 @@ en montre trois dans la notification « à jour », et la fenêtre les montre to
 jusqu'à ce que le joueur les ferme (`core/src/release_notes.rs`). Même format
 que go-to-linux.
 
+## Corrections critiques
+
+Une correction dont les joueurs ont besoin tout de suite (bureau cassé, jeu
+qui ne se lance plus…) porte en plus la ligne de fin `Critique: oui`. La CI
+publie alors la version marquée critique : Last1 Panel (et go-to-linux pour
+lui) l'installe sans attendre de clic, jamais pendant un jeu. Les autres
+versions restent proposées (« Mettre à jour »).
+
 ## Vérifications avant de pousser sur main
 
 ```bash
