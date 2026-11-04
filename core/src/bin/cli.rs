@@ -372,6 +372,7 @@ fn watch() -> ExitCode {
             lines.join("\n")
         ));
     }
+    std::thread::spawn(tidy_hyprland);
     std::thread::spawn(share_reports);
     std::thread::spawn(watch_updates);
     std::thread::spawn(watch_shaders);
@@ -539,6 +540,20 @@ fn clip_saved(args: &[String]) -> ExitCode {
 fn wait_for_no_game() {
     while last1_panel_core::games::steam::game_running(std::path::Path::new("/proc")) {
         std::thread::sleep(Duration::from_secs(60));
+    }
+}
+
+/// Configuration convertie par une version précédente : plus de réglage
+/// déprécié par Hyprland 0.57 (avertissement à chaque ouverture de session).
+fn tidy_hyprland() {
+    let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) else { return };
+    let exec = SystemExec { timeout: Duration::from_secs(60), ..SystemExec::default() };
+    let notes = last1_panel_core::display::hypr_migrate::tidy(&exec, &home.join(".config/hypr"));
+    if !notes.is_empty() {
+        for note in &notes {
+            eprintln!("last1-panel-cli : Hyprland : {note}");
+        }
+        let _ = last1_panel_core::exec::Exec::run(&exec, "hyprctl", &["reload".to_string()]);
     }
 }
 
@@ -941,6 +956,7 @@ fn share_reports() {
                     &sharing::system(std::path::Path::new("/"), &gpus),
                     &std::env::var("USER").unwrap_or_default(),
                     &read("/proc/sys/kernel/hostname"),
+                    last1_panel_core::display::hypr_health::read(&SystemExec::default()).as_ref(),
                 );
                 let exec = SystemExec { timeout: Duration::from_secs(60), ..SystemExec::default() };
                 if sharing::post(&exec, &body, &state_path.with_extension("pending")) {

@@ -209,6 +209,7 @@ pub fn withdraw(exec: &dyn Exec, pc: &str) -> bool {
 }
 
 /// Corps de la requête (`POST URL`), masqué.
+#[allow(clippy::too_many_arguments)]
 pub fn body(
     report: &Report,
     occasion: &str,
@@ -217,9 +218,10 @@ pub fn body(
     system: &BTreeMap<&'static str, String>,
     user: &str,
     host: &str,
+    hyprland: Option<&crate::display::hypr_health::Health>,
 ) -> String {
     let diagnostic = serde_json::json!({ "checks": report.checks, "facts": report.facts, "sessions": report.sessions });
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "product": "last1-panel",
         "appVersion": version,
         "occasion": occasion,
@@ -228,6 +230,11 @@ pub fn body(
         "diagnostic": diagnostic,
         "system": system,
     });
+    // Ce que Hyprland reproche à la configuration (réglages dépréciés,
+    // erreurs) : seulement sur Hyprland.
+    if let Some(health) = hyprland {
+        body["hyprland"] = serde_json::json!(health);
+    }
     scrub(&body.to_string(), user, host)
 }
 
@@ -284,7 +291,21 @@ mod tests {
     #[test]
     fn nothing_personal_is_sent() {
         let system = BTreeMap::from([("os", "Arch Linux".to_string()), ("kernel", "7.2.7-arch1-1".to_string())]);
-        let body = body(&report(1), "game", "0.1.0.r40", &pc_id("0123456789abcdef\n"), &system, "nelly", "nelly-pc");
+        let hyprland = crate::display::hypr_health::Health {
+            version: "0.57.1".into(),
+            deprecated: vec!["dwindle:special_scale_factor: Use workspace rules to achieve the same effect".into()],
+            config_errors: vec!["/home/nelly/.config/hypr/hyprland.lua:12: unknown config key 'x'".into()],
+        };
+        let body = body(
+            &report(1),
+            "game",
+            "0.1.0.r40",
+            &pc_id("0123456789abcdef\n"),
+            &system,
+            "nelly",
+            "nelly-pc",
+            Some(&hyprland),
+        );
         assert!(!body.contains("nelly"), "{body}");
         assert!(body.contains("/home/<utilisateur>/Jeux sur <pc>"), "{body}");
         assert_eq!(scrub("maxFrameRate max", "max", ""), "maxFrameRate <utilisateur>");
@@ -293,6 +314,14 @@ mod tests {
         assert_eq!(json["consent"], true);
         assert_eq!(json["pc"].as_str().unwrap().len(), 16);
         assert_eq!(json["diagnostic"]["sessions"][0]["fpsAverage"], 58.0);
+        assert_eq!(
+            json["hyprland"]["deprecated"][0],
+            "dwindle:special_scale_factor: Use workspace rules to achieve the same effect"
+        );
+        assert_eq!(
+            json["hyprland"]["configErrors"][0],
+            "/home/<utilisateur>/.config/hypr/hyprland.lua:12: unknown config key 'x'"
+        );
         // Le texte à copier n'est pas envoyé.
         assert!(json["diagnostic"].get("text").is_none());
         // Noms génériques : laissés.

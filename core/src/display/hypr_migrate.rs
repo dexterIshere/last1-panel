@@ -125,6 +125,80 @@ pub fn write_verified(
     }
 }
 
+/// Début des fichiers convertis par Last1 Panel.
+const CONVERTED: &str = "-- Configuration convertie depuis hyprland.conf par Last1 Panel";
+
+/// Réglages dépréciés par Hyprland 0.57 (« deprecated config option » à
+/// chaque démarrage) dans un fichier converti par une version précédente :
+/// retirés (sans effet) ou déplacés. `None` : rien à changer.
+pub fn clean_deprecated(lua: &str) -> Option<(String, Vec<String>)> {
+    let mut path: Vec<String> = Vec::new();
+    let mut out = Vec::new();
+    let mut moved = Vec::new();
+    let mut notes = Vec::new();
+    for line in lua.lines() {
+        let trimmed = line.trim();
+        if let Some(name) =
+            trimmed.strip_suffix(" = {").filter(|n| n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        {
+            path.push(name.to_string());
+        } else if trimmed == "}," || trimmed == "}" {
+            path.pop();
+        } else if let Some((key, value)) = trimmed.split_once(" = ").filter(|_| !path.is_empty()) {
+            let full = format!("{}:{key}", path.join(":"));
+            if hypr_convert::REMOVED.contains(&full.as_str()) {
+                notes.push(format!("{full} retiré (sans effet depuis Hyprland 0.57)"));
+                continue;
+            }
+            if let Some((_, new)) = hypr_convert::MOVED.iter().find(|(old, _)| *old == full) {
+                let (section, field) = new.split_once(':')?;
+                moved.push(format!("hl.config({{ {section} = {{ {field} = {} }} }})", value.trim_end_matches(',')));
+                notes.push(format!("{full} déplacé en {new}"));
+                continue;
+            }
+        }
+        out.push(line.replace("hl.dsp.group.lock_active(", "hl.dsp.group.lock("));
+    }
+    let lock = lua.contains("hl.dsp.group.lock_active(");
+    if lock {
+        notes.push("hl.dsp.group.lock_active remplacé par hl.dsp.group.lock".into());
+    }
+    if notes.is_empty() {
+        return None;
+    }
+    let mut text = out.join("\n") + "\n";
+    if !moved.is_empty() {
+        text.push_str(&format!("\n-- Réglages déplacés par Hyprland 0.57\n{}\n", moved.join("\n")));
+    }
+    Some((text, notes))
+}
+
+/// hyprland.lua converti par Last1 Panel débarrassé des réglages dépréciés,
+/// vérifié par le Hyprland installé avant d'être posé (l'ancien gardé en
+/// `.last1-panel.bak`). Rend ce qui a changé ; vide si rien.
+pub fn tidy(exec: &dyn Exec, hypr_dir: &Path) -> Vec<String> {
+    let main = hypr_dir.join("hyprland.lua");
+    let Ok(text) = fs::read_to_string(&main) else { return Vec::new() };
+    if !text.starts_with(CONVERTED) {
+        return Vec::new();
+    }
+    let Some((clean, notes)) = clean_deprecated(&text) else { return Vec::new() };
+    let staged = hypr_dir.join("hyprland.lua.last1-panel.new");
+    if fs::write(&staged, &clean).is_err() || verify(exec, None, &staged).is_err() {
+        let _ = fs::remove_file(&staged);
+        return Vec::new();
+    }
+    let backup = hypr_dir.join("hyprland.lua.last1-panel.bak");
+    if !backup.exists() && fs::copy(&main, &backup).is_err() {
+        let _ = fs::remove_file(&staged);
+        return Vec::new();
+    }
+    if fs::rename(&staged, &main).is_err() {
+        return Vec::new();
+    }
+    notes
+}
+
 /// Prépare la conversion sans rien poser : le texte Lua, les scripts à
 /// réécrire ; `Err` avec ce qui n'a pas d'équivalent sûr.
 pub fn prepare(home: &Path) -> Result<(String, Vec<hypr_scripts::Change>, Vec<String>), Vec<String>> {
@@ -252,5 +326,18 @@ mod tests {
         let exec = FakeExec::new().on_output("env", refused);
         assert!(migrate(&exec, home, None).unwrap_err()[0].contains("boom"));
         assert!(!hypr.join("hyprland.lua").exists() && !hypr.join("hyprland.lua.last1-panel.new").exists());
+    }
+
+    #[test]
+    fn deprecated_options_of_an_older_conversion_are_cleaned() {
+        let old = "-- Configuration convertie depuis hyprland.conf par Last1 Panel (Hyprland 0.57 ne lit plus les .conf).\n\nhl.config({\n    dwindle = {\n        preserve_split = true,\n        special_scale_factor = 0.8,\n    },\n    misc = {\n        layers_hog_keyboard_focus = false,\n        vrr = 2,\n    },\n})\nhl.bind(\"SUPER + G\", hl.dsp.group.lock_active({ action = \"toggle\" }))\n";
+        let (new, notes) = clean_deprecated(old).unwrap();
+        assert_eq!(notes.len(), 3);
+        assert!(!new.contains("special_scale_factor") && !new.contains("lock_active"));
+        assert!(new.contains(
+            "    dwindle = {\n        preserve_split = true,\n    },\n    misc = {\n        vrr = 2,\n    },"
+        ));
+        assert!(new.ends_with("hl.config({ layers = { layers_hog_keyboard_focus = false } })\n"));
+        assert!(clean_deprecated(&new).is_none());
     }
 }

@@ -315,6 +315,7 @@ pub fn workspace_rule(value: &str) -> Option<String> {
     let mut parts = value.split(',').map(str::trim);
     let id = parts.next().filter(|i| !i.is_empty())?;
     let mut fields = vec![format!("workspace = {}", s(id))];
+    let mut on_empty = None;
     let int_bool = |v: &str| truthy(v) || v.trim().parse::<i64>().is_ok_and(|n| n != 0);
     for part in parts.filter(|p| !p.is_empty()) {
         let (k, v) = part.split_once(':')?;
@@ -331,7 +332,18 @@ pub fn workspace_rule(value: &str) -> Option<String> {
             "gapsin" => format!("gaps_in = {}", super::hypr_convert::value(super::hypr_options::Kind::CssGap, v)?),
             "gapsout" => format!("gaps_out = {}", super::hypr_convert::value(super::hypr_options::Kind::CssGap, v)?),
             "defaultName" => format!("default_name = {}", s(v)),
-            "on-created-empty" => format!("on_created_empty = {}", s(v)),
+            // Déprécié en 0.57 (avertissement à chaque démarrage) : un
+            // évènement Lua à la place quand l'espace se reconnaît sûrement.
+            "on-created-empty" => match empty_workspace_test(id) {
+                Some(test) => {
+                    on_empty = Some(format!(
+                        "hl.on(\"workspace.created\", function(ws)\n    if ws.is_empty and {test} then hl.exec_cmd({}) end\nend)",
+                        s(v)
+                    ));
+                    continue;
+                }
+                None => format!("on_created_empty = {}", s(v)),
+            },
             "layout" => format!("layout = {}", s(v)),
             "animation" => format!("animation = {}", s(v)),
             "layoutopt" => {
@@ -341,7 +353,26 @@ pub fn workspace_rule(value: &str) -> Option<String> {
             _ => return None,
         });
     }
-    Some(format!("hl.workspace_rule({{ {} }})", fields.join(", ")))
+    let rule = (fields.len() > 1).then(|| format!("hl.workspace_rule({{ {} }})", fields.join(", ")));
+    match (rule, on_empty) {
+        (Some(rule), Some(event)) => Some(format!("{rule}\n{event}")),
+        (rule, event) => rule.or(event),
+    }
+}
+
+/// L'espace d'une règle reconnu dans l'évènement `workspace.created` :
+/// numéro, `name:…`, `special:…`. Les autres sélecteurs (`r[…]`, `m[…]`…)
+/// gardent `on_created_empty`.
+fn empty_workspace_test(id: &str) -> Option<String> {
+    if let Ok(n) = id.parse::<u32>() {
+        return Some(format!("ws.id == {n}"));
+    }
+    if let Some(name) = id.strip_prefix("name:").filter(|n| !n.is_empty() && !n.contains('[')) {
+        return Some(format!("ws.name == {}", s(name)));
+    }
+    let special = if id == "special" { Some("special") } else { id.strip_prefix("special:") };
+    let name = special.filter(|n| !n.is_empty() && !n.contains('['))?;
+    Some(format!("ws.special and (ws.name == {} or ws.name == {})", s(name), s(&format!("special:{name}"))))
 }
 
 /// `gesture[p] = doigts, direction, [mod:X,] [scale:S,] action[, args]`.
@@ -443,6 +474,13 @@ mod tests {
             workspace_rule("1, monitor:DP-1, default:true, gapsout:10").unwrap(),
             r#"hl.workspace_rule({ workspace = "1", monitor = "DP-1", default = true, gaps_out = 10 })"#
         );
+        // on-created-empty (déprécié en 0.57) : évènement Lua.
+        assert_eq!(
+            workspace_rule("special:term, on-created-empty:kitty").unwrap(),
+            "hl.on(\"workspace.created\", function(ws)\n    if ws.is_empty and ws.special and (ws.name == \"term\" or ws.name == \"special:term\") then hl.exec_cmd(\"kitty\") end\nend)"
+        );
+        assert!(workspace_rule("3, monitor:DP-1, on-created-empty:firefox").unwrap().contains("hl.workspace_rule({ workspace = \"3\", monitor = \"DP-1\" })\nhl.on(\"workspace.created\", function(ws)\n    if ws.is_empty and ws.id == 3 then"));
+        assert!(workspace_rule("r[1-3], on-created-empty:foot").unwrap().contains("on_created_empty = \"foot\""));
         assert_eq!(
             gesture("", "3, horizontal, workspace").unwrap(),
             r#"hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })"#

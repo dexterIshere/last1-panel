@@ -4,6 +4,7 @@
 pub mod hypr_conf;
 pub mod hypr_convert;
 pub mod hypr_dispatch;
+pub mod hypr_health;
 pub mod hypr_lua;
 pub mod hypr_migrate;
 pub mod hypr_options;

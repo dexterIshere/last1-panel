@@ -136,13 +136,21 @@ fn kind_of(path: &str) -> Option<Kind> {
 /// Options de hyprland.conf (0.54 à 0.56) supprimées par Hyprland 0.57 :
 /// sans effet, retirées avec une note (comparaison des listes d'options des
 /// sources de Hyprland).
-const REMOVED: [&str; 5] = [
+pub(crate) const REMOVED: [&str; 8] = [
     "debug:fifo_pending_workaround",
     "decoration:shadow:ignore_window",
     "dwindle:pseudotile",
     "misc:vfr",
     "render:cm_fs_passthrough",
+    // Encore acceptées par 0.57, sans effet, et signalées à chaque démarrage
+    // (« deprecated config option »).
+    "debug:invalidate_fp16",
+    "dwindle:special_scale_factor",
+    "master:special_scale_factor",
 ];
+
+/// Options dépréciées par Hyprland 0.57 qui ont changé de place.
+pub(crate) const MOVED: [(&str, &str); 1] = [("misc:layers_hog_keyboard_focus", "layers:layers_hog_keyboard_focus")];
 
 fn bool_value(value: &str) -> Option<bool> {
     // hyprlang lit le début : « yes, please :) » de son propre exemple.
@@ -421,22 +429,23 @@ pub fn convert(config: &Config) -> Conversion {
             _ if line.key.starts_with("plugin:") || keyword == "plugin" => {
                 skip(&mut conversion, line, "extension (plugin) : à reprendre à la main")
             }
+            _ if REMOVED.contains(&line.key.as_str()) => conversion.notes.push(format!(
+                "{}:{} {} = {} (option supprimée par Hyprland 0.57, sans effet : retirée)",
+                line.file.display(),
+                line.number,
+                line.key,
+                line.value
+            )),
             _ => match kind_of(&line.key) {
                 Some(kind) => match value(kind, &line.value) {
                     Some(v) => {
-                        let key = line.key.replace('-', "_");
+                        let moved = MOVED.iter().find(|(old, _)| *old == line.key).map(|(_, new)| *new);
+                        let key = moved.unwrap_or(&line.key).replace('-', "_");
                         let path: Vec<&str> = key.split([':', '.']).collect();
                         options.set(&path, v);
                     }
                     None => skip(&mut conversion, line, "valeur illisible pour ce réglage"),
                 },
-                None if REMOVED.contains(&line.key.as_str()) => conversion.notes.push(format!(
-                    "{}:{} {} = {} (option supprimée par Hyprland 0.57, sans effet : retirée)",
-                    line.file.display(),
-                    line.number,
-                    line.key,
-                    line.value
-                )),
                 None => skip(&mut conversion, line, "réglage inconnu de Hyprland 0.57"),
             },
         }
