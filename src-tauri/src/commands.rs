@@ -580,6 +580,44 @@ pub async fn performance_report(panel: State<'_, Arc<Panel>>) -> Result<Report> 
 pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> Result<Vec<String>> {
     let panel = panel.inner().clone();
     blocking(move || {
+        use last1_panel_core::display::hypr_migrate;
+        use last1_panel_core::system::update_check::{self, Verdict};
+        let home = last1_panel_core::paths::home_dir();
+        let unsure = |reasons: Vec<String>| {
+            CoreError::message(t(
+                &format!("Rien n'a changé : {}", reasons.iter().take(5).cloned().collect::<Vec<_>>().join(" ; ")),
+                &format!("Nothing changed: {}", reasons.iter().take(5).cloned().collect::<Vec<_>>().join("; ")),
+            ))
+        };
+        // Mise à jour du système : essayée d'abord sur ce PC (paquets du
+        // bureau, configuration du joueur) ; la configuration passe en Lua
+        // avant si le futur Hyprland ne lit plus que ça.
+        let mut converted = None;
+        if fixes.contains(&Fix::SystemUpdate) {
+            let exec = SystemExec { timeout: Duration::from_secs(600), ..SystemExec::default() };
+            let check = update_check::check_now(&exec);
+            match check.verdict {
+                Verdict::Blocked { reasons } => return Err(unsure(reasons)),
+                Verdict::NeedsConversion if hypr_migrate::needed(&home.join(".config/hypr")) => {
+                    let root = update_check::work_dir().join("root");
+                    converted = Some(hypr_migrate::migrate(&exec, &home, Some(&root)).map_err(unsure)?);
+                }
+                _ => {}
+            }
+        }
+        // Mise à jour pas faite : la conversion que seul le futur Hyprland
+        // lit est défaite.
+        let undo = |converted: &Option<hypr_migrate::Done>| {
+            if let Some(done) = converted.as_ref().filter(|d| !d.read_by_installed) {
+                hypr_migrate::rollback(done);
+            }
+        };
+        if fixes.contains(&Fix::HyprlandLua) {
+            let exec = SystemExec { timeout: Duration::from_secs(120), ..SystemExec::default() };
+            hypr_migrate::migrate(&exec, &home, None).map_err(unsure)?;
+            // Hyprland relit sa configuration (il le fait seul s'il la surveille).
+            let _ = exec.run("hyprctl", &["reload".into()]);
+        }
         let power_profiles = which("powerprofilesctl").is_some();
         let vulkan = last1_panel_core::system::packages::vulkan_packages(&panel.gpus());
         let script =
@@ -587,7 +625,11 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
         if let Some(script) = script {
             // Une mise à jour du système peut être longue.
             let exec = SystemExec { timeout: Duration::from_secs(3 * 3600), ..SystemExec::default() };
-            let output = exec.run("pkexec", &["/bin/sh".into(), "-c".into(), script])?;
+            let output = exec.run("pkexec", &["/bin/sh".into(), "-c".into(), script]);
+            if output.as_ref().map_or(true, |o| repair::refused(o.status) || !o.success()) {
+                undo(&converted);
+            }
+            let output = output?;
             if repair::refused(output.status) {
                 return Err(CoreError::message(if output.stderr.contains("authentication agent") {
                     t(
@@ -629,6 +671,12 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
         if fixes.contains(&Fix::SystemUpdate) || fixes.contains(&Fix::VulkanDriver) {
             // Listes de paquets refaites : le diagnostic relit pacman.
             let _ = std::fs::remove_file(last1_panel_core::paths::cache_dir().join("updates.txt"));
+        }
+        if fixes.contains(&Fix::HyprlandLua) {
+            notices.push(t(
+                "Configuration reprise en Lua : raccourcis, clavier, barre et applications de démarrage reviennent. L'ancienne est gardée à côté (hyprland.conf, *.last1-panel.bak).",
+                "Configuration carried over to Lua: shortcuts, keyboard, bar and startup apps are back. The old one is kept alongside (hyprland.conf, *.last1-panel.bak).",
+            ));
         }
         if fixes.contains(&Fix::SystemUpdate) {
             notices.push(t(

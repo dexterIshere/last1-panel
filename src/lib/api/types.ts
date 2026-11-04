@@ -218,6 +218,7 @@ export type PerfFix =
   | "restart"
   | "vulkan-driver"
   | "system-update"
+  | "hyprland-lua"
   | "game-mode"
   | "panel-self-refresh"
   | "cpu-power-limit"

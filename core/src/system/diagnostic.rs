@@ -57,6 +57,9 @@ pub enum Fix {
     VulkanDriver,
     /// Système mis à jour (pilote graphique compris) : `pacman -Syu`.
     SystemUpdate,
+    /// Bureau Hyprland passé en Lua (Hyprland 0.57+) : configuration et
+    /// scripts convertis, vérifiés, l'ancien gardé (display/hypr_migrate.rs).
+    HyprlandLua,
     /// GameMode prêt à passer le processeur en performance pendant les
     /// jeux : installé (pacman) et le compte dans son groupe « gamemode ».
     GameMode,

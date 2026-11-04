@@ -253,7 +253,7 @@ systemd-tmpfiles --create "$conf""#
                 "mkdir -p {etc}/udev/rules.d\ncat > {etc}/udev/rules.d/70-last1-panel-razer.rules <<'RULES'\n{}RULES\nudevadm control --reload\nudevadm trigger --subsystem-match=hidraw --action=change\nudevadm settle || true",
                 crate::system::razer::udev_rule()
             )),
-            Fix::Performance | Fix::LowLatency | Fix::WrapGames | Fix::Restart | Fix::SystemUpdate => {}
+            Fix::Performance | Fix::LowLatency | Fix::WrapGames | Fix::Restart | Fix::SystemUpdate | Fix::HyprlandLua => {}
         }
     }
     // Jamais de mise à jour complète qui casserait le bureau

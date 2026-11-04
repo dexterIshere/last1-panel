@@ -168,7 +168,12 @@ pub fn value(kind: Kind, raw: &str) -> Option<String> {
     let raw = raw.trim();
     match kind {
         Kind::Bool => bool_value(raw).map(|b| b.to_string()),
-        Kind::Int => number(raw).filter(|n| !n.contains('.')).or_else(|| Some(string(raw))),
+        // Un oui/non en booléen : les entiers l'acceptent, pas en texte
+        // (options passées de booléen à liste de choix en 0.57).
+        Kind::Int => number(raw)
+            .filter(|n| !n.contains('.'))
+            .or_else(|| bool_value(raw).filter(|_| raw.split_whitespace().count() == 1).map(|b| b.to_string()))
+            .or_else(|| Some(string(raw))),
         Kind::Float => number(raw),
         Kind::String | Kind::Color | Kind::Vec2 => Some(string(raw)),
         Kind::FontWeight => number(raw).or_else(|| Some(string(raw))),
@@ -383,6 +388,17 @@ pub fn convert(config: &Config) -> Conversion {
                         if let Some(speed) =
                             args.get(2).and_then(|s| number(s)).filter(|s| s.parse::<f64>().is_ok_and(|v| v > 0.0))
                         {
+                            // Hyprland 0.57 borne la vitesse à 100.
+                            let speed = if speed.parse::<f64>().is_ok_and(|v| v > 100.0) {
+                                conversion.notes.push(format!(
+                                    "{}:{} vitesse d'animation {speed} ramenée à 100 (maximum de Hyprland 0.57)",
+                                    line.file.display(),
+                                    line.number
+                                ));
+                                "100".to_string()
+                            } else {
+                                speed
+                            };
                             fields.push(format!("speed = {speed}"));
                         }
                         if let Some(curve) = args.get(3).filter(|c| !c.is_empty()) {
@@ -490,6 +506,8 @@ mod tests {
         assert_eq!(value(Kind::Bool, "yes").as_deref(), Some("true"));
         assert_eq!(value(Kind::Bool, "0").as_deref(), Some("false"));
         assert_eq!(value(Kind::Int, "0xff").as_deref(), Some("255"));
+        assert_eq!(value(Kind::Int, "true").as_deref(), Some("true"));
+        assert_eq!(value(Kind::Int, "per_monitor").as_deref(), Some("\"per_monitor\""));
         assert_eq!(value(Kind::Float, "0.1696").as_deref(), Some("0.1696"));
         assert_eq!(value(Kind::Color, "rgba(595959aa)").as_deref(), Some("\"rgba(595959aa)\""));
         assert_eq!(value(Kind::CssGap, "5").as_deref(), Some("5"));

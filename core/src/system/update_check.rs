@@ -142,12 +142,7 @@ impl Sandbox {
             }
             exec.run_ok(
                 "gpgv",
-                &[
-                    "--keyring".into(),
-                    "/etc/pacman.d/gnupg/pubring.gpg".into(),
-                    sig.to_string_lossy().into(),
-                    file.to_string_lossy().into(),
-                ],
+                &["--keyring".into(), KEYRING.into(), sig.to_string_lossy().into(), file.to_string_lossy().into()],
             )
             .map_err(|e| format!("signature de {name} : {e}"))?;
             exec.run_ok(
@@ -175,6 +170,13 @@ impl Sandbox {
             .run(
                 "env",
                 &[
+                    // Rien d'ouvert pendant l'essai (voir hypr_migrate::verify).
+                    "-u".into(),
+                    "WAYLAND_DISPLAY".into(),
+                    "-u".into(),
+                    "DISPLAY".into(),
+                    "-u".into(),
+                    "HYPRLAND_INSTANCE_SIGNATURE".into(),
                     format!("LD_LIBRARY_PATH={}", root.join("usr/lib").display()),
                     binary.to_string_lossy().into(),
                     "--verify-config".into(),
@@ -234,6 +236,53 @@ pub fn main_config(hypr_dir: &Path) -> Option<PathBuf> {
     conf.exists().then_some(conf)
 }
 
+/// Clés de pacman (signatures des paquets).
+const KEYRING: &str = "/etc/pacman.d/gnupg/pubring.gpg";
+
+/// Essai réduit, sans paquet téléchargé : Hyprland passe-t-il à Lua, la
+/// conversion est-elle complète et lue par le Hyprland installé, Waybar
+/// installée parle-t-elle Lua ?
+fn without_sandbox(exec: &dyn Exec, pending: Vec<Pending>, home: &Path, hyprland: Option<String>) -> Check {
+    let hypr_dir = home.join(".config/hypr");
+    let mut reasons = Vec::new();
+    let mut conversion = false;
+    if hyprland.as_deref().is_some_and(needs_lua) {
+        if main_config(&hypr_dir).is_some_and(|c| c.extension().is_some_and(|e| e == "conf")) {
+            match crate::display::hypr_migrate::prepare(home) {
+                Ok((lua, _, _)) => {
+                    let file = crate::paths::cache_dir().join("update-check-converted.lua");
+                    match crate::display::hypr_migrate::write_verified(exec, None, &file, &lua) {
+                        Ok(_) => conversion = true,
+                        Err(errors) => {
+                            reasons.push(format!("conversion en Lua refusée par le Hyprland installé : {errors}"))
+                        }
+                    }
+                }
+                Err(missing) => reasons.push(format!(
+                    "conversion en Lua incomplète ({} lignes) : {}",
+                    missing.len(),
+                    missing.iter().take(5).cloned().collect::<Vec<_>>().join(" ; ")
+                )),
+            }
+        }
+        if waybar_uses_hyprland(&home.join(".config/waybar"))
+            && fs::read("/usr/bin/waybar").is_ok_and(|b| !waybar_speaks_lua(&b))
+        {
+            reasons.push(
+                "Waybar ne sait pas encore piloter Hyprland 0.57 (bureaux et clics de la barre sans effet)".into(),
+            );
+        }
+    }
+    let verdict = if !reasons.is_empty() {
+        Verdict::Blocked { reasons }
+    } else if conversion {
+        Verdict::NeedsConversion
+    } else {
+        Verdict::Ok
+    };
+    Check { pending, verdict, hyprland }
+}
+
 /// L'essai entier : `pending` (checkupdates), `home` du joueur, `work`
 /// dossier de travail (vidé avant).
 pub fn run(exec: &dyn Exec, pending: Vec<Pending>, home: &Path, work: &Path, dbpath: Option<&Path>) -> Check {
@@ -255,6 +304,12 @@ pub fn run(exec: &dyn Exec, pending: Vec<Pending>, home: &Path, work: &Path, dbp
             hyprland,
         );
     };
+    // Sans les clés de pacman lisibles, aucun paquet téléchargé n'est lancé :
+    // la conversion est vérifiée avec le Hyprland installé (il lit le Lua
+    // depuis 0.55), la barre avec la Waybar installée.
+    if fs::File::open(KEYRING).is_err() {
+        return without_sandbox(exec, pending, home, hyprland);
+    }
     let _ = fs::remove_dir_all(work);
     let sandbox = Sandbox { dir: work.to_path_buf() };
     let urls = Sandbox::urls(exec, dbpath, &desktop);
@@ -279,8 +334,10 @@ pub fn run(exec: &dyn Exec, pending: Vec<Pending>, home: &Path, work: &Path, dbp
                     let conversion = crate::display::hypr_convert::convert(&parsed);
                     let converted = work.join("converted/hyprland.lua");
                     let _ = fs::create_dir_all(work.join("converted"));
-                    let _ = fs::write(&converted, &conversion.lua);
-                    match sandbox.verify_hyprland(exec, &converted) {
+                    let root = sandbox.root();
+                    match crate::display::hypr_migrate::write_verified(exec, Some(&root), &converted, &conversion.lua)
+                        .map(|_| ())
+                    {
                         Ok(()) if conversion.skipped.is_empty() && parsed.problems.is_empty() => {
                             verdict_conversion = true
                         }
@@ -328,6 +385,43 @@ pub fn run(exec: &dyn Exec, pending: Vec<Pending>, home: &Path, work: &Path, dbp
         Verdict::Ok
     };
     Check { pending, verdict, hyprland }
+}
+
+/// Fichier du dernier essai (cache de Last1 Panel).
+pub fn saved_path() -> PathBuf {
+    crate::paths::cache_dir().join("update-check.json")
+}
+
+/// Dossier de l'essai : paquets dépaquetés (`root`) et conversion.
+pub fn work_dir() -> PathBuf {
+    crate::paths::cache_dir().join("update-check")
+}
+
+pub fn load() -> Option<Check> {
+    serde_json::from_str(&fs::read_to_string(saved_path()).ok()?).ok()
+}
+
+/// L'essai pour les mises à jour gardées par checkupdates, enregistré.
+pub fn check_now(exec: &dyn Exec) -> Check {
+    let pending = parse_pending(&fs::read_to_string(crate::paths::cache_dir().join("updates.txt")).unwrap_or_default());
+    // Même liste qu'au dernier essai : pas la peine de tout retélécharger.
+    if let Some(previous) = load().filter(|c| c.pending == pending) {
+        return previous;
+    }
+    let check = run(exec, pending, &crate::paths::home_dir(), &work_dir(), checkupdates_db().as_deref());
+    if let Ok(text) = serde_json::to_string(&check) {
+        let _ = fs::write(saved_path(), text);
+    }
+    check
+}
+
+/// Le dernier essai vaut-il pour ces mises à jour (noms) ?
+pub fn applies_to(check: &Check, updates: &[String]) -> bool {
+    let mut a: Vec<&str> = check.pending.iter().map(|p| p.name.as_str()).collect();
+    let mut b: Vec<&str> = updates.iter().map(String::as_str).collect();
+    a.sort_unstable();
+    b.sort_unstable();
+    a == b
 }
 
 #[cfg(test)]

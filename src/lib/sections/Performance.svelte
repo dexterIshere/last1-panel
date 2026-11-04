@@ -101,6 +101,7 @@
       restart: t("Redémarrer le PC", "Restart the PC"),
       "vulkan-driver": t("Installer le pilote Vulkan", "Install the Vulkan driver"),
       "system-update": t("Mettre à jour le système", "Update the system"),
+      "hyprland-lua": t("Reprendre ma configuration", "Restore my configuration"),
       "game-mode": t("Faire passer le jeu en premier", "Put the game first"),
       "panel-self-refresh": t("Couper le Panel Self Refresh", "Turn off Panel Self Refresh"),
       "cpu-power-limit": t("Libérer le processeur", "Unlock the CPU"),

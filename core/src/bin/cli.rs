@@ -57,6 +57,11 @@ fn main() -> ExitCode {
         // hyprland.conf → Lua (display/hypr_convert.rs) : vers la sortie, ou
         // dans un fichier ; ce qui n'est pas repris sur la sortie d'erreur.
         Some("hypr-convert") => hypr_convert(&args[1..]),
+        // Pour go-to-linux et Last1 Panel : la mise à jour en attente essayée
+        // sur ce PC (code 0 : elle passe, 3 : avec conversion en Lua,
+        // 1 : retenue) ; puis la conversion elle-même.
+        Some("update-check") => update_check(args.get(1).is_some_and(|a| a == "--json")),
+        Some("hypr-migrate") => hypr_migrate(),
         _ => {
             eprintln!(
                 "{}",
@@ -70,12 +75,74 @@ fn main() -> ExitCode {
     }
 }
 
+fn update_check(json: bool) -> ExitCode {
+    use last1_panel_core::system::update_check::{self, Verdict};
+    let exec = SystemExec { timeout: Duration::from_secs(600), ..SystemExec::default() };
+    let check = update_check::check_now(&exec);
+    if json {
+        println!("{}", serde_json::to_string(&check).unwrap_or_default());
+    }
+    match check.verdict {
+        Verdict::Ok => ExitCode::SUCCESS,
+        Verdict::NeedsConversion => {
+            if !json {
+                println!(
+                    "{}",
+                    t(
+                        "Passe une fois la configuration Hyprland convertie en Lua.",
+                        "Passes once the Hyprland configuration is converted to Lua."
+                    )
+                );
+            }
+            ExitCode::from(3)
+        }
+        Verdict::Blocked { reasons } => {
+            if !json {
+                for reason in reasons {
+                    eprintln!("{reason}");
+                }
+            }
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn hypr_migrate() -> ExitCode {
+    use last1_panel_core::display::hypr_migrate;
+    use last1_panel_core::system::update_check;
+    let exec = SystemExec { timeout: Duration::from_secs(120), ..SystemExec::default() };
+    let home = last1_panel_core::paths::home_dir();
+    if !hypr_migrate::needed(&home.join(".config/hypr")) {
+        return ExitCode::SUCCESS;
+    }
+    let root = update_check::work_dir().join("root");
+    match hypr_migrate::migrate(&exec, &home, root.join("usr/bin/Hyprland").exists().then_some(root.as_path())) {
+        Ok(done) => {
+            println!("{}", done.lua.display());
+            for script in done.scripts {
+                println!("{}", script.display());
+            }
+            ExitCode::SUCCESS
+        }
+        Err(reasons) => {
+            for reason in reasons {
+                eprintln!("{reason}");
+            }
+            ExitCode::from(1)
+        }
+    }
+}
+
 /// `hypr-convert <hyprland.conf> [sortie.lua]` : code 0 si tout est repris,
 /// 1 si des lignes ne l'ont pas été (listées), 2 si illisible.
 fn hypr_convert(args: &[String]) -> ExitCode {
     use last1_panel_core::display::{hypr_conf, hypr_convert};
+    // --verify : comme la migration, la sortie lue par le Hyprland installé
+    // (touches inexistantes retirées).
+    let verify = args.first().is_some_and(|a| a == "--verify");
+    let args = if verify { &args[1..] } else { args };
     let Some(input) = args.first() else {
-        eprintln!("last1-panel-cli hypr-convert <hyprland.conf> [sortie.lua]");
+        eprintln!("last1-panel-cli hypr-convert [--verify] <hyprland.conf> [sortie.lua]");
         return ExitCode::from(2);
     };
     let config = hypr_conf::Config::read(std::path::Path::new(input), &last1_panel_core::paths::home_dir());
@@ -83,7 +150,29 @@ fn hypr_convert(args: &[String]) -> ExitCode {
         eprintln!("{}", config.problems.join("\n"));
         return ExitCode::from(2);
     }
-    let conversion = hypr_convert::convert(&config);
+    let mut conversion = hypr_convert::convert(&config);
+    if verify {
+        let Some(out) = args.get(1) else { return ExitCode::from(2) };
+        let exec = SystemExec { timeout: Duration::from_secs(60), ..SystemExec::default() };
+        match last1_panel_core::display::hypr_migrate::write_verified(
+            &exec,
+            None,
+            std::path::Path::new(out),
+            &conversion.lua,
+        ) {
+            Ok((text, notes)) => {
+                conversion.lua = text;
+                conversion.notes.extend(notes);
+            }
+            Err(errors) => {
+                eprintln!("Hyprland refuse la conversion :\n{errors}");
+                return ExitCode::from(1);
+            }
+        }
+    }
+    for note in &conversion.notes {
+        eprintln!("changé : {note}");
+    }
     match args.get(1) {
         Some(out) => {
             if let Err(error) = std::fs::write(out, &conversion.lua) {
@@ -463,6 +552,11 @@ fn watch_updates() {
         wait_for_no_game();
         let exec = SystemExec { timeout: Duration::from_secs(300), ..SystemExec::default() };
         last1_panel_core::system::packages::refresh(&exec, &cache);
+        // Les mises à jour du bureau essayées tout de suite sur ce PC, hors
+        // des jeux (téléchargement et essai) : le verdict est prêt quand le
+        // joueur ouvre Last1 Panel ou go-to-linux.
+        let exec = SystemExec { timeout: Duration::from_secs(600), ..SystemExec::default() };
+        let _ = last1_panel_core::system::update_check::check_now(&exec);
         std::thread::sleep(Duration::from_secs(6 * 3600));
     }
 }

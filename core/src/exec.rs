@@ -193,6 +193,12 @@ impl FakeExec {
         self
     }
 
+    /// Réponse (code et sorties) à tout appel de `program`.
+    pub fn on_output(self, program: &str, output: Output) -> Self {
+        self.responses.lock().unwrap().push((program.to_string(), None, output));
+        self
+    }
+
     /// Réponse à un appel précis.
     pub fn on_args(self, program: &str, args: &[&str], output: Output) -> Self {
         self.responses.lock().unwrap().push((

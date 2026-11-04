@@ -34,10 +34,12 @@ for name in signal hypr056 kool; do
   out="$work/$name/hyprland.lua"
   # Les « source = ~/… » des dots pointent vers ~/.config/hypr.
   HOME="$work/home-$name" && mkdir -p "$HOME/.config" && ln -sfn "$work/$name" "$HOME/.config/hypr"
-  HOME="$HOME" "$cli" hypr-convert "$conf" "$out" 2> "$work/$name.skipped"
-  echo "== $name : $(grep -c . "$work/$name.skipped") lignes non reprises"
-  sed 's/^/   /' "$work/$name.skipped" | head -n 40
-  [ "$(id -u)" = 0 ] && chown -R hyprverify "$work/run" && chmod 700 "$work/run" && chmod -R a+rX "$work"
+  [ "$(id -u)" = 0 ] && chown -R hyprverify "$work/run" && chmod 700 "$work/run" && chmod -R a+rwX "$work"
+  # Comme sur le PC du joueur : conversion lue par Hyprland, touches
+  # inexistantes retirées (last1-panel-cli hypr-convert --verify).
+  run_as HOME="$HOME" "$cli" hypr-convert --verify "$conf" "$out" 2> "$work/$name.log"
+  echo "== $name : $(grep -c '^non repris' "$work/$name.log") lignes non reprises, $(grep -c '^changé' "$work/$name.log") changements"
+  sed 's/^/   /' "$work/$name.log" | head -n 40
   result=$(run_as HOME="$HOME" Hyprland --verify-config -c "$out" 2>&1)
   status=$?
   echo "$result" | tail -n 25 | sed 's/^/   | /'
