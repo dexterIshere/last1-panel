@@ -13,7 +13,8 @@
 //!   pour que Last1 Panel apprenne à la régler).
 //!
 //! Waybar : avec Hyprland 0.57, ses modules hyprland/* doivent parler Lua
-//! (`hl.dsp…`) ; vérifié dans le binaire qui sera installé.
+//! (`hl.dsp…`) ; vérifié dans le binaire qui sera installé, sauf sur le
+//! bureau Signal où go-to-linux la remplace lui-même (`gtl-waybar.hook`).
 
 use crate::exec::Exec;
 use serde::{Deserialize, Serialize};
@@ -79,6 +80,15 @@ pub struct Check {
 /// Ce qui, dans les mises à jour, touche au bureau.
 pub fn desktop_changes(pending: &[Pending]) -> Vec<&Pending> {
     pending.iter().filter(|p| DESKTOP.contains(&p.name.as_str())).collect()
+}
+
+/// Crochet de go-to-linux qui pose une Waybar parlant Lua sur le bureau
+/// Signal après chaque transaction de pacman.
+pub const GTL_WAYBAR_HOOK: &str = "/etc/pacman.d/hooks/gtl-waybar.hook";
+
+/// Bureau Signal dont go-to-linux remplace lui-même Waybar.
+fn waybar_by_go_to_linux(by_gtl: bool) -> bool {
+    by_gtl && Path::new(GTL_WAYBAR_HOOK).exists()
 }
 
 /// `hl.dsp` dans le binaire de Waybar : ses modules Hyprland parlent Lua.
@@ -267,7 +277,8 @@ fn without_sandbox(exec: &dyn Exec, pending: Vec<Pending>, home: &Path, hyprland
                 )),
             }
         }
-        if waybar_uses_hyprland(&home.join(".config/waybar"))
+        if !waybar_by_go_to_linux(by_gtl)
+            && waybar_uses_hyprland(&home.join(".config/waybar"))
             && fs::read("/usr/bin/waybar").is_ok_and(|b| !waybar_speaks_lua(&b))
         {
             reasons.push(
@@ -374,7 +385,7 @@ pub fn run(exec: &dyn Exec, pending: Vec<Pending>, home: &Path, work: &Path, dbp
     }
     // Waybar et Hyprland 0.57 : ses modules doivent parler Lua.
     let lua_era = hyprland.as_deref().is_some_and(needs_lua);
-    if lua_era && waybar_uses_hyprland(&home.join(".config/waybar")) {
+    if lua_era && !waybar_by_go_to_linux(by_gtl) && waybar_uses_hyprland(&home.join(".config/waybar")) {
         let candidate = sandbox.root().join("usr/bin/waybar");
         let binary = if candidate.exists() { candidate } else { PathBuf::from("/usr/bin/waybar") };
         if fs::read(&binary).is_ok_and(|b| !waybar_speaks_lua(&b)) {
