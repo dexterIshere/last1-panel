@@ -1194,7 +1194,7 @@ pub fn run(src: &Sources) -> Report {
         // après le lancement sans journal, la mesure n'a pas pris.
         _ if let Some(last) = src.last_launch.as_ref().filter(|l| l.measured && !l.logged && l.seconds >= 120) => check(
             "measure",
-            Level::Warning,
+            Level::Info,
             t("Dernière partie non mesurée", "Last game not measured"),
             t(
                 &format!(
@@ -1477,18 +1477,18 @@ pub fn run(src: &Sources) -> Report {
             if !crate::system::razer::writable(laptop) {
                 fix = Some(Fix::RazerCooling);
                 remedies.push(t(
-                    &format!("Il chauffe trop et ralentit ({throttles} fois) : sous Linux, le Razer garde ses ventilateurs au calme. Un clic le règle pendant les jeux comme Synapse sous Windows : processeur Boost, ventilateurs à fond."),
-                    &format!("It runs too hot and slows down ({throttles} times): on Linux, the Razer keeps its fans quiet. One click sets it during games like Synapse on Windows: CPU Boost, fans at full speed."),
+                    &format!("Il chauffe trop et ralentit : sous Linux, le Razer garde ses ventilateurs au calme. Un clic le règle pendant les jeux comme Synapse sous Windows : processeur Boost, ventilateurs à fond."),
+                    &format!("It runs too hot and slows down: on Linux, the Razer keeps its fans quiet. One click sets it during games like Synapse on Windows: CPU Boost, fans at full speed."),
                 ));
             } else if states.iter().any(|s| crate::system::razer::applied(s)) {
                 remedies.push(t(
-                    &format!("Le Razer est déjà réglé comme Synapse pendant les jeux (processeur Boost, ventilateurs à fond) et chauffe encore ({throttles} fois) : surélevez l'arrière du portable, dégagez ses aérations ; s'il n'a jamais été nettoyé, la poussière et la pâte thermique sèche le brident."),
-                    &format!("The Razer is already set like Synapse during games (CPU Boost, fans at full speed) and still runs hot ({throttles} times): raise the back of the laptop, clear its vents; if it was never cleaned, dust and dry thermal paste hold it back."),
+                    &format!("Le Razer est déjà réglé comme Synapse pendant les jeux (processeur Boost, ventilateurs à fond) et chauffe encore : surélevez l'arrière du portable, dégagez ses aérations ; s'il n'a jamais été nettoyé, la poussière et la pâte thermique sèche le brident."),
+                    &format!("The Razer is already set like Synapse during games (CPU Boost, fans at full speed) and still runs hot: raise the back of the laptop, clear its vents; if it was never cleaned, dust and dry thermal paste hold it back."),
                 ));
             } else if let Some(state) = states.first() {
                 remedies.push(t(
-                    &format!("Il chauffe trop et ralentit ({throttles} fois) : le Razer n'a pas pris le réglage de jeu ({state}). Last1 Panel le réessaie à chaque partie."),
-                    &format!("It runs too hot and slows down ({throttles} times): the Razer didn't take the game setting ({state}). Last1 Panel retries it every game."),
+                    &format!("Il chauffe trop et ralentit : le Razer n'a pas pris le réglage de jeu ({state}). Last1 Panel le réessaie à chaque partie."),
+                    &format!("It runs too hot and slows down: the Razer didn't take the game setting ({state}). Last1 Panel retries it every game."),
                 ));
             } else {
                 remedies.push(t(
@@ -1498,8 +1498,8 @@ pub fn run(src: &Sources) -> Report {
             }
         } else if throttles > 0 {
             remedies.push(t(
-                &format!("Il chauffe trop et ralentit ({throttles} fois) : surélevez l'arrière du portable et dégagez ses aérations."),
-                &format!("It runs too hot and slows down ({throttles} times): raise the back of the laptop and clear its vents."),
+                &format!("Il chauffe trop et ralentit : surélevez l'arrière du portable et dégagez ses aérations."),
+                &format!("It runs too hot and slows down: raise the back of the laptop and clear its vents."),
             ));
         }
         // Mémoire qui déborde sur le disque : le jeu attend le disque, ce
@@ -2233,7 +2233,7 @@ mod tests {
             shader_cache_mb: None,
         });
         let measure = run(&sources).checks.into_iter().find(|c| c.id == "measure").unwrap();
-        assert_eq!(measure.level, Level::Warning);
+        assert_eq!(measure.level, Level::Info, "rien à régler pour le joueur");
         assert!(measure.detail.contains("ARC Raiders") && measure.detail.contains("il y a 5 min"));
         // Le jeu vient de démarrer : pas encore d'alerte.
         sources.last_launch = Some(LastLaunch {
