@@ -155,7 +155,6 @@
             {#if check.fix}
               <button
                 class="btn"
-                class:btn--primary={check.level === "problem" || check.level === "warning"}
                 onclick={() =>
                   check.fix === "restart"
                     ? (confirmRestart = true)

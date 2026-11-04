@@ -174,8 +174,10 @@ button {
 }
 
 .btn:disabled {
+  border-color: var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
   cursor: not-allowed;
-  opacity: 0.45;
 }
 
 .btn--primary {
@@ -204,6 +206,11 @@ button {
   border-color: transparent;
   background: transparent;
   color: var(--color-text-muted);
+}
+
+.btn--ghost:disabled {
+  border-color: transparent;
+  background: transparent;
 }
 
 .btn--ghost:hover:not(:disabled) {

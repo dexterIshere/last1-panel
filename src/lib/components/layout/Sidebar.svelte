@@ -24,8 +24,8 @@
       detail: t("Écran, souris", "Screen, mouse"),
       icon: Usb,
       pages: [
-        { id: "display", title: t("Écran", "Screen"), detail: t(`Définition, fréquence, ${app.vrrName}`, `Resolution, refresh, ${app.vrrName}`), icon: Monitor },
-        { id: "mouse", title: t("Souris", "Mouse"), detail: t("Accélération, sensibilité, DPI", "Acceleration, sensitivity, DPI"), icon: Mouse },
+        { id: "display", title: t("Écran", "Screen"), detail: t("Définition, fréquence", "Resolution, refresh rate"), icon: Monitor },
+        { id: "mouse", title: t("Souris", "Mouse"), detail: t("Accélération, DPI", "Acceleration, DPI"), icon: Mouse },
       ],
     },
     { id: "gpu", title: t("Carte graphique", "Graphics card"), detail: t("Puissance, ventilateurs", "Power, fans"), icon: Cpu },
@@ -227,17 +227,6 @@
   .nav__item[aria-current="page"] {
     border-color: var(--color-border);
     background: var(--color-surface);
-  }
-
-  .nav__item[aria-current="page"]::before {
-    content: "";
-    position: absolute;
-    top: 25%;
-    bottom: 25%;
-    left: -1px;
-    width: 3px;
-    border-radius: 3px;
-    background: var(--color-panel);
   }
 
   .nav__icon {

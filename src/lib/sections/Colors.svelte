@@ -467,7 +467,7 @@
             {#each games?.games ?? [] as game (game.appId)}<option value={String(game.appId)}>{t(`Pour ${game.name}`, `For ${game.name}`)}</option>{/each}
           </select>
         {/if}
-        <button class="btn btn--primary" type="submit" disabled={profileBusy || !info}>
+        <button class="btn" type="submit" disabled={profileBusy || !info}>
           <Save size={16} />{t("Enregistrer ces réglages", "Save these settings")}
         </button>
       </form>
