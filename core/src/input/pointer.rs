@@ -10,6 +10,7 @@
 //! La sensibilité est la vitesse de libinput (-1 à 1, 0 : normale) ; sans
 //! accélération, elle multiplie le mouvement par (1 + vitesse).
 
+use crate::display::hypr_lua;
 use crate::error::{CoreError, CoreResult};
 use crate::exec::Exec;
 use crate::i18n::t;
@@ -156,14 +157,31 @@ impl Pointer<'_> {
     }
 
     fn hyprland_apply(&self, mice: &[Mouse], acceleration: bool, speed: f64) -> CoreResult<()> {
-        if self.hypr_dir.join("hyprland.lua").exists() {
-            return Err(CoreError::message(t(
-                "Votre Hyprland utilise une configuration Lua (hyprland.lua) : Last1 Panel ne sait régler la souris qu'avec hyprland.conf pour l'instant.",
-                "Your Hyprland uses a Lua configuration (hyprland.lua): Last1 Panel can only set the mouse with hyprland.conf for now.",
-            )));
-        }
         let profile = if acceleration { "adaptive" } else { "flat" };
         let speed = format!("{speed:.3}");
+        // Hyprland 0.57 et suivants : configuration Lua (display/hypr_lua.rs).
+        if hypr_lua::uses_lua(&self.hypr_dir) {
+            let devices: Vec<String> = mice
+                .iter()
+                .map(|mouse| {
+                    format!(
+                        "hl.device({{ name = {}, accel_profile = {}, sensitivity = {speed} }})",
+                        hypr_lua::string(&mouse.id),
+                        hypr_lua::string(profile)
+                    )
+                })
+                .collect();
+            let text = format!(
+                "-- Souris réglées avec Last1 Panel (accélération, sensibilité).\n-- Last1 Panel réécrit ce fichier à chaque réglage de sa page Souris.\n{}\n",
+                devices.join("\n")
+            );
+            fs::write(self.hypr_dir.join("last1-panel-mouse.lua"), text)?;
+            hypr_lua::ensure_required(&self.hypr_dir, "last1-panel-mouse.lua")?;
+            for device in devices {
+                self.exec.run_ok("hyprctl", &["eval".into(), device])?;
+            }
+            return Ok(());
+        }
         // Gardé : un bloc par souris, lu à chaque démarrage du bureau.
         let mut text = String::from(
             "# Souris réglées avec Last1 Panel (accélération, sensibilité).\n# Last1 Panel réécrit ce fichier à chaque réglage de sa page Souris.\n",
@@ -298,6 +316,30 @@ mod tests {
             vec!["keyword".into(), "device[logitech-g-pro-x-superlight]:sensitivity".into(), "-0.250".into()]
         )));
         assert_eq!(pointer.state(&settings).speed, -0.25);
+    }
+
+    #[test]
+    fn hyprland_057_mouse_goes_to_lua() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("hyprland.lua"), "hl.config({})\n").unwrap();
+        let exec = FakeExec::new()
+            .on_args("hyprctl", &["devices", "-j"], ok(HYPR_DEVICES))
+            .on_args("hyprctl", &["getoption", "input:accel_profile", "-j"], ok(r#"{"str":"","set":false}"#))
+            .on_args("hyprctl", &["getoption", "input:sensitivity", "-j"], ok(r#"{"float":0.0,"set":false}"#));
+        let pointer = Pointer { exec: &exec, desktop: Desktop::Hyprland, hypr_dir: dir.path().into() };
+        let settings = MouseSettings { acceleration: Some(false), speed: Some(-0.25) };
+        pointer.apply(&settings).unwrap();
+        let device =
+            r#"hl.device({ name = "logitech-g-pro-x-superlight", accel_profile = "flat", sensitivity = -0.250 })"#;
+        let lua = fs::read_to_string(dir.path().join("last1-panel-mouse.lua")).unwrap();
+        assert!(lua.contains(device), "{lua}");
+        assert!(
+            fs::read_to_string(dir.path().join("hyprland.lua"))
+                .unwrap()
+                .contains("pcall(require, \"./last1-panel-mouse.lua\")")
+        );
+        assert!(!dir.path().join("last1-panel-mouse.conf").exists());
+        assert!(exec.calls().contains(&("hyprctl".into(), vec!["eval".into(), device.into()])));
     }
 
     #[test]

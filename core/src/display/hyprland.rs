@@ -139,6 +139,35 @@ impl Rule {
     pub fn line(&self) -> String {
         format!("monitor = {}", self.arguments())
     }
+
+    /// La même règle pour Hyprland 0.57 et suivants : `hl.monitor({ … })`.
+    /// Les arguments que Last1 Panel ne connaît pas sont laissés de côté (un
+    /// champ inconnu serait une erreur de configuration).
+    pub fn lua(&self) -> String {
+        use super::hypr_lua::string;
+        if self.disabled {
+            return format!("hl.monitor({{ output = {}, disabled = true }})", string(&self.name));
+        }
+        let mut fields = vec![
+            format!("output = {}", string(&self.name)),
+            format!("mode = {}", string(&self.mode)),
+            format!("position = {}", string(&self.position)),
+            format!("scale = {}", string(&self.scale)),
+        ];
+        for (key, value) in &self.extras {
+            let number = |v: &str| v.parse::<f64>().ok().map(|n| format!("{key} = {n}"));
+            let field = match key.as_str() {
+                "transform" | "bitdepth" | "vrr" | "supports_wide_color" | "supports_hdr" => {
+                    value.parse::<i64>().ok().map(|n| format!("{key} = {n}"))
+                }
+                "sdrbrightness" | "sdrsaturation" => number(value),
+                "cm" | "sdr_eotf" | "icc" | "mirror" => Some(format!("{key} = {}", string(value))),
+                _ => None,
+            };
+            fields.extend(field);
+        }
+        format!("hl.monitor({{ {} }})", fields.join(", "))
+    }
 }
 
 /// monitors.conf : les règles, et les autres lignes gardées à leur place.
@@ -150,6 +179,11 @@ pub struct MonitorsFile {
 impl MonitorsFile {
     pub fn parse(text: &str) -> Self {
         Self { lines: text.lines().map(str::to_string).collect() }
+    }
+
+    /// Toutes les règles en service (pas les écrans éteints mis de côté).
+    pub fn rules(&self) -> Vec<Rule> {
+        self.lines.iter().filter_map(|line| Rule::parse(line)).collect()
     }
 
     /// Règle mise de côté quand l'écran a été éteint par Last1 Panel.
@@ -273,20 +307,12 @@ impl Hyprland {
         MonitorsFile::parse(&fs::read_to_string(self.monitors_conf()).unwrap_or_default())
     }
 
-    /// Configuration Lua (par défaut depuis Hyprland 0.55) : hyprland.conf est
-    /// alors ignoré, et `hyprctl keyword` refusé.
+    /// Configuration Lua (Hyprland 0.57 et suivants) : hyprland.conf et
+    /// monitors.conf ne sont plus lus, `hyprctl keyword` est refusé. Les
+    /// règles restent gardées dans monitors.conf et sont reprises dans
+    /// last1-panel-monitors.lua, que hyprland.lua charge (hypr_lua.rs).
     fn lua(&self) -> bool {
-        self.config_dir.join("hyprland.lua").exists()
-    }
-
-    fn writable(&self) -> CoreResult<()> {
-        if self.lua() {
-            return Err(CoreError::message(t(
-                "Votre Hyprland utilise une configuration Lua (hyprland.lua) : Last1 Panel ne sait régler les écrans qu'avec hyprland.conf pour l'instant.",
-                "Your Hyprland uses a Lua configuration (hyprland.lua): Last1 Panel can only set screens with hyprland.conf for now.",
-            )));
-        }
-        Ok(())
+        super::hypr_lua::uses_lua(&self.config_dir)
     }
 
     fn monitors(&self) -> CoreResult<Vec<Monitor>> {
@@ -416,7 +442,12 @@ impl Hyprland {
     }
 
     fn keyword(&self, rule: &Rule) -> CoreResult<()> {
-        let output = self.exec.run_ok(PROGRAM, &["keyword".into(), "monitor".into(), rule.arguments()])?;
+        let args: Vec<String> = if self.lua() {
+            vec!["eval".into(), rule.lua()]
+        } else {
+            vec!["keyword".into(), "monitor".into(), rule.arguments()]
+        };
+        let output = self.exec.run_ok(PROGRAM, &args)?;
         let answer = output.stdout.trim();
         if answer == "ok" || answer.is_empty() {
             Ok(())
@@ -426,7 +457,17 @@ impl Hyprland {
     }
 
     fn save(&self, file: &MonitorsFile) -> CoreResult<()> {
-        write_atomic(&self.monitors_conf(), &file.text())
+        write_atomic(&self.monitors_conf(), &file.text())?;
+        if self.lua() {
+            let rules: Vec<String> = file.rules().iter().map(Rule::lua).collect();
+            let text = format!(
+                "-- Écrans réglés avec Last1 Panel (repris de monitors.conf à chaque réglage).\n{}\n",
+                rules.join("\n")
+            );
+            write_atomic(&self.config_dir.join("last1-panel-monitors.lua"), &text)?;
+            super::hypr_lua::ensure_required(&self.config_dir, "last1-panel-monitors.lua")?;
+        }
+        Ok(())
     }
 }
 
@@ -447,7 +488,7 @@ impl DisplayBackend for Hyprland {
             bit_depths: vec![8, 10],
             live_color: false,
             icc_transfer: Transfer::Srgb,
-            read_only: self.lua().then(|| t("configuration Lua (hyprland.lua)", "Lua configuration (hyprland.lua)")),
+            read_only: None,
         }
     }
 
@@ -464,7 +505,6 @@ impl DisplayBackend for Hyprland {
     /// Règles essayées par hyprctl d'abord : une règle refusée n'est jamais
     /// écrite dans monitors.conf (elle reviendrait à chaque connexion).
     fn apply(&self, changes: &[OutputChange]) -> CoreResult<()> {
-        self.writable()?;
         let current = self.outputs()?;
         let mut file = self.file();
         let mut rules = Vec::new();
@@ -486,7 +526,6 @@ impl DisplayBackend for Hyprland {
     }
 
     fn set_profile(&self, output: &str, state: &ProfileState) -> CoreResult<()> {
-        self.writable()?;
         let current = self.outputs()?;
         let screen = current
             .iter()
@@ -500,7 +539,8 @@ impl DisplayBackend for Hyprland {
         self.save(&file)?;
         // La courbe VCGT n'atteint la table gamma de la carte qu'en réappliquant
         // l'écran entier : un changement de profil seul ne le fait pas.
-        self.exec.run_ok(PROGRAM, &["dispatch".into(), "forcerendererreload".into()])?;
+        let reload = if self.lua() { "hl.dsp.force_renderer_reload()" } else { "forcerendererreload" };
+        self.exec.run_ok(PROGRAM, &["dispatch".into(), reload.into()])?;
         Ok(())
     }
 }
@@ -712,13 +752,28 @@ mod tests {
     }
 
     #[test]
-    fn lua_configuration_is_read_only() {
-        let (dir, _fake, hypr) = setup(None);
-        fs::write(dir.path().join("hyprland.lua"), "hl.monitor({})").unwrap();
-        assert!(hypr.features().read_only.is_some());
-        assert!(hypr.outputs().is_ok());
-        assert!(hypr.apply(&[OutputChange { name: "DP-1".into(), scale: Some(1.25), ..Default::default() }]).is_err());
-        assert!(!dir.path().join("monitors.conf").exists());
+    fn lua_configuration_gets_its_own_file() {
+        let (dir, fake, hypr) = setup(None);
+        fs::write(dir.path().join("hyprland.lua"), "hl.config({})\n").unwrap();
+        assert!(hypr.features().read_only.is_none());
+        hypr.apply(&[OutputChange { name: "DP-1".into(), scale: Some(1.25), ..Default::default() }]).unwrap();
+        let eval = fake.calls().into_iter().find(|(_, args)| args[0] == "eval").unwrap();
+        assert!(eval.1[1].starts_with("hl.monitor({ output = \"DP-1\", mode = "), "{:?}", eval.1);
+        assert!(eval.1[1].contains("scale = \"1.25\""), "{:?}", eval.1);
+        let lua = fs::read_to_string(dir.path().join("last1-panel-monitors.lua")).unwrap();
+        assert!(lua.contains(&eval.1[1]), "{lua}");
+        let main = fs::read_to_string(dir.path().join("hyprland.lua")).unwrap();
+        assert!(main.contains("pcall(require, \"./last1-panel-monitors.lua\")"));
+        let rule =
+            Rule::parse("monitor = DP-1, 2560x1440@143.91, 0x0, 1, bitdepth, 10, cm, hdr, vrr, 1, foo, bar").unwrap();
+        assert_eq!(
+            rule.lua(),
+            "hl.monitor({ output = \"DP-1\", mode = \"2560x1440@143.91\", position = \"0x0\", scale = \"1\", bitdepth = 10, cm = \"hdr\", vrr = 1 })"
+        );
+        assert_eq!(
+            Rule::parse("monitor = HDMI-A-1, disable").unwrap().lua(),
+            "hl.monitor({ output = \"HDMI-A-1\", disabled = true })"
+        );
     }
 
     #[test]

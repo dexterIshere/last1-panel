@@ -463,6 +463,23 @@ impl Panel {
                 Vec::new()
             },
         });
+        // Hyprland 0.57 a remplacé la configuration par son exemple : en tête.
+        let hypr_dir = crate::paths::home_dir().join(".config/hypr");
+        if self.desktop == Desktop::Hyprland && crate::display::hypr_lua::config_lost(&hypr_dir) {
+            report.checks.insert(
+                0,
+                crate::system::diagnostic::Check {
+                    id: "hyprland-config",
+                    level: crate::system::diagnostic::Level::Problem,
+                    title: t("Hyprland n'utilise plus votre configuration", "Hyprland no longer uses your configuration"),
+                    detail: t(
+                        "Depuis sa version 0.57, Hyprland ne lit plus hyprland.conf : il démarre sur une configuration d'exemple (clavier, raccourcis, barre et applications de démarrage perdus). Votre configuration est intacte dans ~/.config/hypr/hyprland.conf ; elle doit être reprise au nouveau format (hyprland.lua) par la personne ou l'outil qui l'a installée.",
+                        "Since version 0.57, Hyprland no longer reads hyprland.conf: it starts on an example configuration (keyboard, shortcuts, bar and startup apps lost). Your configuration is intact in ~/.config/hypr/hyprland.conf; it must be carried over to the new format (hyprland.lua) by whoever or whatever installed it.",
+                    ),
+                    fix: None,
+                },
+            );
+        }
         // Shaders refaits ces deux dernières semaines, et pourquoi
         // (games/shader_runs.rs).
         use crate::games::shader_runs;
