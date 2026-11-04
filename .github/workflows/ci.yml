@@ -147,7 +147,7 @@ jobs:
           since=$(curl -fsS --max-time 20 "${SITE_URL%/}/api/public/last1-panel/manifest" \
             | jq -r '.manifest | split(".")[0] | gsub("-";"+") | gsub("_";"/") | @base64d | fromjson | .criticalCommit // empty' 2>/dev/null || true)
           if [ -n "$since" ] && git cat-file -e "$since^{commit}" 2>/dev/null; then range="$since..HEAD"; else range="-50"; fi
-          if git log --format='%(trailers:key=Critique,valueonly)' $range | grep -qix 'oui'; then
+          if git log --format=%B $range | grep -qix 'Critique: *oui'; then
             export PUBLISH_CRITICAL=1
             echo "Version critique : installée sans clic."
           fi
