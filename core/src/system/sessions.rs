@@ -376,7 +376,12 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         program,
         started,
         minutes: round(elapsed_ns / 60e9),
-        fps_average: round(mean(&fps)),
+        // Images présentées divisées par le temps (moyenne harmonique), pas la
+        // moyenne des « fps » de chaque ligne : une génération d'images
+        // au-dessus de MangoHud (Lossless Scaling, lsfg-vk) présente des
+        // images collées à la vraie, des milliers d'« i/s » instantanées qui
+        // tiraient la moyenne à 6000 chez un testeur (1 % bas : 70).
+        fps_average: round(average_fps(&used)),
         fps_one_percent_low: round(1000.0 / p99),
         cpu_load: round(mean(&cpu)),
         gpu_load: round(gpu_load),
@@ -393,6 +398,12 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         details: Vec::new(),
         timeline: timeline(&rows, elapsed_ns),
     })
+}
+
+/// Images par seconde moyennes : le nombre d'images sur leur temps total.
+fn average_fps(rows: &[&Row]) -> f64 {
+    let total_ms: f64 = rows.iter().map(|row| row.frametime).sum();
+    if total_ms > 0.0 { 1000.0 * rows.len() as f64 / total_ms } else { 0.0 }
 }
 
 #[cfg(test)]
@@ -428,7 +439,8 @@ mod tests {
         assert_eq!(session.program, "PioneerGame.exe");
         assert_eq!(session.started, "2026-10-18 21:04");
         assert_eq!(session.minutes, 2.0);
-        assert_eq!(session.fps_average, 59.5);
+        // 119 images à 60 i/s et une à 20 : 120 images en 2,03 s.
+        assert_eq!(session.fps_average, 57.1);
         assert_eq!(session.fps_one_percent_low, 20.0);
         assert_eq!((session.cpu_load, session.gpu_load, session.gpu_clock), (45.0, 60.0, 2610.0));
         assert_eq!(session.limit, "cpu");
@@ -506,7 +518,7 @@ mod tests {
         assert_eq!(summarize("PioneerGame.exe_2026-10-26_22-54-00", &log(&only)).unwrap().limit, "cap");
         // Un jeu à 60 i/s tenus, processeur bien chargé : du jeu.
         let busy: Vec<_> = (0..300).map(|i| (60.0, 16.6, 60.0, 70.0, (i + 1) * 1_000_000_000)).collect();
-        assert_eq!(summarize("Game.exe_2026-10-26_22-54-00", &log(&busy)).unwrap().fps_average, 60.0);
+        assert_eq!(summarize("Game.exe_2026-10-26_22-54-00", &log(&busy)).unwrap().fps_average, 60.2);
     }
 
     #[test]
@@ -530,7 +542,7 @@ mod tests {
         let mut game = compiling.clone();
         game.extend((1..=1200).map(|i| (90.0, 11.1, 40.0, 98.0, (360 + i) * 1_000_000_000)));
         let session = summarize("PioneerGame_2026-10-19_15-38-00", &log(&game)).unwrap();
-        assert_eq!((session.limit, session.fps_average, session.gpu_load), ("gpu", 90.0, 98.0));
+        assert_eq!((session.limit, session.fps_average, session.gpu_load), ("gpu", 90.1, 98.0));
         assert_eq!(session.minutes, 26.0);
     }
 
@@ -562,5 +574,20 @@ mod tests {
     fn unreadable_logs_are_skipped() {
         assert_eq!(summarize("x", "pas un journal"), None);
         assert_eq!(summarize("x", "fps,frametime\n0,0\n"), None);
+    }
+
+    #[test]
+    fn generated_frames_above_mangohud_do_not_inflate_the_average() {
+        // Lossless Scaling (lsfg-vk) au-dessus de MangoHud : une vraie image à
+        // 11 ms puis une générée collée à 0,1 ms, en alternance.
+        let rows: Vec<_> = (0..600)
+            .map(|i| {
+                let generated = i % 2 == 1;
+                let (fps, frametime) = if generated { (10_000.0, 0.1) } else { (90.0, 11.0) };
+                (fps, frametime, 50.0, 70.0, (i + 1) * 100_000_000)
+            })
+            .collect();
+        let session = summarize("PioneerGame_2026-11-05_00-00-00", &log(&rows)).unwrap();
+        assert!((179.0..=181.0).contains(&session.fps_average), "{}", session.fps_average);
     }
 }
