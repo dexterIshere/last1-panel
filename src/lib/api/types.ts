@@ -349,6 +349,8 @@ export interface GamesInfo {
 export interface FrameGenInfo {
   /** Couche Vulkan installée (paquet ou AppImage). */
   installed: boolean;
+  /** lsfg-vk (Lossless Scaling) installé : la nôtre ne s'applique pas. */
+  lsfg: boolean;
   /** Dernière partie de chaque jeu. */
   lastGames: FrameGenGame[];
 }

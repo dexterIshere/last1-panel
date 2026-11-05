@@ -27,6 +27,19 @@ pub fn installed(data_home: &Path) -> bool {
         || data_home.join("vulkan/explicit_layer.d").join(paths::FRAMEGEN_LAYER).is_file()
 }
 
+/// lsfg-vk (Lossless Scaling sous Linux) installé : sa couche implicite
+/// génère déjà des images, la nôtre par-dessus ferait deux générations qui
+/// se gênent (afmf-linux le signale : blocage de la présentation).
+pub fn lsfg_installed(data_home: &Path) -> bool {
+    let has_lsfg = |dir: &Path| {
+        fs::read_dir(dir).ok().is_some_and(|entries| {
+            entries.flatten().any(|e| e.file_name().to_string_lossy().to_lowercase().contains("lsfg"))
+        })
+    };
+    ["/usr/share/vulkan/implicit_layer.d", "/etc/vulkan/implicit_layer.d"].iter().any(|d| has_lsfg(Path::new(d)))
+        || has_lsfg(&data_home.join("vulkan/implicit_layer.d"))
+}
+
 /// Journaux des parties d'essai (30 gardés).
 pub fn log_dir(data_home: &Path) -> PathBuf {
     data_home.join("last1-panel/framegen")
@@ -53,6 +66,8 @@ pub enum Off {
     Disabled,
     /// Smooth Motion génère déjà des images : jamais deux générateurs.
     SmoothMotion,
+    /// lsfg-vk (Lossless Scaling) installé : jamais deux générateurs.
+    Lsfg,
 }
 
 /// Smooth Motion allumé pour ce lancement : par nos variables (`env`) ou
@@ -64,14 +79,23 @@ pub fn smooth_motion(env: &[(String, String)], existing: impl Fn(&str) -> Option
 }
 
 /// La couche pour ce jeu : activée chez les testeurs quand elle est
-/// installée, sauf réglage contraire ou Smooth Motion.
-pub fn decide(profile: &GameProfile, tester: bool, installed: bool, smooth_motion: bool) -> Result<(), Off> {
+/// installée, sauf réglage contraire ou autre générateur (lsfg-vk, Smooth
+/// Motion).
+pub fn decide(
+    profile: &GameProfile,
+    tester: bool,
+    installed: bool,
+    lsfg: bool,
+    smooth_motion: bool,
+) -> Result<(), Off> {
     if !tester {
         Err(Off::NotTester)
     } else if !installed {
         Err(Off::NotInstalled)
     } else if profile.frame_generation == Some(false) {
         Err(Off::Disabled)
+    } else if lsfg {
+        Err(Off::Lsfg)
     } else if smooth_motion {
         Err(Off::SmoothMotion)
     } else {
@@ -100,7 +124,7 @@ pub fn launch_environment(
                 env.extend(environment(&existing, log, gamescope));
             }
         }
-        Err(Off::Disabled | Off::SmoothMotion) => {
+        Err(Off::Disabled | Off::SmoothMotion | Off::Lsfg) => {
             if let Some(list) = existing(LOADER_ENABLE)
                 && list.split(',').any(|layer| layer.trim() == paths::FRAMEGEN_LAYER_NAME)
             {
@@ -283,6 +307,40 @@ pub fn summary(dir: &Path) -> Option<String> {
     Some(out)
 }
 
+/// Réglages des outils que le joueur s'est posés lui-même (souvent par
+/// GOverlay) : lsfg-vk (Lossless Scaling), MangoHud, vkBasalt. Pour les
+/// testeurs : comparer nos réglages aux leurs. Valeurs seules, sans
+/// commentaires ni chemins personnels ; 400 caractères par outil.
+pub fn player_tools(config_home: &Path) -> Vec<(String, String)> {
+    let files = [
+        ("lsfg-vk", "lsfg-vk/conf.toml"),
+        ("MangoHud", "MangoHud/MangoHud.conf"),
+        ("vkBasalt", "vkBasalt/vkBasalt.conf"),
+        ("GOverlay", "goverlay/goverlay.conf"),
+    ];
+    let home = paths::home_dir().display().to_string();
+    files
+        .iter()
+        .filter_map(|(name, rel)| {
+            let text = fs::read_to_string(config_home.join(rel)).ok()?;
+            let lines: Vec<String> = text
+                .lines()
+                .map(|l| l.split('#').next().unwrap_or_default().trim())
+                .filter(|l| !l.is_empty())
+                .map(|l| l.replace(&home, "~").split_whitespace().collect::<Vec<_>>().join(" "))
+                .collect();
+            if lines.is_empty() {
+                return None;
+            }
+            let mut value = lines.join(" ; ");
+            if value.chars().count() > 400 {
+                value = value.chars().take(399).collect::<String>() + "…";
+            }
+            Some((format!("Réglages du joueur : {name}"), value))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,13 +393,14 @@ mod tests {
         let on = GameProfile::default();
         let off = GameProfile { frame_generation: Some(false), ..Default::default() };
         // Par défaut chez les testeurs : activée ; le réglage du jeu gagne.
-        assert_eq!(decide(&on, true, true, false), Ok(()));
-        assert_eq!(decide(&off, true, true, false), Err(Off::Disabled));
+        assert_eq!(decide(&on, true, true, false, false), Ok(()));
+        assert_eq!(decide(&off, true, true, false, false), Err(Off::Disabled));
         // Hors essai, ou couche absente (paquet, AppImage) : jamais.
-        assert_eq!(decide(&on, false, true, false), Err(Off::NotTester));
-        assert_eq!(decide(&on, true, false, false), Err(Off::NotInstalled));
-        // Smooth Motion : jamais deux générateurs.
-        assert_eq!(decide(&on, true, true, true), Err(Off::SmoothMotion));
+        assert_eq!(decide(&on, false, true, false, false), Err(Off::NotTester));
+        assert_eq!(decide(&on, true, false, false, false), Err(Off::NotInstalled));
+        // lsfg-vk ou Smooth Motion : jamais deux générateurs.
+        assert_eq!(decide(&on, true, true, true, false), Err(Off::Lsfg));
+        assert_eq!(decide(&on, true, true, false, true), Err(Off::SmoothMotion));
 
         let log = Path::new("/home/a/.local/share/last1-panel/framegen/1-g.log");
         let mut env = vec![("DXVK_HDR".to_string(), "1".to_string())];
@@ -351,7 +410,7 @@ mod tests {
         assert_eq!(var(&env, "DXVK_HDR").as_deref(), Some("1"));
 
         // Désactivée : aucune variable de la couche.
-        for decision in [Err(Off::Disabled), Err(Off::SmoothMotion), Err(Off::NotInstalled)] {
+        for decision in [Err(Off::Disabled), Err(Off::SmoothMotion), Err(Off::Lsfg), Err(Off::NotInstalled)] {
             let mut env = vec![("DXVK_HDR".to_string(), "1".to_string())];
             launch_environment(&mut env, |_| None, decision, Some(log), false);
             assert_eq!(env, [("DXVK_HDR".to_string(), "1".to_string())], "{decision:?}");
@@ -416,5 +475,23 @@ mod tests {
         // Couche pas chargée : journal vide.
         fs::write(new_log(dir.path(), "730", 400).unwrap(), "").unwrap();
         assert!(!last_game(dir.path(), "730").unwrap().loaded);
+    }
+
+    #[test]
+    fn players_own_tool_settings_are_summed_up() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("lsfg-vk")).unwrap();
+        fs::write(
+            dir.path().join("lsfg-vk/conf.toml"),
+            "version = 2\n# commentaire\n[[profile]]\nactive_in = \"PioneerGame.exe\"\nmultiplier = 2\nflow_scale = 0.8\n",
+        )
+        .unwrap();
+        let tools = player_tools(dir.path());
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].0, "Réglages du joueur : lsfg-vk");
+        assert_eq!(
+            tools[0].1,
+            "version = 2 ; [[profile]] ; active_in = \"PioneerGame.exe\" ; multiplier = 2 ; flow_scale = 0.8"
+        );
     }
 }

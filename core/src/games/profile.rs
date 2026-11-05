@@ -18,7 +18,7 @@ pub struct GameProfile {
     /// Images générées par le pilote (NVIDIA RTX 40 et plus récentes).
     pub smooth_motion: Option<bool>,
     /// Génération d'images de Last1 Panel (testeurs, couche installée).
-    /// Absent : activée ; jamais avec Smooth Motion.
+    /// Absent : activée ; jamais avec un autre générateur.
     pub frame_generation: Option<bool>,
     /// HDR dans le jeu (écran en HDR).
     pub hdr: Option<bool>,

@@ -383,6 +383,8 @@
             <span class="field__hint">
               {#if !frameGen.installed}
                 {t("Absente de cette installation : réinstallez Last1 Panel.", "Missing from this installation: reinstall Last1 Panel.")}
+              {:else if fgWanted && frameGen.lsfg}
+                <strong class="risk">{t("Lossless Scaling (lsfg-vk) est installé : il ajoute déjà des images, celle de Last1 Panel ne s'applique pas.", "Lossless Scaling (lsfg-vk) is installed: it already adds frames, Last1 Panel's does not apply.")}</strong>
               {:else if fgWanted && smoothOn}
                 <strong class="risk">{t("Smooth Motion est activé : il ajoute déjà des images, celle de Last1 Panel ne s'applique pas.", "Smooth Motion is on: it already adds frames, Last1 Panel's does not apply.")}</strong>
               {:else if fgWanted}

@@ -516,6 +516,8 @@ pub struct GamesInfo {
 #[serde(rename_all = "camelCase")]
 pub struct FrameGenInfo {
     installed: bool,
+    /// lsfg-vk (Lossless Scaling) installé : la nôtre ne s'applique pas.
+    lsfg: bool,
     last_games: Vec<last1_panel_core::games::framegen::LastGame>,
 }
 
@@ -524,6 +526,7 @@ fn frame_gen_info() -> Option<FrameGenInfo> {
     let data = last1_panel_core::paths::data_home();
     framegen::tester(Path::new("/var/lib/gtl"), &last1_panel_core::paths::config_dir()).then(|| FrameGenInfo {
         installed: framegen::installed(&data),
+        lsfg: framegen::lsfg_installed(&data),
         last_games: framegen::last_games(&framegen::log_dir(&data)),
     })
 }

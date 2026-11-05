@@ -380,6 +380,7 @@ export function installMockBackend(): void {
       frameGen: params.get("testeur")
         ? {
             installed: params.get("testeur") !== "sans-couche",
+            lsfg: params.get("testeur") === "lsfg",
             lastGames: [
               { game: "1091500", when: Math.floor(Date.now() / 1000) - 7200, loaded: true, presents: 182400, generated: 90120, heldBack: null, alert: null },
               { game: "1245620", when: Math.floor(Date.now() / 1000) - 86400, loaded: true, presents: null, generated: null, heldBack: "swapchain 0x5: pass-through (surface capabilities unavailable)", alert: null },
