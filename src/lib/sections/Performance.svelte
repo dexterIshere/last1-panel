@@ -366,7 +366,7 @@
   }
 
   .check--ok .check__icon {
-    color: var(--color-panel);
+    color: var(--color-volt);
   }
 
   .check__text {

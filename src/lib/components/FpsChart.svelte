@@ -88,8 +88,8 @@
 
 <style>
   .chart {
-    --series-fps: #2aa89b;
-    --series-low: #7f6df0;
+    --series-fps: var(--color-chart-fps);
+    --series-low: var(--color-chart-low);
     display: grid;
     gap: var(--space-2);
     margin: var(--space-3) 0 0;
@@ -113,7 +113,6 @@
     display: inline-block;
     width: 10px;
     height: 10px;
-    border-radius: 50%;
   }
 
   .legend__swatch--fps {

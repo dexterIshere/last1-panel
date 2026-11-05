@@ -244,7 +244,7 @@
 
   .banner__title {
     color: var(--color-warning);
-    font-weight: 600;
+    font-weight: 700;
   }
 
   .banner--done .banner__title {
@@ -294,13 +294,11 @@
   .gauge {
     overflow: hidden;
     height: 10px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+    background: var(--color-warning-line);
   }
 
   .gauge__fill {
     height: 100%;
-    border-radius: inherit;
     background: var(--color-warning);
     transition: width 0.6s ease;
   }

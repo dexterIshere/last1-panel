@@ -34,7 +34,7 @@
     z-index: 10;
     display: grid;
     place-items: center;
-    background: rgb(5 6 8 / 0.7);
+    background: var(--color-scrim);
   }
 
   .dialog {

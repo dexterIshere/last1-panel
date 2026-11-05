@@ -160,5 +160,15 @@ suffit pour travailler sur les réglages.
 
 ## Licence
 
-GPL-3.0-or-later, voir [LICENSE](LICENSE). Space Grotesk : SIL Open Font
-License ([static/OFL.txt](static/OFL.txt)).
+GPL-3.0-or-later, voir [LICENSE](LICENSE). Archivo (police des titres,
+embarquée) : SIL Open Font License ([static/Archivo-OFL.txt](static/Archivo-OFL.txt)).
+
+## Apparence
+
+Direction artistique « Signal » v2 de Last1 (`docs/DA.md` du dépôt
+go-to-linux) : jetons de couleur dans `:root` de `src/app.css`, mêmes noms et
+mêmes valeurs que last1.fun et go-to-linux, aucune couleur en dur ailleurs
+(`src-tauri/tests/design.rs`). L'icône vient d'un seul dessin,
+`src-tauri/icons/source/icon.svg` : `tools/make-app-icons.sh` en tire toutes
+les tailles, celle de la zone de notification comprise (`--check` vérifie
+qu'elles sont à jour).

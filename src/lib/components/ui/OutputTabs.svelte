@@ -44,9 +44,9 @@
   }
 
   .tab[aria-selected="true"] {
-    border-color: var(--color-panel-line);
-    background: var(--color-panel-soft);
-    color: var(--color-panel);
+    border-color: var(--color-heading);
+    background: var(--color-surface-raised);
+    color: var(--color-heading);
   }
 
   .tab__text {

@@ -23,9 +23,9 @@
   }
 
   .callout--info {
-    --line: var(--color-pulse-line);
-    --soft: var(--color-pulse-soft);
-    --accent: var(--color-pulse);
+    --line: var(--color-border-input);
+    --soft: var(--color-surface);
+    --accent: var(--color-heading);
   }
 
   .callout--success {
@@ -50,7 +50,7 @@
     display: block;
     margin-bottom: var(--space-1);
     color: var(--accent);
-    font-weight: 600;
+    font-weight: 700;
   }
 
   .callout__body {

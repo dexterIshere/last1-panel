@@ -36,9 +36,9 @@
     display: grid;
     gap: var(--space-2);
     padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--color-panel-line);
+    border: 1px solid var(--color-border-input);
     border-radius: var(--radius-md);
-    background: var(--color-panel-soft);
+    background: var(--color-surface);
   }
 
   .news__head {
@@ -52,7 +52,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    color: var(--color-panel);
+    color: var(--color-heading);
   }
 
   .news__close {

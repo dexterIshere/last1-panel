@@ -75,13 +75,13 @@
 
   .line {
     fill: none;
-    stroke: var(--color-pulse);
+    stroke: var(--color-heading);
     stroke-width: 2;
   }
 
   circle {
     fill: var(--color-bg);
-    stroke: var(--color-pulse);
+    stroke: var(--color-heading);
     stroke-width: 2;
   }
 

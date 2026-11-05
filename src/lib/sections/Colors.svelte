@@ -324,6 +324,7 @@
 </script>
 
 <SectionHeader
+  pill
   title={t("Couleurs de l'écran", "Screen colors")}
   lead={t(
     app.amd
@@ -642,8 +643,8 @@
   }
 
   .profile--current {
-    border-color: var(--color-panel-line);
-    background: var(--color-panel-soft);
+    border-color: var(--color-heading);
+    background: var(--color-surface-raised);
   }
 
   .profile__text {
@@ -690,9 +691,9 @@
     align-items: center;
     gap: 2px;
     padding: 2px 4px 2px var(--space-2);
-    border: 1px solid var(--color-panel-line);
-    border-radius: 999px;
-    background: var(--color-panel-soft);
+    border: 1px solid var(--color-border-input);
+    border-radius: var(--radius-pill);
+    background: var(--color-surface-raised);
     font-size: var(--text-sm);
   }
 
@@ -708,7 +709,7 @@
     height: 1.25rem;
     padding: 0;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: transparent;
     color: inherit;
     cursor: pointer;

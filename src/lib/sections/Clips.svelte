@@ -233,10 +233,10 @@
     width: 2.25rem;
     height: 2.25rem;
     flex: none;
-    border: 1px solid var(--color-panel-line);
-    border-radius: 50%;
-    background: var(--color-panel-soft);
-    color: var(--color-panel);
+    border: 1px solid var(--color-border-input);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-raised);
+    color: var(--color-heading);
     cursor: pointer;
   }
 

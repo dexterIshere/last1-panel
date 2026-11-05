@@ -539,7 +539,7 @@
     padding: 0;
     border: 0;
     background: none;
-    color: var(--color-panel);
+    color: var(--color-link);
     font: inherit;
     text-decoration: underline;
     cursor: pointer;
@@ -622,8 +622,8 @@
   }
 
   .item[aria-current="true"] {
-    border-color: var(--color-panel-line);
-    background: var(--color-panel-soft);
+    border-color: var(--color-heading);
+    background: var(--color-surface-raised);
   }
 
   .item__name {
@@ -689,7 +689,7 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     background: var(--color-bg);
-    color: var(--color-volt);
+    color: var(--color-heading);
     user-select: all;
   }
 </style>

@@ -1,59 +1,104 @@
 /*
- * Last1 Panel : direction artistique « Signal » de last1.fun (docs/DA.md du
- * dépôt go-to-linux). Fond noir bleuté, Volt pour l'action et la réussite,
- * Pulse pour l'information, turquoise comme couleur de repère du logiciel.
+ * Last1 Panel : direction artistique « Signal » v2 (docs/DA.md du dépôt
+ * go-to-linux), la même que last1.fun et l'application go-to-linux. Noir
+ * neutre, Volt pour l'action et les aplats, blanc pour les titres, les liens
+ * et le focus, turquoise comme repère du logiciel (jamais une action ni la
+ * navigation). Les jetons partagés ont les mêmes noms et les mêmes valeurs
+ * que go-to-linux ; aucune couleur en dur hors de :root (src-tauri/tests/design.rs).
  */
 
 @font-face {
-  font-family: "Space Grotesk";
-  src: url("/space-grotesk.woff2") format("woff2");
-  font-weight: 300 700;
-  font-display: swap;
+  font-family: "Archivo";
+  src: url("/archivo-900.woff2") format("woff2");
+  font-weight: 900;
+  font-display: block;
 }
 
 :root {
   color-scheme: dark;
 
-  --color-bg: #0a0c10;
-  --color-sidebar: #0d1015;
-  --color-surface: #12151b;
-  --color-surface-raised: #191d25;
-  --color-surface-hover: #1f242e;
-  --color-border: #262b35;
-  --color-border-strong: #343b48;
-  --color-border-input: #646d80;
-  --color-text: #eceff4;
-  --color-text-muted: #a3acba;
-  --color-text-faint: #6f788a;
-  --color-volt: #c5f82a;
-  --color-volt-hover: #d6ff5e;
-  --color-on-volt: #0a0c10;
-  --color-pulse: #9b8cff;
-  --color-warning: #ffb547;
-  --color-danger: #ff6b6b;
-  --color-volt-soft: rgb(197 248 42 / 0.1);
-  --color-pulse-soft: rgb(155 140 255 / 0.12);
-  --color-warning-soft: rgb(255 181 71 / 0.1);
-  --color-danger-soft: rgb(255 107 107 / 0.1);
-  --color-volt-line: rgb(197 248 42 / 0.35);
-  --color-pulse-line: rgb(155 140 255 / 0.4);
-  --color-warning-line: rgb(255 181 71 / 0.35);
-  --color-danger-line: rgb(255 107 107 / 0.4);
-  --color-glow: rgb(197 248 42 / 0.16);
+  /* Couleurs : noir neutre, gris neutres, Volt pour l'action et les aplats */
+  --color-bg: #0E0E0E;
+  --color-surface: #171717;
+  --color-surface-raised: #212121;
+  --color-border: #333333;
+  --color-border-input: #777777;
+  --color-heading: #FFFFFF;
+  --color-text: #D9D9D9;
+  --color-text-muted: #A3A3A3;
+  --color-volt: #D9F56F;
+  --color-volt-hover: #E6FA94;
+  --color-on-volt: #0E0E0E;
+  --color-link: #FFFFFF;
+  --color-focus: #FFFFFF;
+  --color-pill: #FFFFFF;
+  --color-warning: #FFB547;
+  --color-danger: #FF6B6B;
+  /* Fonds et contours des messages : aplats opaques (10 % et 40 % sur le fond) */
+  --color-volt-soft: #222518;
+  --color-volt-line: #5F6A35;
+  --color-warning-soft: #261F14;
+  --color-warning-line: #6E5125;
+  --color-danger-soft: #261717;
+  --color-danger-line: #6E3333;
 
-  /* Repère de Last1 Panel (pictogramme, onglets actifs), jamais pour une action. */
-  --color-panel: #3dd6c6;
-  --color-panel-soft: rgb(61 214 198 / 0.12);
-  --color-panel-line: rgb(61 214 198 / 0.4);
-  /* Courbes des canaux (graphe des couleurs). */
-  --color-red: #ff7a7a;
-  --color-green: #6fdc8c;
-  --color-blue: #6aa8ff;
+  /* Repères des logiciels (pictogrammes, étiquettes ; jamais une action) */
+  --color-gtl: #B7A8FF;
+  --color-gtl-soft: #22202B;
+  --color-gtl-line: #524C6E;
+  --color-sf: #FFC145;
+  --color-sf-soft: #2B2315;
+  --color-sf-line: #6E5624;
+  --color-panel: #5CE6D6;
+  --color-panel-soft: #172826;
+  --color-panel-line: #2D645E;
 
-  --font-display: "Space Grotesk", system-ui, "Segoe UI", sans-serif;
+  /* Icônes et formes (SVG en masque : la couleur vient d'un jeton) */
+  --icon-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3 3 7-7' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='square'/%3E%3C/svg%3E");
+  --icon-check-on-volt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3 3 7-7' fill='none' stroke='%230E0E0E' stroke-width='2.4' stroke-linecap='square'/%3E%3C/svg%3E");
+  /* Pièces de coin du gabarit des pochettes (motion/pochettes) : bas-droite (grande), haut-gauche (petite). */
+  --shape-bands-corner: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 62 62'%3E%3Cpath d='M62 62 41 62 41 62 62 41 62 41zM38 62 18 62 18 62 30 50 50 50zM50 50 50 30 62 18 62 18 62 38zM57 20 57 10 62 5 62 5 62 15zM15 62 0 62 0 62 4.5 57.5 19.5 57.5z'/%3E%3C/svg%3E");
+  --shape-bands-corner-tl: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 39 39'%3E%3Cpath d='M0 0 13 0 13 0 0 13 0 13zM16 0 30 0 30 0 22 8 8 8zM8 8 8 22 0 30 0 30 0 16zM33 0 39 0 39 0 35.5 3.5 29.5 3.5z'/%3E%3C/svg%3E");
+
+  /* Typographie */
+  --font-display: "Archivo", system-ui, "Segoe UI", sans-serif;
   --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+  --weight-display: 900;
+  --leading-display: 0.9;
+  --leading-tight: 1.1;
+  --tracking-tight: -0.01em;
 
+  /* Espacements (multiples de 4 px) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  /* Formes : coins vifs, coupe à 45°, capsule pour la pastille et les badges */
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-pill: 999px;
+  --cut: 1rem;
+  /* Coins haut-gauche et bas-droit coupés à 45° (sens « / ») : aplats sans contour seulement. */
+  --shape-cut: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  --border: 1px solid var(--color-border);
+  --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-focus);
+  --focus-ring-on-volt: 0 0 0 2px var(--color-volt), 0 0 0 4px var(--color-on-volt);
+
+  /* Mouvement */
+  --duration-fast: 150ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Application seulement (gris neutres, comme go-to-linux) */
+  --color-sidebar: #121212;
+  --color-surface-hover: #2A2A2A;
+  --color-border-strong: #444444;
+  --color-text-faint: #8A8A8A;
   --text-2xs: 0.6875rem;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
@@ -63,23 +108,16 @@
   --text-2xl: 1.625rem;
   --text-3xl: 2rem;
 
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.5rem;
-  --space-6: 2rem;
-  --space-7: 3rem;
-
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-pulse);
-  --shadow-glow: 0 0 0 1px var(--color-volt-soft), 0 12px 48px var(--color-glow);
-  --shadow-panel: 0 1px 0 rgb(255 255 255 / 0.03) inset;
-
-  --duration-fast: 150ms;
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Last1 Panel seulement */
+  /* Fond derrière une fenêtre ouverte (aplat opaque à 85 %, sans flou). */
+  --color-scrim: rgb(14 14 14 / 0.85);
+  /* Données : courbes des canaux (graphe des couleurs), courbes des parties
+     (mêmes valeurs que --color-chart-* du site). */
+  --color-red: #FF7A7A;
+  --color-green: #6FDC8C;
+  --color-blue: #6AA8FF;
+  --color-chart-fps: #5CE6D6;
+  --color-chart-low: #B7A8FF;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -115,10 +153,11 @@ h2,
 h3,
 h4 {
   margin: 0;
+  color: var(--color-heading);
   font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  font-weight: var(--weight-display);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
 }
 
 p {
@@ -133,6 +172,40 @@ button {
 :focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+
+/* Focus noir sur un aplat Volt. */
+.on-volt {
+  --focus-ring: var(--focus-ring-on-volt);
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+
+  .pixel-pill {
+    border: 1px solid CanvasText;
+  }
+}
+
+a {
+  color: var(--color-link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Grand titre d'un écran : capitales par le CSS, le texte reste en casse
+   normale pour les lecteurs d'écran. */
+.display-title {
+  font-size: var(--text-3xl);
+  line-height: var(--leading-display);
+  text-transform: uppercase;
+}
+
+.nowrap {
+  white-space: nowrap;
 }
 
 .mono {
@@ -155,7 +228,7 @@ button {
   border-radius: var(--radius-md);
   background: var(--color-surface-raised);
   color: var(--color-text);
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
   transition:
@@ -232,22 +305,28 @@ button {
   gap: var(--space-1);
   padding: 0.125rem var(--space-2);
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   color: var(--color-text-muted);
-  font: 600 var(--text-xs) / 1.5 var(--font-body);
+  font: 700 var(--text-xs) / 1.5 var(--font-body);
   white-space: nowrap;
 }
 
 .badge--success {
-  border-color: var(--color-volt-line);
-  background: var(--color-volt-soft);
-  color: var(--color-volt);
+  border-color: var(--color-volt);
+  background: var(--color-volt);
+  color: var(--color-on-volt);
 }
 
 .badge--info {
-  border-color: var(--color-pulse-line);
-  background: var(--color-pulse-soft);
-  color: var(--color-pulse);
+  border-color: var(--color-border-input);
+  color: var(--color-heading);
+}
+
+/* Étiquette du repère de Last1 Panel (aplat turquoise, texte noir). */
+.badge--panel {
+  border-color: var(--color-panel);
+  background: var(--color-panel);
+  color: var(--color-on-volt);
 }
 
 .badge--warning {
@@ -267,7 +346,6 @@ button {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
-  box-shadow: var(--shadow-panel);
 }
 
 /* Libellé d'une valeur : petit texte secondaire, en minuscules ; la chasse
@@ -285,7 +363,7 @@ button {
 
 ::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-border-strong) padding-box;
 }
 
@@ -336,15 +414,21 @@ input[type="text"] {
   user-select: text;
 }
 
+/* Cases et boutons radio du système, cochés en Volt. */
+input[type="radio"],
+input[type="checkbox"] {
+  accent-color: var(--color-volt);
+}
+
 select:disabled,
 input:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
-/* Curseurs : piste fine, partie remplie en Pulse, bouton clair. */
+/* Curseurs : piste fine dessinée par Slider.svelte (partie remplie en blanc,
+   sans dégradé), bouton carré blanc. */
 input[type="range"] {
-  --fill: 50%;
   width: 100%;
   height: 1.25rem;
   margin: 0;
@@ -355,8 +439,7 @@ input[type="range"] {
 
 input[type="range"]::-webkit-slider-runnable-track {
   height: 4px;
-  border-radius: 999px;
-  background: linear-gradient(to right, var(--color-pulse) var(--fill), var(--color-border-strong) var(--fill));
+  background: transparent;
 }
 
 input[type="range"]::-webkit-slider-thumb {
@@ -364,10 +447,9 @@ input[type="range"]::-webkit-slider-thumb {
   height: 1rem;
   margin-top: calc(2px - 0.5rem);
   border: 2px solid var(--color-bg);
-  border-radius: 50%;
-  background: var(--color-text);
+  border-radius: var(--radius-sm);
+  background: var(--color-heading);
   appearance: none;
-  box-shadow: 0 0 0 1px var(--color-border-input);
 }
 
 input[type="range"]:focus-visible {
@@ -396,7 +478,7 @@ input[type="range"]:disabled {
   min-height: 2rem;
   padding: 0 var(--space-3);
   border: 0;
-  border-radius: calc(var(--radius-md) - 3px);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-muted);
   font-weight: 600;
@@ -404,9 +486,10 @@ input[type="range"]:disabled {
 }
 
 .segmented button[aria-pressed="true"] {
+  outline: 1px solid var(--color-heading);
+  outline-offset: -1px;
   background: var(--color-surface-raised);
-  color: var(--color-text);
-  box-shadow: 0 0 0 1px var(--color-border-strong);
+  color: var(--color-heading);
 }
 
 .segmented button:disabled {
@@ -422,7 +505,7 @@ input[type="range"]:disabled {
   width: 2.5rem;
   height: 1.375rem;
   border: 1px solid var(--color-border-input);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface-raised);
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-out);
@@ -435,22 +518,44 @@ input[type="range"]:disabled {
   left: 2px;
   width: 1rem;
   height: 1rem;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   background: var(--color-text-muted);
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
 .switch[aria-checked="true"] {
   border-color: var(--color-volt);
-  background: var(--color-volt-soft);
+  background: var(--color-volt);
 }
 
 .switch[aria-checked="true"]::after {
-  background: var(--color-volt);
+  background: var(--color-on-volt);
   transform: translateX(1.125rem);
 }
 
 .switch:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+/* Pastille pixel : capsule blanche, icônes noires nettes (docs/DA.md). Une
+   seule, sur le titre du premier écran ; toujours aria-hidden. */
+.pixel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--pixel-size, 3px) * 2);
+  padding: calc(var(--pixel-size, 3px) * 2) calc(var(--pixel-size, 3px) * 4);
+  border-radius: var(--radius-pill);
+  background: var(--color-pill);
+  color: var(--color-on-volt);
+  line-height: 0;
+  vertical-align: middle;
+}
+
+.pixel {
+  display: block;
+  width: calc(var(--pixel-size, 3px) * 9);
+  height: calc(var(--pixel-size, 3px) * 9);
+  fill: currentColor;
+  shape-rendering: crispEdges;
 }

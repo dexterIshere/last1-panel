@@ -163,7 +163,8 @@
 
   .brand__name {
     display: block;
-    font: 600 var(--text-lg) / 1.2 var(--font-display);
+    color: var(--color-heading);
+    font: var(--weight-display) var(--text-lg) / 1.2 var(--font-display);
     letter-spacing: -0.01em;
   }
 
@@ -192,7 +193,7 @@
 
   .lang__option[aria-pressed="true"] {
     background: var(--color-surface-raised);
-    color: var(--color-text);
+    color: var(--color-heading);
   }
 
   .nav {
@@ -238,15 +239,20 @@
     color: var(--color-text-muted);
   }
 
+  /* Page en cours et groupe ouvert : en blanc (le turquoise reste à la marque). */
   .nav__item[aria-current="page"] .nav__icon {
-    border-color: var(--color-panel-line);
-    background: var(--color-panel-soft);
-    color: var(--color-panel);
+    border-color: var(--color-heading);
+    background: var(--color-surface-raised);
+    color: var(--color-heading);
+  }
+
+  .nav__item[aria-current="page"] .nav__title {
+    color: var(--color-heading);
   }
 
   .nav__item--group .nav__icon {
-    border-color: var(--color-panel-line);
-    color: var(--color-panel);
+    border-color: var(--color-border-input);
+    color: var(--color-text);
   }
 
   .nav--sub {
@@ -307,7 +313,7 @@
 
   .pc__role {
     color: var(--color-text-muted);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
 
   .pc__driver {

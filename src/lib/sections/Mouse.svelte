@@ -266,8 +266,8 @@
   }
 
   .stage--active {
-    border-color: var(--color-panel-line);
-    background: var(--color-panel-soft);
+    border-color: var(--color-heading);
+    background: var(--color-surface-raised);
   }
 
   .stage__name {
