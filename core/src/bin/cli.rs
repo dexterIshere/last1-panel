@@ -410,6 +410,7 @@ fn watch() -> ExitCode {
     }
     std::thread::spawn(keep_hyprland_config);
     std::thread::spawn(share_reports);
+    std::thread::spawn(ask_sharing);
     std::thread::spawn(watch_updates);
     std::thread::spawn(watch_shaders);
     std::thread::spawn(watch_own_update);
@@ -1069,6 +1070,41 @@ fn watch_shaders() {
                 ),
             ));
         }
+    }
+}
+
+/// L'accord pour les rapports, demandé par une bulle dix minutes après la
+/// connexion, sans attendre que le joueur ouvre la fenêtre (sur un PC
+/// go-to-linux, il ne l'ouvre presque jamais) : « Répondre » ouvre la fenêtre
+/// sur la question. Une fois par jour au plus, jusqu'à la réponse ; jamais
+/// chez un testeur ou un admin, ni pendant un jeu.
+fn ask_sharing() {
+    use last1_panel_core::games::framegen;
+    std::thread::sleep(Duration::from_secs(600));
+    let tester = framegen::tester(std::path::Path::new("/var/lib/gtl"), &last1_panel_core::paths::config_dir());
+    if tester || Settings::load().share_reports.is_some() {
+        return;
+    }
+    let stamp = last1_panel_core::paths::cache_dir().join("sharing-asked");
+    let today = update::now() / 86_400;
+    let last: i64 = std::fs::read_to_string(&stamp).ok().and_then(|s| s.trim().parse().ok()).unwrap_or(-1);
+    if last == today {
+        return;
+    }
+    wait_for_no_game();
+    let _ = std::fs::create_dir_all(last1_panel_core::paths::cache_dir());
+    let _ = std::fs::write(&stamp, today.to_string());
+    let message = t(
+        "Aider à améliorer vos jeux ? Last1 Panel vous demande si vous voulez partager vos rapports de performances avec last1.fun.",
+        "Help improve your games? Last1 Panel asks whether you want to share your performance reports with last1.fun.",
+    );
+    if desktop::ask(&message, &t("Répondre", "Answer")) && Settings::load().share_reports.is_none() {
+        let window = if update::is_package() {
+            std::path::PathBuf::from(last1_panel_core::paths::SYSTEM_APP)
+        } else {
+            last1_panel_core::paths::user_appimage()
+        };
+        desktop::open_window(&window);
     }
 }
 

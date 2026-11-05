@@ -111,16 +111,38 @@ pub fn notify(message: &str) {
 
 /// Notification avec un bouton, qui reste jusqu'à ce que l'utilisateur
 /// réponde : vrai s'il a cliqué sur le bouton (notify-send attend la
-/// réponse) ; la fermer ne fait rien.
+/// réponse) ; la fermer ne fait rien. Le bouton est aussi l'action
+/// « default » : mako (bureau Signal) n'affiche pas de boutons, un clic sur
+/// la bulle n'appelle que celle-là ; Plasma la donne au clic sur la bulle.
 pub fn ask(message: &str, button: &str) -> bool {
     Command::new("notify-send")
-        .args(["--app-name=Last1 Panel", "--icon=last1-panel", "--urgency=critical", &format!("--action=yes={button}")])
+        .args([
+            "--app-name=Last1 Panel",
+            "--icon=last1-panel",
+            "--urgency=critical",
+            &format!("--action=yes={button}"),
+            &format!("--action=default={button}"),
+        ])
         .args(["Last1 Panel", message])
         .envs(session_env())
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
-        .is_ok_and(|output| String::from_utf8_lossy(&output.stdout).trim() == "yes")
+        .is_ok_and(|output| clicked(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// Réponse de notify-send : le bouton, ou un clic sur la bulle.
+fn clicked(stdout: &str) -> bool {
+    matches!(stdout.trim(), "yes" | "default")
+}
+
+/// Ouvre la fenêtre de Last1 Panel (`program`), hors du service.
+pub fn open_window(program: &std::path::Path) {
+    let mut command = Command::new(program);
+    command.envs(session_env()).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    crate::exec::without_appimage_env(&mut command);
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let _ = command.spawn();
 }
 
 #[cfg(test)]
@@ -131,6 +153,12 @@ mod tests {
     fn desktop(vars: &[(&str, &str)]) -> Desktop {
         let vars: HashMap<String, String> = vars.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
         Desktop::from_env(|name| vars.get(name).cloned())
+    }
+
+    #[test]
+    fn button_or_click_on_the_bubble() {
+        assert!(clicked("yes\n") && clicked("default\n"));
+        assert!(!clicked("") && !clicked("2\n"));
     }
 
     #[test]
