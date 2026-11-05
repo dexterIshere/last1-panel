@@ -144,7 +144,7 @@
 </script>
 
 <SectionHeader
-  title={t("Écran", "Screen")}
+  title={t("Vos écrans", "Your screens")}
   lead={t(
     "Définition, fréquence, G-SYNC ou FreeSync, HDR et profondeur de couleur, écran par écran. Un changement se confirme : sans réponse, l'écran revient à ses réglages d'avant.",
     "Resolution, refresh rate, G-SYNC or FreeSync, HDR and color depth, screen by screen. Each change must be confirmed: without an answer, the screen goes back to its previous settings.",
@@ -167,7 +167,7 @@
 {#if loading}
   <p class="muted"><Spinner /> {t("Lecture des écrans…", "Reading screens…")}</p>
 {:else if outputs.length === 0}
-  <Callout kind="warning" title={t("Aucun écran", "No screen")}>{t("Le bureau n'a donné aucun écran.", "The desktop reported no screen.")}</Callout>
+  <Callout kind="warning" title={t("Aucun écran à régler", "No screen to set")}>{t("Le bureau n'a donné aucun écran.", "The desktop reported no screen.")}</Callout>
 {:else}
   <OutputTabs {outputs} bind:selected />
 

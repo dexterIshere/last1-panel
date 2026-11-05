@@ -73,7 +73,7 @@
 </script>
 
 <SectionHeader
-  title={t("Clips", "Clips")}
+  title={t("Vos clips de jeu", "Your game clips")}
   lead={t(
     "Comme Medal : pendant un jeu, F8 enregistre la dernière minute, F9 lance ou arrête une vidéo de la partie. La carte graphique encode elle-même : presque rien en images par seconde.",
     "Like Medal: during a game, F8 saves the last minute, F9 starts or stops a video of the game. The graphics card encodes it itself: next to nothing in frames per second.",
@@ -86,7 +86,7 @@
   {/snippet}
 </SectionHeader>
 
-{#if error}<Callout kind="danger" title={t("Refusé", "Refused")}>{error}</Callout>{/if}
+{#if error}<Callout kind="danger" title={t("Réglage refusé", "Setting refused")}>{error}</Callout>{/if}
 
 {#if loading}
   <p class="muted"><Spinner /> {t("Lecture des clips…", "Reading clips…")}</p>

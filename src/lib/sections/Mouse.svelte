@@ -94,7 +94,7 @@
 </script>
 
 <SectionHeader
-  title={t("Souris", "Mouse")}
+  title={t("Votre souris", "Your mouse")}
   lead={t(
     "Accélération et sensibilité pour toutes les souris, gardées et remises à chaque connexion. Sur une souris de jeu, les paliers de DPI et la fréquence s'enregistrent dans la souris elle-même, comme avec G HUB.",
     "Acceleration and sensitivity for every mouse, kept and set again at each login. On a gaming mouse, DPI stages and polling rate are saved in the mouse itself, like with G HUB.",

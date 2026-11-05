@@ -185,7 +185,7 @@
 </script>
 
 <SectionHeader
-  title={t("Réglages 3D des jeux", "Game 3D settings")}
+  title={t("Réglages 3D / de vos jeux", "Your games' / 3D settings")}
   lead={t(
     app.amd
       ? "Les réglages graphiques du logiciel AMD (Adrenalin) : pour tous les jeux, ou jeu par jeu. Ils s'appliquent au lancement, par l'option Steam de Last1 Panel."

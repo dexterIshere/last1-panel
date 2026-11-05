@@ -149,7 +149,7 @@
 </script>
 
 <SectionHeader
-  title={t("Carte graphique", "Graphics card")}
+  title={t("Votre carte graphique", "Your graphics card")}
   lead={t(
     "Limite de puissance, ventilateurs et fréquences, par le service LACT. Un réglage s'essaie : sans confirmation, la carte revient seule à ses réglages d'avant.",
     "Power limit, fans and clocks, through the LACT service. A setting is tried first: without confirmation, the card goes back to its previous settings on its own.",
@@ -169,7 +169,7 @@
 {#if loading}
   <p class="muted"><Spinner /> {t("Connexion au service LACT…", "Connecting to the LACT service…")}</p>
 {:else if unavailable}
-  <Callout kind="warning" title={t("Carte graphique non disponible", "Graphics card unavailable")}>
+  <Callout kind="warning" title={t("Carte graphique indisponible", "Graphics card unavailable")}>
     <p>{unavailable}</p>
     {#if app.system?.tools.lact && !app.system.tools.lactRunning}
       <p class="action">

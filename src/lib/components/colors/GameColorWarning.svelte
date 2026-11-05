@@ -9,7 +9,7 @@
 </script>
 
 <WarningDialog
-  title={t("Couleurs dans un jeu : règles des jeux en ligne", "Colors in a game: online games' rules")}
+  title={t("Couleurs en jeu : règles des jeux en ligne", "Colors in games: online games' rules")}
   confirmLabel={t("J'accepte le risque, activer", "I accept the risk, turn on")}
   {onconfirm}
   {oncancel}

@@ -1,23 +1,29 @@
-<!-- En-tête d'une page : grand titre (capitales par le CSS), phrase
-     d'explication, actions. `pill` : la pastille à trois cœurs, à la fin de
-     la première ligne du titre (premier écran seulement). -->
+<!-- En-tête d'une page : grand titre (capitales par le CSS ; « / » dans le
+     titre devient un retour à la ligne), phrase d'explication, actions.
+     `pill` : la pastille à trois cœurs, à la fin de la première ligne du
+     titre (premier écran seulement). -->
 <script lang="ts">
   import type { Snippet } from "svelte";
   import PixelPill from "$lib/components/ui/PixelPill.svelte";
 
   let { title, lead, actions, pill = false }: { title: string; lead: string; actions?: Snippet; pill?: boolean } = $props();
 
-  /** Le dernier mot reste avec la pastille. */
-  const split = $derived.by(() => {
-    const at = title.lastIndexOf(" ");
-    return at < 0 ? ["", title] : [title.slice(0, at + 1), title.slice(at + 1)];
+  /** Lignes du titre, coupées aux « / » (docs/refonte/textes-panel.md). */
+  const lines = $derived(title.split(" / "));
+  /** Le dernier mot de la première ligne reste avec la pastille. */
+  const first = $derived.by(() => {
+    const at = lines[0].lastIndexOf(" ");
+    return at < 0 ? ["", lines[0]] : [lines[0].slice(0, at + 1), lines[0].slice(at + 1)];
   });
 </script>
 
 <header class="head">
   <div class="head__text">
     <h1 class="display-title">
-      {#if pill}{split[0]}<span class="nowrap">{split[1]} <PixelPill /></span>{:else}{title}{/if}
+      {#each lines as line, index (index)}
+        {#if index > 0}<br />{/if}
+        {#if index === 0 && pill}{first[0]}<span class="nowrap">{first[1]} <PixelPill /></span>{:else}{line}{/if}
+      {/each}
     </h1>
     <p class="muted">{lead}</p>
   </div>
