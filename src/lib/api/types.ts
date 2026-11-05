@@ -298,8 +298,10 @@ export interface Sharing {
   /** Le joueur a répondu. */
   asked: boolean;
   enabled: boolean;
-  /** PC installé par go-to-linux : il envoie lui-même ses rapports. */
+  /** PC installé par go-to-linux : il envoie les rapports, d'après cette réponse. */
   goToLinux: boolean;
+  /** Testeur ou admin : rapports sans demander. */
+  tester: boolean;
 }
 
 /** Lien d'un jeu à un profil de couleurs. */

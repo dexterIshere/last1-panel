@@ -229,13 +229,16 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<()> {
 }
 
 /// Partage des rapports de performances (system/sharing.rs) : demandé une
-/// fois, hors go-to-linux (qui envoie lui-même les siens).
+/// fois à chaque joueur, sauf aux testeurs et admins (rapports sans demander).
+/// Sur un PC go-to-linux, c'est lui qui envoie, d'après cette réponse
+/// (`shareReports` de ~/.config/last1-panel/settings.json).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Sharing {
     asked: bool,
     enabled: bool,
     go_to_linux: bool,
+    tester: bool,
 }
 
 #[tauri::command]
@@ -246,6 +249,10 @@ pub async fn sharing() -> Result<Sharing> {
             asked: choice.is_some(),
             enabled: choice == Some(true),
             go_to_linux: Path::new("/var/lib/gtl").is_dir(),
+            tester: last1_panel_core::games::framegen::tester(
+                Path::new("/var/lib/gtl"),
+                &last1_panel_core::paths::config_dir(),
+            ),
         })
     })
     .await
@@ -258,7 +265,7 @@ pub async fn sharing() -> Result<Sharing> {
 pub async fn set_sharing(enabled: bool) -> Result<()> {
     blocking(move || {
         let was = Settings::update(&Settings::path(), |s| s.share_reports.replace(enabled))?;
-        if !enabled && was == Some(true) {
+        if !enabled && was == Some(true) && !Path::new("/var/lib/gtl").is_dir() {
             let _ = std::fs::remove_file(last1_panel_core::paths::cache_dir().join("sharing.json"));
             std::thread::spawn(|| {
                 let exec = SystemExec { timeout: Duration::from_secs(60), ..SystemExec::default() };
