@@ -500,6 +500,25 @@ pub struct GamesInfo {
     color_profiles: Vec<ColorProfile>,
     /// Couche Vulkan des couleurs des jeux installée (vkBasalt livré avec Last1 Panel).
     color_layer: bool,
+    /// Génération d'images de Last1 Panel : PC testeur seulement.
+    frame_gen: Option<FrameGenInfo>,
+}
+
+/// Génération d'images en essai : couche installée, dernière partie de chaque jeu.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrameGenInfo {
+    installed: bool,
+    last_games: Vec<last1_panel_core::games::framegen::LastGame>,
+}
+
+fn frame_gen_info() -> Option<FrameGenInfo> {
+    use last1_panel_core::games::framegen;
+    let data = last1_panel_core::paths::data_home();
+    framegen::tester(Path::new("/var/lib/gtl"), &last1_panel_core::paths::config_dir()).then(|| FrameGenInfo {
+        installed: framegen::installed(&data),
+        last_games: framegen::last_games(&framegen::log_dir(&data)),
+    })
 }
 
 #[tauri::command]
@@ -515,6 +534,7 @@ pub async fn games() -> Result<GamesInfo> {
             launch_option: format!("{} %command%", steam::wrapper()),
             color_profiles: settings.color_profiles,
             color_layer: last1_panel_core::paths::color_layer_installed(),
+            frame_gen: frame_gen_info(),
         })
     })
     .await

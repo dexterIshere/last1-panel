@@ -110,6 +110,7 @@ export function installMockBackend(): void {
     dlssLatest: null,
     dlssIndicator: null,
     smoothMotion: null,
+    frameGeneration: null,
     hdr: null,
     overlay: null,
     colorProfile: null,
@@ -375,6 +376,16 @@ export function installMockBackend(): void {
       launchOption: "$(command -v last1-panel-cli && echo run) %command%",
       colorProfiles: structuredClone(colorProfiles),
       colorLayer: params.get("vkbasalt") !== "absent",
+      // ?testeur=1 : PC testeur ; ?testeur=sans-couche : couche absente.
+      frameGen: params.get("testeur")
+        ? {
+            installed: params.get("testeur") !== "sans-couche",
+            lastGames: [
+              { game: "1091500", when: Math.floor(Date.now() / 1000) - 7200, loaded: true, presents: 182400, generated: 90120, heldBack: null, alert: null },
+              { game: "1245620", when: Math.floor(Date.now() / 1000) - 86400, loaded: true, presents: null, generated: null, heldBack: "swapchain 0x5: pass-through (surface capabilities unavailable)", alert: null },
+            ],
+          }
+        : null,
     }),
     color_profiles: () => ({ profiles: structuredClone(colorProfiles), tray }),
     save_color_profile: async (args) => {

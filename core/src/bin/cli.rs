@@ -227,26 +227,31 @@ fn run(command: &[String]) -> ExitCode {
         }
     }
     let mut env = plan.environment(|name| std::env::var(name).ok());
-    // Génération d'images : en essai chez les testeurs, sur tous leurs jeux,
-    // un journal par partie (résumé dans le diagnostic, donc les rapports).
+    // Génération d'images : en essai chez les testeurs, activée sauf réglage
+    // du jeu ou Smooth Motion, un journal par partie (résumé dans le
+    // diagnostic et la section Jeux).
     {
         use last1_panel_core::games::framegen;
         let data = last1_panel_core::paths::data_home();
-        if framegen::tester(std::path::Path::new("/var/lib/gtl"), &last1_panel_core::paths::config_dir())
-            && framegen::installed(&data)
-        {
+        let decision = framegen::decide(
+            &profile,
+            framegen::tester(std::path::Path::new("/var/lib/gtl"), &last1_panel_core::paths::config_dir()),
+            framegen::installed(&data),
+            framegen::smooth_motion(&env, |name| std::env::var(name).ok()),
+        );
+        let log = decision.ok().and_then(|()| {
             let game = std::env::var("SteamAppId").ok().filter(|id| !id.is_empty()).unwrap_or_else(|| {
                 std::path::Path::new(program).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
             });
-            if let Some(log) = framegen::new_log(&framegen::log_dir(&data), &game, update::now()) {
-                env.retain(|(name, _)| !name.starts_with("LAST1_FG_") && name != framegen::LOADER_ENABLE);
-                env.extend(framegen::environment(
-                    |name| std::env::var(name).ok(),
-                    &log,
-                    framegen::under_gamescope(command),
-                ));
-            }
-        }
+            framegen::new_log(&framegen::log_dir(&data), &game, update::now())
+        });
+        framegen::launch_environment(
+            &mut env,
+            |name| std::env::var(name).ok(),
+            decision,
+            log.as_deref(),
+            framegen::under_gamescope(command),
+        );
     }
     log_launch(command, &env, &plan.wrappers);
 

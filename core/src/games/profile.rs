@@ -17,6 +17,9 @@ pub struct GameProfile {
     pub dlss_indicator: Option<bool>,
     /// Images générées par le pilote (NVIDIA RTX 40 et plus récentes).
     pub smooth_motion: Option<bool>,
+    /// Génération d'images de Last1 Panel (testeurs, couche installée).
+    /// Absent : activée ; jamais avec Smooth Motion.
+    pub frame_generation: Option<bool>,
     /// HDR dans le jeu (écran en HDR).
     pub hdr: Option<bool>,
     /// Performances à l'écran (MangoHud).
@@ -58,6 +61,7 @@ impl GameProfile {
             dlss_latest: self.dlss_latest.or(global.dlss_latest),
             dlss_indicator: self.dlss_indicator.or(global.dlss_indicator),
             smooth_motion: self.smooth_motion.or(global.smooth_motion),
+            frame_generation: self.frame_generation.or(global.frame_generation),
             hdr: self.hdr.or(global.hdr),
             overlay: self.overlay.or(global.overlay),
             color_profile: self.color_profile.clone().or_else(|| global.color_profile.clone()),
@@ -85,5 +89,21 @@ mod tests {
         assert_eq!(merged.overlay, Some(false));
         assert_eq!(merged.low_latency, LowLatency::Ultra);
         assert_eq!(GameProfile::default().merged_over(&global), global);
+    }
+
+    #[test]
+    fn frame_generation_saved_and_read_back() {
+        let game = GameProfile { frame_generation: Some(false), ..Default::default() };
+        let text = serde_json::to_string(&game).unwrap();
+        assert!(text.contains("\"frameGeneration\":false"), "{text}");
+        assert_eq!(serde_json::from_str::<GameProfile>(&text).unwrap(), game);
+        // Profil d'avant ce réglage : absent, donc activée par défaut.
+        let old: GameProfile = serde_json::from_str(r#"{"smoothMotion":true}"#).unwrap();
+        assert_eq!(old.frame_generation, None);
+        // Le jeu gagne sur « Tous les jeux ».
+        let global = GameProfile { frame_generation: Some(false), ..Default::default() };
+        let on = GameProfile { frame_generation: Some(true), ..Default::default() };
+        assert_eq!(on.merged_over(&global).frame_generation, Some(true));
+        assert_eq!(GameProfile::default().merged_over(&global).frame_generation, Some(false));
     }
 }

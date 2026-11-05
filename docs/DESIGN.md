@@ -62,6 +62,7 @@ posée par l'utilisateur dans l'option de lancement n'est jamais remplacée.
 | DLSS dernière version | `dlss-swapper` de CachyOS (sinon ses variables : `PROTON_ENABLE_NGX_UPDATER`, `DXVK_NVAPI_DRS_NGX_DLSS_*`) | — | |
 | Indicateur DLSS | `PROTON_DLSS_INDICATOR=1` | — | Proton CachyOS. |
 | Smooth Motion | `NVPRESENT_ENABLE_SMOOTH_MOTION=1` | idem (Vulkan) | RTX 40 et plus récentes. |
+| Génération d'images (testeurs) | `VK_LOADER_LAYERS_ENABLE` + `VK_LAYER_LAST1_framegen`, `LAST1_FG_*` (journal par partie) | idem (Vulkan) | Activée par défaut chez les testeurs, couche installée ; « Désactivée » dans le jeu : aucune variable, notre couche retirée d'un `VK_LOADER_LAYERS_ENABLE` du joueur. Jamais avec Smooth Motion (nôtre ou du joueur). Dernière partie de chaque jeu montrée dans la section Jeux (`framegen::last_games`). |
 | HDR | `PROTON_ENABLE_WAYLAND=1`, `DXVK_HDR=1` ; désactivé : `DXVK_NO_HDR=1` | — | Proton CachyOS active le HDR seul quand c'est possible. |
 | Performances à l'écran | `mangohud` (configuration de l'utilisateur gardée : `read_cfg`) | idem | |
 | Mode performance | Automatique dans chaque jeu, sans réglage : `systemd-inhibit --what=idle powerprofilesctl launch -p performance` (comme `game-performance` de CachyOS, sans bloquer l'arrêt du PC), sinon `gamemoderun` | idem | GameMode ne change le gouverneur que pour un membre du groupe `gamemode` (sa règle polkit, `allow_active` à `no`) : le diagnostic le vérifie dans `/etc/group`, « Activer GameMode » l'installe s'il manque et y ajoute le compte (`PKEXEC_UID`). |

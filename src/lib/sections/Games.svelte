@@ -1,13 +1,13 @@
 <!-- Jeux : « Paramètres 3D » globaux et par jeu, appliqués au lancement par last1-panel-cli. -->
 <script lang="ts">
   import { api, errorMessage } from "$lib/api/ipc";
-  import type { GameProfile, GamesInfo, LowLatency, Output, Toggle } from "$lib/api/types";
+  import type { FrameGenGame, GameProfile, GamesInfo, LowLatency, Output, Toggle } from "$lib/api/types";
   import SectionHeader from "$lib/components/layout/SectionHeader.svelte";
   import Callout from "$lib/components/ui/Callout.svelte";
   import Spinner from "$lib/components/ui/Spinner.svelte";
   import WarningDialog from "$lib/components/ui/WarningDialog.svelte";
   import GameColorWarning from "$lib/components/colors/GameColorWarning.svelte";
-  import { t } from "$lib/i18n.svelte";
+  import { locale, t } from "$lib/i18n.svelte";
   import { app } from "$lib/state/app.svelte";
   import { Check, Copy, Search } from "@lucide/svelte";
 
@@ -19,6 +19,7 @@
     dlssLatest: null,
     dlssIndicator: null,
     smoothMotion: null,
+    frameGeneration: null,
     hdr: null,
     overlay: null,
     colorProfile: null,
@@ -66,6 +67,31 @@
 
   /** HDR du jeu tel qu'il partira : « Activé » ici ou pour tous les jeux. */
   const hdrWanted = $derived((selected === null ? profile.hdr : (profile.hdr ?? info?.settings.global.hdr ?? null)) === true);
+
+  /** Génération d'images de Last1 Panel (testeurs) : activée sauf réglage contraire. */
+  const frameGen = $derived(info?.frameGen ?? null);
+  const fgWanted = $derived((selected === null ? profile.frameGeneration : (profile.frameGeneration ?? info?.settings.global.frameGeneration ?? null)) !== false);
+  /** Smooth Motion génère déjà les images : jamais deux générateurs. */
+  const smoothOn = $derived(nvidia && (selected === null ? profile.smoothMotion : (profile.smoothMotion ?? info?.settings.global.smoothMotion ?? null)) === true);
+  /** Dernière partie avec elle : ce jeu, ou la plus récente de tous. */
+  const fgLast = $derived.by((): FrameGenGame | null => {
+    const games = frameGen?.lastGames ?? [];
+    if (selected === null) return games.reduce<FrameGenGame | null>((last, g) => (last === null || g.when > last.when ? g : last), null);
+    return games.find((g) => g.game === String(selected)) ?? null;
+  });
+  const count = (n: number) => n.toLocaleString(locale());
+
+  /** La dernière partie en une phrase : images ajoutées, ou pourquoi elle est restée en retrait. */
+  function fgSummary(last: FrameGenGame): string {
+    const name = selected === null ? (info?.games.find((g) => String(g.appId) === last.game)?.name ?? last.game) : null;
+    const date = new Date(last.when * 1000).toLocaleString(locale(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const head = name ? t(`Dernière partie (${name}, ${date}) : `, `Last game (${name}, ${date}): `) : t(`Dernière partie (${date}) : `, `Last game (${date}): `);
+    if (!last.loaded) return head + t("elle ne s'est pas chargée.", "it did not load.");
+    if (last.generated !== null && last.generated > 0 && last.presents !== null)
+      return head + t(`${count(last.generated)} images ajoutées, ${count(last.presents)} affichées en tout.`, `${count(last.generated)} frames added, ${count(last.presents)} shown in all.`);
+    if (last.heldBack || last.generated === 0) return head + t("restée en retrait, aucune image ajoutée.", "held back, no frame added.");
+    return head + t("partie en cours, ou arrêtée net.", "game still running, or stopped abruptly.");
+  }
 
   async function load() {
     loading = true;
@@ -338,6 +364,43 @@
           </label>
         {/if}
 
+        {#if frameGen}
+          <label class="field">
+            <span class="field__label">{t("Génération d'images", "Frame generation")} <span class="badge badge--info">{t("Essai", "Test")}</span></span>
+            <select
+              value={selected === null ? (profile.frameGeneration === false ? "off" : "inherit") : boolValue(profile.frameGeneration)}
+              disabled={!frameGen.installed}
+              onchange={(e) => edit("frameGeneration", fromBool(e.currentTarget.value))}
+            >
+              {#if selected === null}
+                <option value="inherit">{t("Activée", "On")}</option>
+              {:else}
+                <option value="inherit">{inherit}</option>
+                <option value="on">{t("Activée", "On")}</option>
+              {/if}
+              <option value="off">{t("Désactivée", "Off")}</option>
+            </select>
+            <span class="field__hint">
+              {#if !frameGen.installed}
+                {t("Absente de cette installation : réinstallez Last1 Panel.", "Missing from this installation: reinstall Last1 Panel.")}
+              {:else if fgWanted && smoothOn}
+                <strong class="risk">{t("Smooth Motion est activé : il ajoute déjà des images, celle de Last1 Panel ne s'applique pas.", "Smooth Motion is on: it already adds frames, Last1 Panel's does not apply.")}</strong>
+              {:else if fgWanted}
+                {t("Images ajoutées entre celles du jeu pour plus de fluidité, par Last1 Panel.", "Frames added between the game's for smoother motion, by Last1 Panel.")}
+                <strong class="risk">{t("Jeux en ligne : ajout au jeu parfois interdit, à vos risques.", "Online games: additions to the game are sometimes forbidden, at your own risk.")}</strong>
+              {:else}
+                {t("Le jeu part sans elle.", "The game starts without it.")}
+              {/if}
+              {#if frameGen.installed}
+                <span class="fg-last">
+                  {fgLast ? fgSummary(fgLast) : t("Pas encore de partie avec elle.", "No game played with it yet.")}
+                  {#if fgLast?.heldBack}<code class="mono fg-why">{fgLast.heldBack}</code>{/if}
+                </span>
+              {/if}
+            </span>
+          </label>
+        {/if}
+
         <label class="field">
           <span class="field__label">HDR</span>
           <select value={boolValue(profile.hdr)} onchange={(e) => edit("hdr", fromBool(e.currentTarget.value))}>
@@ -486,6 +549,20 @@
     display: block;
     color: var(--color-warning);
     font-weight: 600;
+  }
+
+  .fg-last {
+    display: block;
+    margin-top: var(--space-1);
+    color: var(--color-text);
+  }
+
+  .fg-why {
+    display: block;
+    margin-top: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
   }
 
   .layout {

@@ -188,6 +188,8 @@ export interface GameProfile {
   dlssLatest: boolean | null;
   dlssIndicator: boolean | null;
   smoothMotion: boolean | null;
+  /** Génération d'images de Last1 Panel (testeurs) ; absent : activée. */
+  frameGeneration: boolean | null;
   hdr: boolean | null;
   overlay: boolean | null;
   /** Profil de couleurs (identifiant), dans la seule fenêtre du jeu. */
@@ -337,6 +339,32 @@ export interface GamesInfo {
   colorProfiles: ColorProfile[];
   /** Couche Vulkan des couleurs des jeux installée. */
   colorLayer: boolean;
+  /** Génération d'images de Last1 Panel : PC testeur seulement. */
+  frameGen: FrameGenInfo | null;
+}
+
+/** Génération d'images en essai chez les testeurs. */
+export interface FrameGenInfo {
+  /** Couche Vulkan installée (paquet ou AppImage). */
+  installed: boolean;
+  /** Dernière partie de chaque jeu. */
+  lastGames: FrameGenGame[];
+}
+
+/** Ce que la couche a fait pendant une partie. */
+export interface FrameGenGame {
+  /** Numéro Steam du jeu (ou nom du programme). */
+  game: string;
+  /** Début de la partie (secondes depuis 1970). */
+  when: number;
+  /** La couche s'est chargée. */
+  loaded: boolean;
+  /** Partie terminée : images affichées en tout, dont ajoutées. */
+  presents: number | null;
+  generated: number | null;
+  /** Pourquoi elle est restée en retrait (texte de la couche, en anglais). */
+  heldBack: string | null;
+  alert: string | null;
 }
 
 /** Pointeur réglé par le bureau (libinput) : accélération, sensibilité. */
