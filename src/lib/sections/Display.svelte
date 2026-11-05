@@ -146,7 +146,7 @@
 <SectionHeader
   title={t("Vos écrans", "Your screens")}
   lead={t(
-    "Définition, fréquence, G-SYNC ou FreeSync, HDR et profondeur de couleur, écran par écran. Un changement se confirme : sans réponse, l'écran revient à ses réglages d'avant.",
+    "Définition, fréquence, G-SYNC ou FreeSync, HDR et profondeur de couleur, écran par écran. Un changement se confirme : sans réponse, l'écran revient à ses réglages d'avant.",
     "Resolution, refresh rate, G-SYNC or FreeSync, HDR and color depth, screen by screen. Each change must be confirmed: without an answer, the screen goes back to its previous settings.",
   )}
 >
@@ -223,7 +223,7 @@
             <span class="field__hint">
               {draft.vrr === "always"
                 ? t("Aussi pour les jeux en fenêtre. Sur certains écrans, le bureau peut scintiller.", "Also for games in a window. On some screens, the desktop may flicker.")
-                : t("Jeux en plein écran ou en plein écran fenêtré (sans bordure) : plus de déchirure d'image sans la latence de la V-Sync.", "Games in fullscreen or borderless windowed: no tearing without V-Sync's latency.")}
+                : t("Jeux en plein écran ou en plein écran fenêtré (sans bordure) : plus de déchirure d'image sans la latence de la V-Sync.", "Games in fullscreen or borderless windowed: no tearing without V-Sync's latency.")}
             </span>
           </label>
         {/if}
@@ -261,7 +261,7 @@
 {/if}
 
 {#if pending}
-  <ConfirmDialog title={t("Garder ces réglages d'affichage ?", "Keep these display settings?")} seconds={15} onkeep={() => (pending = null)} onrevert={revert} />
+  <ConfirmDialog title={t("Garder ces réglages d'affichage ?", "Keep these display settings?")} seconds={15} onkeep={() => (pending = null)} onrevert={revert} />
 {/if}
 
 <style>

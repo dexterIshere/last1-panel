@@ -117,11 +117,11 @@
         onchange={savePointer}
         hint={acceleration
           ? t(
-              "Un geste rapide envoie le curseur plus loin qu'un geste lent sur la même distance : la visée change avec la vitesse du geste. Désactivée, c'est mieux pour jouer.",
+              "Un geste rapide envoie le curseur plus loin qu'un geste lent sur la même distance : la visée change avec la vitesse du geste. Désactivée, c'est mieux pour jouer.",
               "A fast move sends the cursor further than a slow one over the same distance: aim changes with the speed of the move. Off is better for gaming.",
             )
           : t(
-              "Désactivée : le curseur avance toujours de la même distance que la souris, quelle que soit la vitesse du geste. La visée reste la même d'un mouvement à l'autre.",
+              "Désactivée : le curseur avance toujours de la même distance que la souris, quelle que soit la vitesse du geste. La visée reste la même d'un mouvement à l'autre.",
               "Off: the cursor always moves the same distance as the mouse, whatever the speed of the move. Aim stays the same from one move to the next.",
             )}
       />
@@ -135,7 +135,7 @@
         format={(v) => `× ${num(v, 2)}`}
         onchange={savePointer}
         hint={t(
-          "Vitesse du curseur, × 1 : celle de la souris. Pour viser dans un jeu, réglez plutôt les DPI de la souris ou la sensibilité du jeu.",
+          "Vitesse du curseur, × 1 : celle de la souris. Pour viser dans un jeu, réglez plutôt les DPI de la souris ou la sensibilité du jeu.",
           "Cursor speed, × 1: the mouse's own. For aiming in a game, rather set the mouse's DPI or the game's sensitivity.",
         )}
       />
@@ -167,7 +167,7 @@
   {:else if ratbag.mice.length === 0}
     <Callout kind="info" title={t("Aucune souris de jeu reconnue", "No gaming mouse recognized")}>
       {t(
-        "libratbag ne connaît pas les souris branchées : leurs DPI se règlent avec leurs propres boutons. L'accélération et la sensibilité au-dessus marchent pour toutes.",
+        "libratbag ne connaît pas les souris branchées : leurs DPI se règlent avec leurs propres boutons. L'accélération et la sensibilité au-dessus marchent pour toutes.",
         "libratbag doesn't know the plugged-in mice: their DPI is set with their own buttons. Acceleration and sensitivity above work for all of them.",
       )}
     </Callout>
@@ -187,7 +187,7 @@
             <span class="field__label">{t("Paliers de DPI", "DPI stages")}</span>
             <span class="field__hint">
               {t(
-                "Le bouton DPI de la souris passe d'un palier à l'autre ; le palier coché est celui de départ.",
+                "Le bouton DPI de la souris passe d'un palier à l'autre ; le palier coché est celui de départ.",
                 "The mouse's DPI button switches between stages; the checked one is the starting stage.",
               )}
             </span>

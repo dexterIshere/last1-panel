@@ -132,7 +132,7 @@ fn integrate_appimage() {
                 }
                 if report.outcome == Outcome::Installed {
                     notify(&t(
-                        "Last1 Panel est installé : il est dans le menu des applications, et vos réglages reviennent à chaque connexion.",
+                        "Last1 Panel est installé : il est dans le menu des applications, et vos réglages reviennent à chaque connexion.",
                         "Last1 Panel is installed: it's in the applications menu, and your settings come back at every login.",
                     ));
                 }

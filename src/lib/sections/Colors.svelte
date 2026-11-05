@@ -165,7 +165,7 @@
       const names = unwrapped.map((g) => g.name).join(", ");
       await api.closeSteamAndWrap(unwrapped.map((g) => g.appId));
       await loadGames();
-      notice = t(`Option de lancement mise (${names}) : le profil s'active dès le lancement.`, `Launch option set (${names}): the profile turns on as soon as the game starts.`);
+      notice = t(`Option de lancement mise (${names}) : le profil s'active dès le lancement.`, `Launch option set (${names}): the profile turns on as soon as the game starts.`);
     } catch (e) {
       error = errorMessage(e);
     }
@@ -303,7 +303,7 @@
       await api.deleteColorProfile(p.id);
       await loadProfiles();
       await loadGames();
-      notice = t(`« ${p.name} » supprimé : ses jeux reprennent les couleurs de l'écran.`, `“${p.name}” deleted: its games go back to the screen's colors.`);
+      notice = t(`« ${p.name} » supprimé : ses jeux reprennent les couleurs de l'écran.`, `“${p.name}” deleted: its games go back to the screen's colors.`);
     } catch (e) {
       error = errorMessage(e);
     }
@@ -328,8 +328,8 @@
   title={t("Couleurs de l'écran", "Screen colors")}
   lead={t(
     app.amd
-      ? "Les couleurs du bureau, comme dans le logiciel AMD (Adrenalin) : luminosité et contraste à 50 %, gamma à 1,00 par défaut."
-      : "Les réglages de « Régler les paramètres de couleur du bureau » du panneau NVIDIA, avec les mêmes valeurs : luminosité et contraste à 50 %, gamma à 1,00.",
+      ? "Les couleurs du bureau, comme dans le logiciel AMD (Adrenalin) : luminosité et contraste à 50 %, gamma à 1,00 par défaut."
+      : "Les réglages de « Régler les paramètres de couleur du bureau » du panneau NVIDIA, avec les mêmes valeurs : luminosité et contraste à 50 %, gamma à 1,00.",
     app.amd
       ? "Desktop colors, like in the AMD Software (Adrenalin): brightness and contrast at 50%, gamma at 1.00 by default."
       : "The “Adjust desktop color settings” page of the NVIDIA Control Panel, with the same values: brightness and contrast at 50%, gamma at 1.00.",
@@ -382,7 +382,7 @@
         <div class="linked">
           <p class="field__hint">
             {t(
-              `${names(own)} ${own.length > 1 ? "ont aussi leurs" : "a aussi ses"} propres réglages (onglet${own.length > 1 ? "s" : ""} ${own.map((c) => names([c]).replace(/^Le /, "")).join(", ")}) : ils remplacent « Tous » pour ${own.length > 1 ? "ces canaux" : "ce canal"}.`,
+              `${names(own)} ${own.length > 1 ? "ont aussi leurs" : "a aussi ses"} propres réglages (onglet${own.length > 1 ? "s" : ""} ${own.map((c) => names([c]).replace(/^Le /, "")).join(", ")}) : ils remplacent « Tous » pour ${own.length > 1 ? "ces canaux" : "ce canal"}.`,
               `${names(own)} also ${own.length > 1 ? "have their" : "has its"} own settings (${own.map((c) => names([c])).join(", ")} tab${own.length > 1 ? "s" : ""}): they replace “All” for ${own.length > 1 ? "these channels" : "this channel"}.`,
             )}
           </p>
@@ -394,7 +394,7 @@
         <div class="linked">
           <p class="field__hint">
             {t(
-              `Réglages du ${CHANNEL_NAMES[channel].replace(/^le /, "")} seul, en plus de « Tous » : un curseur laissé à 50 % (gamma 1,00) suit « Tous ».`,
+              `Réglages du ${CHANNEL_NAMES[channel].replace(/^le /, "")} seul, en plus de « Tous » : un curseur laissé à 50 % (gamma 1,00) suit « Tous ».`,
               `${names([channel])} only, on top of “All”: a slider left at 50% (gamma 1.00) follows “All”.`,
             )}
           </p>
@@ -411,7 +411,7 @@
       {#if !live}
         <p class="field__hint">
           {t(
-            "Sous Hyprland, la courbe est chargée dans la carte graphique au clic sur « Appliquer » : l'écran peut clignoter un instant.",
+            "Sous Hyprland, la courbe est chargée dans la carte graphique au clic sur « Appliquer » : l'écran peut clignoter un instant.",
             "On Hyprland, the curve is loaded into the graphics card when you click “Apply”: the screen may flicker briefly.",
           )}
         </p>
@@ -419,7 +419,7 @@
       {#if info?.replacedProfile}
         <Callout kind="info" title={t("Votre profil de couleur est mis de côté", "Your color profile is set aside")}>
           {t(
-            `${info.replacedProfile} est remplacé par ces réglages ; il revient avec « Valeurs par défaut ».`,
+            `${info.replacedProfile} est remplacé par ces réglages ; il revient avec « Valeurs par défaut ».`,
             `${info.replacedProfile} is replaced by these settings; it comes back with “Defaults”.`,
           )}
         </Callout>
@@ -449,7 +449,7 @@
         <h2>{t("Profils de couleurs", "Color profiles")}</h2>
         <p class="field__hint">
           {t(
-            "Ces réglages gardés sous un nom : pour les remettre sur l'écran, ou pour un jeu, dans sa seule fenêtre.",
+            "Ces réglages gardés sous un nom : pour les remettre sur l'écran, ou pour un jeu, dans sa seule fenêtre.",
             "These settings kept under a name: to put them back on the screen, or for a game, in its window only.",
           )}
         </p>
@@ -540,7 +540,7 @@
         <Callout kind="warning" title={t("Encore une étape pour ces jeux", "One more step for these games")}>
           <p>
             {t(
-              `${unwrapped.map((g) => g.name).join(", ")} : l'option de lancement de Last1 Panel doit être mise dans Steam pour que le profil s'active au lancement, et Steam la remplacerait s'il restait ouvert.`,
+              `${unwrapped.map((g) => g.name).join(", ")} : l'option de lancement de Last1 Panel doit être mise dans Steam pour que le profil s'active au lancement, et Steam la remplacerait s'il restait ouvert.`,
               `${unwrapped.map((g) => g.name).join(", ")}: Last1 Panel's launch option must be set in Steam for the profile to turn on at launch, and Steam would overwrite it if left open.`,
             )}
           </p>
@@ -550,20 +550,20 @@
         </Callout>
       {/if}
       {#if games && !games.colorLayer}
-        <p class="field__hint">{t("Couche Vulkan vkBasalt de Last1 Panel absente : les profils ne peuvent pas aller dans les jeux (réinstallez Last1 Panel).", "Last1 Panel's vkBasalt Vulkan layer is missing: profiles cannot go into games (reinstall Last1 Panel).")}</p>
+        <p class="field__hint">{t("Couche Vulkan vkBasalt de Last1 Panel absente : les profils ne peuvent pas aller dans les jeux (réinstallez Last1 Panel).", "Last1 Panel's vkBasalt Vulkan layer is missing: profiles cannot go into games (reinstall Last1 Panel).")}</p>
       {:else if games && games.games.length === 0}
-        <p class="field__hint">{t("Aucun jeu Steam installé : les profils se lient aux jeux Steam.", "No Steam game installed: profiles link to Steam games.")}</p>
+        <p class="field__hint">{t("Aucun jeu Steam installé : les profils se lient aux jeux Steam.", "No Steam game installed: profiles link to Steam games.")}</p>
       {:else}
         <p class="field__hint">
-          {t("Lié à un jeu, un profil s'active dès son lancement, dans sa seule fenêtre (jeux Proton et Vulkan). Touche Arrêt défil : profil coupé ou remis.", "Linked to a game, a profile turns on as soon as it starts, in its window only (Proton and Vulkan games). Scroll Lock key: profile off or back on.")}
-          <strong class="risk">{t("Jeux en ligne : filtres d'image parfois interdits par leurs règles, à vos risques.", "Online games: image filters are sometimes forbidden by their rules, at your own risk.")}</strong>
+          {t("Lié à un jeu, un profil s'active dès son lancement, dans sa seule fenêtre (jeux Proton et Vulkan). Touche Arrêt défil : profil coupé ou remis.", "Linked to a game, a profile turns on as soon as it starts, in its window only (Proton and Vulkan games). Scroll Lock key: profile off or back on.")}
+          <strong class="risk">{t("Jeux en ligne : filtres d'image parfois interdits par leurs règles, à vos risques.", "Online games: image filters are sometimes forbidden by their rules, at your own risk.")}</strong>
         </p>
       {/if}
       <Switch
         label={t("Profils dans l'icône près de l'horloge", "Profiles in the icon near the clock")}
         bind:checked={tray}
         hint={t(
-          "Clic droit sur l'icône Last1 Panel : un profil sur l'écran en un clic. Clic gauche : cette fenêtre.",
+          "Clic droit sur l'icône Last1 Panel : un profil sur l'écran en un clic. Clic gauche : cette fenêtre.",
           "Right-click the Last1 Panel icon: a profile on the screen in one click. Left-click: this window.",
         )}
         onchange={setTray}

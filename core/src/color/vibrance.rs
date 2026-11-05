@@ -187,7 +187,7 @@ pub fn map_ports(ports: &[Port], gpu: &Gpu) -> CoreResult<Vec<Option<String>>> {
             return Err(CoreError::message(format!(
                 "{} ({})",
                 t(
-                    "Prises de la carte NVIDIA non reconnues : vibrance désactivée pour ne pas régler le mauvais écran",
+                    "Prises de la carte NVIDIA non reconnues : vibrance désactivée pour ne pas régler le mauvais écran",
                     "NVIDIA card ports not recognised: vibrance disabled so the wrong screen is never changed",
                 ),
                 if screens.is_empty() { format!("{kind:?}") } else { screens.join(", ") }
@@ -245,7 +245,7 @@ pub fn apply(
         && second.iter().zip(&ports).all(|(a, b)| a.kind == b.kind && a.connected == b.connected);
     if !same {
         return Err(CoreError::message(t(
-            "Les écrans ont changé pendant le réglage : réessayez.",
+            "Les écrans ont changé pendant le réglage : réessayez.",
             "Screens changed while applying: try again.",
         )));
     }
@@ -270,7 +270,7 @@ fn explain(stdout: &str, detail: &str) -> String {
             "the NVIDIA driver is not in modeset mode (nvidia_drm.modeset=1 parameter)",
         )
     } else if stdout.contains("Driver version mismatch") {
-        t("pilote NVIDIA mis à jour : redémarrez le PC", "NVIDIA driver updated: restart the PC")
+        t("pilote NVIDIA mis à jour : redémarrez le PC", "NVIDIA driver updated: restart the PC")
     } else {
         detail.to_string()
     }

@@ -129,7 +129,7 @@ impl Lact {
     pub fn request(&self, command: &str, args: Option<Value>) -> CoreResult<Value> {
         let mut stream = UnixStream::connect(&self.socket).map_err(|error| match error.kind() {
             std::io::ErrorKind::PermissionDenied => CoreError::message(t(
-                "Accès refusé au service LACT : votre compte doit être dans le groupe wheel.",
+                "Accès refusé au service LACT : votre compte doit être dans le groupe wheel.",
                 "Access to the LACT service denied: your account must be in the wheel group.",
             )),
             _ => not_running(),

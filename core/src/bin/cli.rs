@@ -66,7 +66,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "{}",
                 t(
-                    "Utilisation : last1-panel-cli run <commande du jeu…> | apply [--delay secondes] | watch | update | diagnostic [--json] | fix wrap-games",
+                    "Utilisation : last1-panel-cli run <commande du jeu…> | apply [--delay secondes] | watch | update | diagnostic [--json] | fix wrap-games",
                     "Usage: last1-panel-cli run <game command…> | apply [--delay seconds] | watch | update | diagnostic [--json] | fix wrap-games",
                 )
             );
@@ -295,22 +295,22 @@ fn wrap_games() -> ExitCode {
         ExitCode::SUCCESS
     };
     let Some(root) = steam::find_root(&last1_panel_core::paths::home_dir()) else {
-        return nothing(t("Steam n'est pas installé : rien à faire.", "Steam is not installed: nothing to do."));
+        return nothing(t("Steam n'est pas installé : rien à faire.", "Steam is not installed: nothing to do."));
     };
     if steam::is_flatpak(&root) {
         return nothing(t(
-            "Steam est en Flatpak : un jeu ne pourrait pas lancer Last1 Panel depuis son bac à sable.",
+            "Steam est en Flatpak : un jeu ne pourrait pas lancer Last1 Panel depuis son bac à sable.",
             "Steam is a Flatpak: a game could not start Last1 Panel from its sandbox.",
         ));
     }
     if steam::local_configs(&root).is_empty() {
         return nothing(t(
-            "Aucun compte Steam sur ce PC : rien à faire.",
+            "Aucun compte Steam sur ce PC : rien à faire.",
             "No Steam account on this PC: nothing to do.",
         ));
     }
     if steam::is_running(proc_dir) {
-        eprintln!("{}", t("Steam est lancé : rien n'est écrit.", "Steam is running: nothing is written."));
+        eprintln!("{}", t("Steam est lancé : rien n'est écrit.", "Steam is running: nothing is written."));
         return ExitCode::from(3);
     }
     let ids: Vec<u32> = steam::installed_games(&root).iter().map(|game| game.app_id).collect();
@@ -407,7 +407,7 @@ fn watch() -> ExitCode {
         desktop::notify(&format!(
             "{}\n{}{more}",
             t(
-                &format!("Last1 Panel est à jour ({}) :", news.version),
+                &format!("Last1 Panel est à jour ({}) :", news.version),
                 &format!("Last1 Panel is up to date ({}):", news.version)
             ),
             lines.join("\n")
@@ -501,7 +501,7 @@ fn clips() {
                         t("Enregistrement lancé (F9 pour l'arrêter).", "Recording started (F9 to stop it).")
                     } else {
                         t(
-                            "Enregistrement arrêté : la vidéo arrive dans Clips.",
+                            "Enregistrement arrêté : la vidéo arrive dans Clips.",
                             "Recording stopped: the video is coming to Clips.",
                         )
                     });
@@ -566,9 +566,9 @@ fn clip_saved(args: &[String]) -> ExitCode {
     let saved = last1_panel_core::clips::rename_saved(std::path::Path::new(path), &game, &stamp);
     let name = saved.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     desktop::notify(&if args.get(1).is_some_and(|kind| kind == "replay") {
-        t(&format!("Clip enregistré : {name}"), &format!("Clip saved: {name}"))
+        t(&format!("Clip enregistré : {name}"), &format!("Clip saved: {name}"))
     } else {
-        t(&format!("Vidéo enregistrée : {name}"), &format!("Video saved: {name}"))
+        t(&format!("Vidéo enregistrée : {name}"), &format!("Video saved: {name}"))
     });
     ExitCode::SUCCESS
 }
@@ -1004,7 +1004,7 @@ fn watch_shaders() {
             notify(&match tracked.ratio {
                 Some(ratio) if ratio < 0.95 => t(
                     &format!(
-                        "Steam a interrompu la compilation des shaders de {game} ({} %) : il la reprendra plus tard.",
+                        "Steam a interrompu la compilation des shaders de {game} ({} %) : il la reprendra plus tard.",
                         percent(ratio)
                     ),
                     &format!(
@@ -1013,7 +1013,7 @@ fn watch_shaders() {
                     ),
                 ),
                 Some(_) => t(
-                    &format!("Shaders de {game} prêts : Steam a fini, les jeux ne saccadent plus à cause de lui."),
+                    &format!("Shaders de {game} prêts : Steam a fini, les jeux ne saccadent plus à cause de lui."),
                     &format!("{game} shaders ready: Steam is done, games no longer stutter because of it."),
                 ),
                 None => t(
@@ -1067,7 +1067,7 @@ fn watch_shaders() {
             let game = name(&tracked.game);
             notify(&t(
                 &format!(
-                    "Steam compile les shaders de {game}{progress} : les jeux peuvent saccader jusqu'à la fin. L'avancement est dans Last1 Panel."
+                    "Steam compile les shaders de {game}{progress} : les jeux peuvent saccader jusqu'à la fin. L'avancement est dans Last1 Panel."
                 ),
                 &format!(
                     "Steam is compiling the shaders of {game}{progress}: games may stutter until it ends. Progress is in Last1 Panel."
@@ -1156,7 +1156,7 @@ fn propose_updates() {
                         let version = version.unwrap_or_else(|| release.version.clone());
                         desktop::notify(&t(
                             &format!(
-                                "Last1 Panel s'est mis à jour tout seul (version {version}) : correction importante."
+                                "Last1 Panel s'est mis à jour tout seul (version {version}) : correction importante."
                             ),
                             &format!("Last1 Panel updated itself (version {version}): important fix."),
                         ));
@@ -1195,7 +1195,7 @@ fn propose_updates() {
                         Err(error) => {
                             eprintln!("last1-panel-cli : mise à jour : {error}");
                             desktop::notify(&t(
-                                "La mise à jour n'a pas abouti : réessayez avec « Mettre à jour » dans la fenêtre.",
+                                "La mise à jour n'a pas abouti : réessayez avec « Mettre à jour » dans la fenêtre.",
                                 "The update did not finish: try again with \"Update\" in the window.",
                             ));
                             Duration::from_secs(3600)
@@ -1270,7 +1270,7 @@ fn update_now() -> ExitCode {
         eprintln!(
             "{}",
             t(
-                "Rien à faire : seule l'installation par l'AppImage se met à jour ainsi (le paquet Arch, par go-to-linux ou pacman).",
+                "Rien à faire : seule l'installation par l'AppImage se met à jour ainsi (le paquet Arch, par go-to-linux ou pacman).",
                 "Nothing to do: only the AppImage install updates this way (the Arch package, through go-to-linux or pacman).",
             )
         );

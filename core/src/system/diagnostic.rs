@@ -407,11 +407,11 @@ pub fn run(src: &Sources) -> Report {
             if src.exec.which("powerprofilesctl").is_none() {
                 if governor.as_deref() == Some("performance") {
                     t(
-                        "inutile : processeur réglé directement en performance",
+                        "inutile : processeur réglé directement en performance",
                         "not needed: CPU set straight to performance",
                     )
                 } else {
-                    t("aucun : le gouverneur décide", "none: the governor decides")
+                    t("aucun : le gouverneur décide", "none: the governor decides")
                 }
             } else {
                 unknown()
@@ -539,7 +539,7 @@ pub fn run(src: &Sources) -> Report {
         let (reason, fix) = if gamemode && !src.gamemode_allowed {
             (
                 t(
-                    "GameMode est installé, mais votre compte n'est pas dans son groupe « gamemode » : sans lui, GameMode n'a pas le droit de passer le processeur en performance pendant les jeux.",
+                    "GameMode est installé, mais votre compte n'est pas dans son groupe « gamemode » : sans lui, GameMode n'a pas le droit de passer le processeur en performance pendant les jeux.",
                     "GameMode is installed, but your account is not in its “gamemode” group: without it, GameMode may not switch the CPU to performance while playing.",
                 ),
                 Some(Fix::GameMode),
@@ -550,7 +550,7 @@ pub fn run(src: &Sources) -> Report {
                     &format!(
                         "{}Sur un PC fixe, le mode performance tient le processeur à pleine vitesse, comme « Performances élevées » sous Windows.",
                         if power_profile.is_none() {
-                            "Ni GameMode ni power-profiles-daemon : rien ne le passe en performance le temps des jeux. "
+                            "Ni GameMode ni power-profiles-daemon : rien ne le passe en performance le temps des jeux. "
                         } else {
                             ""
                         }
@@ -570,7 +570,7 @@ pub fn run(src: &Sources) -> Report {
             // Le bouton est celui de la mesure des parties (même page).
             (
                 t(
-                    "GameMode est prêt, mais aucun jeu ne passe encore par Last1 Panel pour s'en servir : le bouton « Activer pour tous les jeux » de cette page le règle.",
+                    "GameMode est prêt, mais aucun jeu ne passe encore par Last1 Panel pour s'en servir : le bouton « Activer pour tous les jeux » de cette page le règle.",
                     "GameMode is ready, but no game goes through Last1 Panel yet to use it: this page's “Turn on for all games” button sets it.",
                 ),
                 None,
@@ -578,7 +578,7 @@ pub fn run(src: &Sources) -> Report {
         } else {
             (
                 t(
-                    "Ni GameMode ni power-profiles-daemon sur ce portable : GameMode le passerait en performance le temps de chaque jeu, sans vider la batterie le reste du temps.",
+                    "Ni GameMode ni power-profiles-daemon sur ce portable : GameMode le passerait en performance le temps de chaque jeu, sans vider la batterie le reste du temps.",
                     "Neither GameMode nor power-profiles-daemon on this laptop: GameMode would switch it to performance for each game, without draining the battery the rest of the time.",
                 ),
                 src.pacman.then_some(Fix::GameMode),
@@ -611,7 +611,7 @@ pub fn run(src: &Sources) -> Report {
                 Level::Warning,
                 t("GameMode ne peut pas faire passer le jeu en premier", "GameMode can't put the game first"),
                 t(
-                    "Votre compte n'est pas dans son groupe « gamemode » : le jeu ne passe pas avant le reste pour le processeur et le disque. Un clic l'y ajoute.",
+                    "Votre compte n'est pas dans son groupe « gamemode » : le jeu ne passe pas avant le reste pour le processeur et le disque. Un clic l'y ajoute.",
                     "Your account is not in its “gamemode” group: the game doesn't go before the rest for the CPU and the disk. One click adds it.",
                 ),
             )
@@ -635,7 +635,7 @@ pub fn run(src: &Sources) -> Report {
                     Level::Problem,
                     t("Les jeux tournent sans la 3D V-Cache", "Games run without the 3D V-Cache"),
                     t(
-                        &format!("Processeur X3D en mode « {mode} » : les jeux partent sur le bloc sans 3D V-Cache, beaucoup d'images en moins quand le processeur limite."),
+                        &format!("Processeur X3D en mode « {mode} » : les jeux partent sur le bloc sans 3D V-Cache, beaucoup d'images en moins quand le processeur limite."),
                         &format!("X3D CPU in “{mode}” mode: games land on the die without 3D V-Cache, many fewer frames when the CPU is the limit."),
                     ),
                 )
@@ -674,7 +674,7 @@ pub fn run(src: &Sources) -> Report {
                 Level::Info,
                 t(&format!("Ordonnanceur {name} actif"), &format!("{name} scheduler active")),
                 t(
-                    "Conçu pour le Steam Deck : aucun gain d'images par seconde prouvé, et des chutes rapportées. go-to-linux garde celui du noyau.",
+                    "Conçu pour le Steam Deck : aucun gain d'images par seconde prouvé, et des chutes rapportées. go-to-linux garde celui du noyau.",
                     "Designed for the Steam Deck: no proven frame rate gain, and drops reported. go-to-linux keeps the kernel's.",
                 ),
             )
@@ -685,7 +685,7 @@ pub fn run(src: &Sources) -> Report {
     let ntsync = src.dev.join("ntsync");
     checks.push(if !ntsync.exists() {
         let mut detail = t(
-            "Proton synchronise alors les fils des jeux sans l'aide du noyau : plus de travail pour le processeur.",
+            "Proton synchronise alors les fils des jeux sans l'aide du noyau : plus de travail pour le processeur.",
             "Proton then syncs game threads without the kernel's help: more CPU work.",
         );
         // Déjà réglé pour chaque démarrage (bouton), mais pas chargé à
@@ -713,7 +713,7 @@ pub fn run(src: &Sources) -> Report {
                     )
                 } else if let Some(blocker) = &blocked {
                     t(
-                        &format!("Bloqué au démarrage par {blocker} : le bouton pose un service de démarrage qui le charge quand même."),
+                        &format!("Bloqué au démarrage par {blocker} : le bouton pose un service de démarrage qui le charge quand même."),
                         &format!("Blocked at boot by {blocker}: the button sets a boot service that loads it anyway."),
                     )
                 } else if journal.is_empty() {
@@ -723,7 +723,7 @@ pub fn run(src: &Sources) -> Report {
                     )
                 } else {
                     t(
-                        &format!("Réglé pour chaque démarrage, mais pas chargé à celui-ci : {journal}"),
+                        &format!("Réglé pour chaque démarrage, mais pas chargé à celui-ci : {journal}"),
                         &format!("Set for every boot, but not loaded at this one: {journal}"),
                     )
                 }
@@ -741,7 +741,7 @@ pub fn run(src: &Sources) -> Report {
                 Level::Warning,
                 t("NTSync inaccessible", "NTSync not accessible"),
                 t(
-                    "/dev/ntsync existe mais votre compte ne peut pas l'ouvrir : Proton ne s'en sert pas.",
+                    "/dev/ntsync existe mais votre compte ne peut pas l'ouvrir : Proton ne s'en sert pas.",
                     "/dev/ntsync exists but your account can't open it: Proton doesn't use it.",
                 ),
             )
@@ -767,7 +767,7 @@ pub fn run(src: &Sources) -> Report {
                 Level::Warning,
                 t("Le pilote efface des shaders déjà faits", "The driver deletes shaders already built"),
                 t(
-                    "Le pilote NVIDIA vide les plus anciens de son cache : ceux des jeux moins joués sont à refaire au lancement suivant. Un clic l'en empêche.",
+                    "Le pilote NVIDIA vide les plus anciens de son cache : ceux des jeux moins joués sont à refaire au lancement suivant. Un clic l'en empêche.",
                     "The NVIDIA driver empties the oldest ones from its cache: those of less played games must be rebuilt at the next launch. One click stops it.",
                 ),
             )
@@ -785,7 +785,7 @@ pub fn run(src: &Sources) -> Report {
                 Level::Info,
                 t("Cache des shaders agrandi à la prochaine connexion", "Larger shader cache from the next login"),
                 t(
-                    "C'est fait : Steam et ses jeux le prendront après un redémarrage du PC (ou une déconnexion-reconnexion).",
+                    "C'est fait : Steam et ses jeux le prendront après un redémarrage du PC (ou une déconnexion-reconnexion).",
                     "Done: Steam and its games will use it after the PC restarts (or after logging out and back in).",
                 ),
             )
@@ -797,7 +797,7 @@ pub fn run(src: &Sources) -> Report {
                 Level::Warning,
                 t("Cache des shaders limité à 1 Go", "Shader cache limited to 1 GB"),
                 t(
-                    "Les shaders d'un gros jeu (Unreal Engine 5) n'y tiennent pas et se recompilent à chaque partie : saccades, chutes d'images par seconde.",
+                    "Les shaders d'un gros jeu (Unreal Engine 5) n'y tiennent pas et se recompilent à chaque partie : saccades, chutes d'images par seconde.",
                     "A big game's shaders (Unreal Engine 5) don't fit and are recompiled every session: stutter, frame rate drops.",
                 ),
             )
@@ -844,7 +844,7 @@ pub fn run(src: &Sources) -> Report {
                         &format!("{}, even in game ({sides})", link_text(game.width, game.speed)),
                     ),
                     None => t(
-                        &format!("x{} ({sides} ; pas encore mesurée en jeu)", link.current),
+                        &format!("x{} ({sides} ; pas encore mesurée en jeu)", link.current),
                         &format!("x{} ({sides}; not measured in game yet)", link.current),
                     ),
                 },
@@ -856,7 +856,7 @@ pub fn run(src: &Sources) -> Report {
                 if let Some(game) = measured.filter(|game| game.width < possible) {
                     let cost = match game.speed {
                         Some(gts) if gts >= 15.9 => t(
-                            " D'après les tests publiés, l'écart est faible en PCIe 4.0 : de l'ordre de 1 %.",
+                            " D'après les tests publiés, l'écart est faible en PCIe 4.0 : de l'ordre de 1 %.",
                             " According to published tests, the gap is small at PCIe 4.0: around 1 %.",
                         ),
                         Some(gts) if gts >= 7.9 => t(
@@ -869,12 +869,12 @@ pub fn run(src: &Sources) -> Report {
                         "pcie",
                         Level::Info,
                         t(
-                            &format!("Carte graphique en x{} : câblage du portable", game.width),
+                            &format!("Carte graphique en x{} : câblage du portable", game.width),
                             &format!("Graphics card at x{}: the laptop's wiring", game.width),
                         ),
                         t(
                             &format!(
-                                "Même en jeu, la liaison reste {} : le fabricant du portable n'a relié la carte que par {} voies (souvent pour garder des voies à un second SSD). Rien ne se règle, ni depuis le PC ni dans le BIOS.{cost}",
+                                "Même en jeu, la liaison reste {} : le fabricant du portable n'a relié la carte que par {} voies (souvent pour garder des voies à un second SSD). Rien ne se règle, ni depuis le PC ni dans le BIOS.{cost}",
                                 link_text(game.width, game.speed),
                                 game.width
                             ),
@@ -898,7 +898,7 @@ pub fn run(src: &Sources) -> Report {
                         ),
                         t(
                             &format!(
-                                "La carte et son emplacement savent faire x{possible}. Au repos, le pilote réduit parfois la liaison pour économiser l'énergie : Last1 Panel la mesurera pendant votre prochaine partie. Si elle reste en x{current}, ce sera un problème de branchement."
+                                "La carte et son emplacement savent faire x{possible}. Au repos, le pilote réduit parfois la liaison pour économiser l'énergie : Last1 Panel la mesurera pendant votre prochaine partie. Si elle reste en x{current}, ce sera un problème de branchement."
                             ),
                             &format!(
                                 "The card and its slot can do x{possible}. At rest, the driver sometimes narrows the link to save power: Last1 Panel will measure it during your next game. If it stays at x{current}, it will be a connection problem."
@@ -918,7 +918,7 @@ pub fn run(src: &Sources) -> Report {
                     ),
                     t(
                         &format!(
-                            "La carte et son emplacement savent faire x{possible}, mais en jeu la liaison reste en x{current} : elle reçoit ses données moins vite. Rien ne se règle depuis le PC, c'est le branchement : carte pas tout à fait enfoncée, rallonge (riser), ou emplacement qui partage ses voies avec un SSD M.2 (voir le manuel de la carte mère). PC éteint, renfoncez la carte jusqu'au clic, sans rallonge."
+                            "La carte et son emplacement savent faire x{possible}, mais en jeu la liaison reste en x{current} : elle reçoit ses données moins vite. Rien ne se règle depuis le PC, c'est le branchement : carte pas tout à fait enfoncée, rallonge (riser), ou emplacement qui partage ses voies avec un SSD M.2 (voir le manuel de la carte mère). PC éteint, renfoncez la carte jusqu'au clic, sans rallonge."
                         ),
                         &format!(
                             "The card and its slot can do x{possible}, but in game the link stays at x{current}: it receives its data more slowly. Nothing can be set from the PC, it's the connection: card not fully seated, riser, or a slot sharing its lanes with an M.2 SSD (see the motherboard manual). With the PC off, push the card back in until it clicks, without a riser."
@@ -937,7 +937,7 @@ pub fn run(src: &Sources) -> Report {
                     ),
                     t(
                         &format!(
-                            "La carte sait faire x{}, mais son emplacement est câblé en x{slot} : elle reçoit ses données moins vite. PC éteint, mettez-la dans l'emplacement du haut (le plus proche du processeur), câblé en x16.",
+                            "La carte sait faire x{}, mais son emplacement est câblé en x{slot} : elle reçoit ses données moins vite. PC éteint, mettez-la dans l'emplacement du haut (le plus proche du processeur), câblé en x16.",
                             link.card
                         ),
                         &format!(
@@ -966,7 +966,7 @@ pub fn run(src: &Sources) -> Report {
                 check(
                     "rebar",
                     Level::Ok,
-                    t("Resizable BAR : rien à régler", "Resizable BAR: nothing to set"),
+                    t("Resizable BAR : rien à régler", "Resizable BAR: nothing to set"),
                     t("Cette carte graphique ne le prend pas en charge.", "This graphics card doesn't support it."),
                 )
             } else if mib <= 256 {
@@ -975,7 +975,7 @@ pub fn run(src: &Sources) -> Report {
                     Level::Warning,
                     t("Resizable BAR désactivé", "Resizable BAR disabled"),
                     t(
-                        "Le processeur ne voit la mémoire de la carte que par une fenêtre de 256 Mo, ce qui freine les jeux DirectX 12 (VKD3D-Proton). À activer dans le BIOS : Resizable BAR et Above 4G Decoding.",
+                        "Le processeur ne voit la mémoire de la carte que par une fenêtre de 256 Mo, ce qui freine les jeux DirectX 12 (VKD3D-Proton). À activer dans le BIOS : Resizable BAR et Above 4G Decoding.",
                         "The CPU only sees the card's memory through a 256 MB window, which slows DirectX 12 games (VKD3D-Proton). Turn on in the BIOS: Resizable BAR and Above 4G Decoding.",
                     ),
                 )
@@ -997,7 +997,7 @@ pub fn run(src: &Sources) -> Report {
                 Level::Warning,
                 t(&format!("Pilote NVIDIA {version} ancien"), &format!("Old NVIDIA driver {version}")),
                 t(
-                    "Les pilotes 590 et plus récents améliorent les jeux DirectX 12 sous Proton : mettez le système à jour.",
+                    "Les pilotes 590 et plus récents améliorent les jeux DirectX 12 sous Proton : mettez le système à jour.",
                     "Drivers 590 and newer improve DirectX 12 games under Proton: update the system.",
                 ),
             ));
@@ -1054,7 +1054,7 @@ pub fn run(src: &Sources) -> Report {
                     } else {
                         t(
                             &format!(
-                                "Proton traduit DirectX en Vulkan : sans lui, les jeux Windows ne démarrent pas ({}).",
+                                "Proton traduit DirectX en Vulkan : sans lui, les jeux Windows ne démarrent pas ({}).",
                                 missing.join(", ")
                             ),
                             &format!(
@@ -1090,12 +1090,12 @@ pub fn run(src: &Sources) -> Report {
                 t("Pilote graphique à jour", "Graphics driver up to date"),
                 if src.exec.which("checkupdates").is_some() {
                     t(
-                        &format!("{driver} : la version la plus récente des dépôts."),
+                        &format!("{driver} : la version la plus récente des dépôts."),
                         &format!("{driver}: the newest version in the repositories."),
                     )
                 } else {
                     t(
-                        &format!("{driver} : le plus récent d'après les listes de paquets du PC (sans pacman-contrib, pas vérifié en ligne)."),
+                        &format!("{driver} : le plus récent d'après les listes de paquets du PC (sans pacman-contrib, pas vérifié en ligne)."),
                         &format!("{driver}: the newest according to the PC's package lists (without pacman-contrib, not checked online)."),
                     )
                 },
@@ -1112,7 +1112,7 @@ pub fn run(src: &Sources) -> Report {
                         // go-to-linux la propose lui-même (bulle « Mettre à
                         // jour ») : pas deux propositions pour la même chose.
                         t(
-                            &format!("Une version plus récente est dans les dépôts ({}) : go-to-linux la propose dans sa bulle « Mettre à jour ».", driver_updates.join(", ")),
+                            &format!("Une version plus récente est dans les dépôts ({}) : go-to-linux la propose dans sa bulle « Mettre à jour ».", driver_updates.join(", ")),
                             &format!("A newer version is in the repositories ({}): go-to-linux offers it in its “Update” bubble.", driver_updates.join(", ")),
                         )
                     } else {
@@ -1129,7 +1129,7 @@ pub fn run(src: &Sources) -> Report {
                             let among_en =
                                 if sensitive.is_empty() { String::new() } else { format!(", including {}", sensitive.join(", ")) };
                             t(
-                                &format!("Une version plus récente est dans les dépôts ({}). Sous Arch, elle s'installe avec tout le système (jamais à moitié) : {count} paquets{among}.", driver_updates.join(", ")),
+                                &format!("Une version plus récente est dans les dépôts ({}). Sous Arch, elle s'installe avec tout le système (jamais à moitié) : {count} paquets{among}.", driver_updates.join(", ")),
                                 &format!("A newer version is in the repositories ({}). On Arch, it installs with the whole system (never halfway): {count} packages{among_en}.", driver_updates.join(", ")),
                             )
                         }
@@ -1151,12 +1151,12 @@ pub fn run(src: &Sources) -> Report {
                     t(&format!("Pilote NVIDIA {installed} installé"), &format!("NVIDIA driver {installed} installed")),
                     if src.go_to_linux {
                         t(
-                            &format!("Le PC utilise encore le {running} : il prendra le nouveau au redémarrage, que go-to-linux propose."),
+                            &format!("Le PC utilise encore le {running} : il prendra le nouveau au redémarrage, que go-to-linux propose."),
                             &format!("The PC still uses {running}: it will load the new one at the restart go-to-linux offers."),
                         )
                     } else {
                         t(
-                            &format!("Le PC utilise encore le {running} : il prendra le nouveau au redémarrage."),
+                            &format!("Le PC utilise encore le {running} : il prendra le nouveau au redémarrage."),
                             &format!("The PC still uses {running}: it will load the new one when it restarts."),
                         )
                     },
@@ -1170,9 +1170,9 @@ pub fn run(src: &Sources) -> Report {
         _ if !src.mangohud => Check {
             id: "measure",
             level: Level::Warning,
-            title: t("Parties non mesurées : MangoHud absent", "Games not measured: MangoHud missing"),
+            title: t("Parties non mesurées : MangoHud absent", "Games not measured: MangoHud missing"),
             detail: t(
-                "MangoHud mesure les images par seconde de chaque partie, sans rien afficher : il dit si le jeu est limité par le processeur ou par la carte.",
+                "MangoHud mesure les images par seconde de chaque partie, sans rien afficher : il dit si le jeu est limité par le processeur ou par la carte.",
                 "MangoHud measures each game's frame rate, without showing anything: it tells whether the game is limited by the CPU or the graphics card.",
             ),
             fix: Some(Fix::InstallMangoHud),
@@ -1185,7 +1185,7 @@ pub fn run(src: &Sources) -> Report {
                 &format!("{wrapped} of {total} games go through Last1 Panel"),
             ),
             detail: t(
-                "Les autres ne sont ni réglés ni mesurés : son option de lancement Steam leur manque.",
+                "Les autres ne sont ni réglés ni mesurés : son option de lancement Steam leur manque.",
                 "The others are neither set nor measured: they lack its Steam launch option.",
             ),
             fix: Some(Fix::WrapGames),
@@ -1198,7 +1198,7 @@ pub fn run(src: &Sources) -> Report {
             t("Dernière partie non mesurée", "Last game not measured"),
             t(
                 &format!(
-                    "{} est passé par Last1 Panel ({}), mais MangoHud n'a rien enregistré : il ne mesure que les jeux qui affichent par Vulkan ou OpenGL (un lanceur seul n'en fait pas partie).",
+                    "{} est passé par Last1 Panel ({}), mais MangoHud n'a rien enregistré : il ne mesure que les jeux qui affichent par Vulkan ou OpenGL (un lanceur seul n'en fait pas partie).",
                     last.name,
                     ago(last.seconds)
                 ),
@@ -1217,7 +1217,7 @@ pub fn run(src: &Sources) -> Report {
             match &src.last_launch {
                 Some(last) => t(
                     &format!(
-                        "{} est passé par Last1 Panel ({}) : MangoHud l'enregistre sans rien afficher, sa partie apparaîtra ici après une minute de jeu.",
+                        "{} est passé par Last1 Panel ({}) : MangoHud l'enregistre sans rien afficher, sa partie apparaîtra ici après une minute de jeu.",
                         last.name,
                         ago(last.seconds)
                     ),
@@ -1228,7 +1228,7 @@ pub fn run(src: &Sources) -> Report {
                     ),
                 ),
                 None => t(
-                    "Aucun jeu n'est encore passé par Last1 Panel. MangoHud enregistrera le prochain (une minute au moins), sans rien afficher : il apparaîtra ici.",
+                    "Aucun jeu n'est encore passé par Last1 Panel. MangoHud enregistrera le prochain (une minute au moins), sans rien afficher : il apparaîtra ici.",
                     "No game has gone through Last1 Panel yet. MangoHud will record the next one (one minute at least), without showing anything: it will appear here.",
                 ),
             },
@@ -1250,7 +1250,7 @@ pub fn run(src: &Sources) -> Report {
             level: Level::Warning,
             title: t("Mode de faible latence forcé (Last1 Panel)", "Low latency mode forced (Last1 Panel)"),
             detail: t(
-                "Une seule image préparée d'avance : quand le processeur et la carte prennent chacun autant de temps (jeux Unreal Engine 5), ils s'attendent l'un l'autre et les images par seconde chutent. Les jeux avec NVIDIA Reflex règlent eux-mêmes leur latence.",
+                "Une seule image préparée d'avance : quand le processeur et la carte prennent chacun autant de temps (jeux Unreal Engine 5), ils s'attendent l'un l'autre et les images par seconde chutent. Les jeux avec NVIDIA Reflex règlent eux-mêmes leur latence.",
                 "Only one frame prepared ahead: when the CPU and the GPU take about as long each (Unreal Engine 5 games), they wait for each other and the frame rate drops. Games with NVIDIA Reflex manage their own latency.",
             ),
             fix: Some(Fix::LowLatency),
@@ -1336,7 +1336,7 @@ pub fn run(src: &Sources) -> Report {
                 Level::Warning,
                 t("La mémoire compressée est trop petite", "Compressed memory is too small"),
                 t(
-                    &format!("Elle ne fait que {} Go : pendant les jeux, elle se remplit et le reste part sur le disque, d'où des à-coups. Un clic l'agrandit à {} Go.", gib(zram_size), gib(zram_target.unwrap_or(zram_size))),
+                    &format!("Elle ne fait que {} Go : pendant les jeux, elle se remplit et le reste part sur le disque, d'où des à-coups. Un clic l'agrandit à {} Go.", gib(zram_size), gib(zram_target.unwrap_or(zram_size))),
                     &format!("It's only {} GB: during games, it fills up and the rest goes to the disk, hence hitches. One click enlarges it to {} GB.", gib(zram_size), gib(zram_target.unwrap_or(zram_size))),
                 ),
             )
@@ -1351,12 +1351,12 @@ pub fn run(src: &Sources) -> Report {
                 t("De la mémoire est encore sur le disque", "Some memory is still on the disk"),
                 if disk_first {
                     t(
-                        "Le PC range la mémoire en trop sur le disque avant la mémoire compressée : chaque fois que le jeu en a besoin, l'image attend le disque. Un clic met le disque en dernier recours et remet en mémoire ce qui y est.",
+                        "Le PC range la mémoire en trop sur le disque avant la mémoire compressée : chaque fois que le jeu en a besoin, l'image attend le disque. Un clic met le disque en dernier recours et remet en mémoire ce qui y est.",
                         "The PC puts extra memory on the disk before compressed memory: every time the game needs it, the picture waits for the disk. One click makes the disk a last resort and brings back what is on it.",
                     )
                 } else {
                     t(
-                        &format!("{used} Go sont restés sur le disque : chaque fois que le jeu ou le bureau en a besoin, l'image attend le disque. Un clic les remet en mémoire, compressés."),
+                        &format!("{used} Go sont restés sur le disque : chaque fois que le jeu ou le bureau en a besoin, l'image attend le disque. Un clic les remet en mémoire, compressés."),
                         &format!("{used} GB stayed on the disk: every time the game or the desktop needs them, the picture waits for the disk. One click brings them back to memory, compressed."),
                     )
                 },
@@ -1369,7 +1369,7 @@ pub fn run(src: &Sources) -> Report {
             ..check(
                 "swap",
                 Level::Info,
-                t("Conseil : mémoire bien remplie pendant les parties", "Tip: memory is quite full while playing"),
+                t("Conseil : mémoire bien remplie pendant les parties", "Tip: memory is quite full while playing"),
                 t(
                     &format!("{used} Go de programmes en arrière-plan sont sur le disque pour laisser la mémoire au jeu. La mémoire compressée (zram, comme CachyOS) les garderait en mémoire, bien plus vite à reprendre."),
                     &format!("{used} GB of background programs are on the disk to leave memory to the game. Compressed memory (zram, like CachyOS) would keep them in memory, much faster to bring back."),
@@ -1396,7 +1396,7 @@ pub fn run(src: &Sources) -> Report {
                 Level::Info,
                 t("La carte graphique est à sa limite dans ce jeu", "The graphics card is at its limit in this game"),
                 t(
-                    &format!("{game} remplit les {total} Go de la carte, textures déjà au plus bas : rien de plus à régler de ce côté. Ce qui reste : {upscaler} en mode Performance dans les options graphiques du jeu, qui allège la carte."),
+                    &format!("{game} remplit les {total} Go de la carte, textures déjà au plus bas : rien de plus à régler de ce côté. Ce qui reste : {upscaler} en mode Performance dans les options graphiques du jeu, qui allège la carte."),
                     &format!("{game} fills the card's {total} GB, textures already at the lowest: nothing more to set there. What's left: {upscaler} in Performance mode in the game's graphics options, which lightens the card."),
                 ),
             )
@@ -1406,7 +1406,7 @@ pub fn run(src: &Sources) -> Report {
                 Level::Warning,
                 t("La mémoire de la carte graphique est pleine", "The graphics card memory is full"),
                 t(
-                    &format!("{game} remplit les {total} Go de la carte, d'où des à-coups. Dans le jeu, baissez la qualité des textures d'un cran : les images restent presque les mêmes, les à-coups partent."),
+                    &format!("{game} remplit les {total} Go de la carte, d'où des à-coups. Dans le jeu, baissez la qualité des textures d'un cran : les images restent presque les mêmes, les à-coups partent."),
                     &format!("{game} fills the card's {total} GB, hence hitches. In the game, lower texture quality by one step: images stay almost the same, the hitches go away."),
                 ),
             )
@@ -1436,7 +1436,7 @@ pub fn run(src: &Sources) -> Report {
             if crate::system::power_limit::writable(src.sys) {
                 remedies.push(t(
                     &format!(
-                        "C'est réglé : Last1 Panel libère le processeur{to} pendant les jeux, dès la prochaine partie."
+                        "C'est réglé : Last1 Panel libère le processeur{to} pendant les jeux, dès la prochaine partie."
                     ),
                     &format!("Done: Last1 Panel unlocks the CPU{to} during games, from the next game."),
                 ));
@@ -1463,7 +1463,7 @@ pub fn run(src: &Sources) -> Report {
         }
         if contexts.iter().any(|c| c.on_battery) {
             remedies.push(t(
-                "Jouez chargeur branché : sur batterie, le portable le ralentit.",
+                "Jouez chargeur branché : sur batterie, le portable le ralentit.",
                 "Play with the charger plugged in: on battery, the laptop slows it down.",
             ));
         }
@@ -1477,28 +1477,28 @@ pub fn run(src: &Sources) -> Report {
             if !crate::system::razer::writable(laptop) {
                 fix = Some(Fix::RazerCooling);
                 remedies.push(t(
-                    "Il chauffe trop et ralentit : sous Linux, le Razer garde ses ventilateurs au calme. Un clic le règle pendant les jeux comme Synapse sous Windows : processeur Boost, ventilateurs à fond.",
+                    "Il chauffe trop et ralentit : sous Linux, le Razer garde ses ventilateurs au calme. Un clic le règle pendant les jeux comme Synapse sous Windows : processeur Boost, ventilateurs à fond.",
                     "It runs too hot and slows down: on Linux, the Razer keeps its fans quiet. One click sets it during games like Synapse on Windows: CPU Boost, fans at full speed.",
                 ));
             } else if states.iter().any(|s| crate::system::razer::applied(s)) {
                 remedies.push(t(
-                    "Le Razer est déjà réglé comme Synapse pendant les jeux (processeur Boost, ventilateurs à fond) et chauffe encore : surélevez l'arrière du portable, dégagez ses aérations ; s'il n'a jamais été nettoyé, la poussière et la pâte thermique sèche le brident.",
+                    "Le Razer est déjà réglé comme Synapse pendant les jeux (processeur Boost, ventilateurs à fond) et chauffe encore : surélevez l'arrière du portable, dégagez ses aérations ; s'il n'a jamais été nettoyé, la poussière et la pâte thermique sèche le brident.",
                     "The Razer is already set like Synapse during games (CPU Boost, fans at full speed) and still runs hot: raise the back of the laptop, clear its vents; if it was never cleaned, dust and dry thermal paste hold it back.",
                 ));
             } else if let Some(state) = states.first() {
                 remedies.push(t(
-                    &format!("Il chauffe trop et ralentit : le Razer n'a pas pris le réglage de jeu ({state}). Last1 Panel le réessaie à chaque partie."),
+                    &format!("Il chauffe trop et ralentit : le Razer n'a pas pris le réglage de jeu ({state}). Last1 Panel le réessaie à chaque partie."),
                     &format!("It runs too hot and slows down: the Razer didn't take the game setting ({state}). Last1 Panel retries it every game."),
                 ));
             } else {
                 remedies.push(t(
-                    "Il chauffe trop et ralentit : dès la prochaine partie, Last1 Panel règle le Razer comme Synapse sous Windows (processeur Boost, ventilateurs à fond) et vérifie qu'il l'a pris.",
+                    "Il chauffe trop et ralentit : dès la prochaine partie, Last1 Panel règle le Razer comme Synapse sous Windows (processeur Boost, ventilateurs à fond) et vérifie qu'il l'a pris.",
                     "It runs too hot and slows down: from the next game, Last1 Panel sets the Razer like Synapse on Windows (CPU Boost, fans at full speed) and checks it took it.",
                 ));
             }
         } else if throttles > 0 {
             remedies.push(t(
-                "Il chauffe trop et ralentit : surélevez l'arrière du portable et dégagez ses aérations.",
+                "Il chauffe trop et ralentit : surélevez l'arrière du portable et dégagez ses aérations.",
                 "It runs too hot and slows down: raise the back of the laptop and clear its vents.",
             ));
         }
@@ -1510,7 +1510,7 @@ pub fn run(src: &Sources) -> Report {
             if (small_zram || (zram_on && (disk_first || disk_kib > 1_048_576))) && src.can_zram {
                 fix = fix.or(Some(Fix::Zram));
                 remedies.push(t(
-                    &format!("Pendant ces parties, jusqu'à {gb} Go de mémoire partent sur le disque : le jeu attend le disque, et c'est le processeur qui semble lent. Un clic garde tout en mémoire, compressé, comme CachyOS."),
+                    &format!("Pendant ces parties, jusqu'à {gb} Go de mémoire partent sur le disque : le jeu attend le disque, et c'est le processeur qui semble lent. Un clic garde tout en mémoire, compressé, comme CachyOS."),
                     &format!("During these games, up to {gb} GB of memory goes to the disk: the game waits for the disk, and the CPU looks slow. One click keeps everything in memory, compressed, like CachyOS."),
                 ));
             }
@@ -1519,7 +1519,7 @@ pub fn run(src: &Sources) -> Report {
         }
         if contexts.iter().any(|c| c.steam_shaders) {
             remedies.push(t(
-                "Steam compilait des shaders pendant ces parties, sur le processeur du jeu : Last1 Panel les fait maintenant passer après le jeu.",
+                "Steam compilait des shaders pendant ces parties, sur le processeur du jeu : Last1 Panel les fait maintenant passer après le jeu.",
                 "Steam was compiling shaders during these games, on the game's CPU: Last1 Panel now makes them wait behind the game.",
             ));
         }
@@ -1537,7 +1537,7 @@ pub fn run(src: &Sources) -> Report {
             let game = s.program.strip_suffix(".exe").unwrap_or(&s.program);
             t(
                 &format!(
-                    "{game} est déjà au plus bas et le processeur est à pleine vitesse : rien ne le bride. Last1 Panel relève à chaque partie ce qui le charge, pour trouver ce qui peut encore être gagné."
+                    "{game} est déjà au plus bas et le processeur est à pleine vitesse : rien ne le bride. Last1 Panel relève à chaque partie ce qui le charge, pour trouver ce qui peut encore être gagné."
                 ),
                 &format!(
                     "{game} is already at the lowest and the CPU is at full speed: nothing holds it back. Last1 Panel records what loads it every game, to find what can still be gained."
@@ -1603,12 +1603,12 @@ pub fn run(src: &Sources) -> Report {
         if fix.is_none() {
             remedies.push(if rtx {
                 t(
-                    "Pour encore plus d'images : DLSS en Qualité dans le jeu.",
+                    "Pour encore plus d'images : DLSS en Qualité dans le jeu.",
                     "For even more frames: DLSS on Quality in the game.",
                 )
             } else {
                 t(
-                    "Pour encore plus d'images : FSR (ou XeSS) en Qualité dans le jeu.",
+                    "Pour encore plus d'images : FSR (ou XeSS) en Qualité dans le jeu.",
                     "For even more frames: FSR (or XeSS) on Quality in the game.",
                 )
             });
@@ -1654,12 +1654,12 @@ pub fn run(src: &Sources) -> Report {
                 "panel-self-refresh",
                 Level::Info,
                 t(
-                    "Écran du portable : Panel Self Refresh actif",
+                    "Écran du portable : Panel Self Refresh actif",
                     "Laptop screen: Panel Self Refresh on",
                 ),
                 t(
                     &format!(
-                        "Quand l'image ne bouge plus, l'écran la garde et la puce graphique ({driver}) cesse de l'envoyer. Sur bien des portables, ça laisse un fin quadrillage ou une image figée qui part au premier mouvement, et la reprise retarde l'image suivante. Le couper supprime ces défauts (un peu plus de batterie à l'arrêt) ; il vaut après un redémarrage."
+                        "Quand l'image ne bouge plus, l'écran la garde et la puce graphique ({driver}) cesse de l'envoyer. Sur bien des portables, ça laisse un fin quadrillage ou une image figée qui part au premier mouvement, et la reprise retarde l'image suivante. Le couper supprime ces défauts (un peu plus de batterie à l'arrêt) ; il vaut après un redémarrage."
                     ),
                     &format!(
                         "When the image stops moving, the screen keeps it and the graphics chip ({driver}) stops sending it. On many laptops, this leaves a fine grid or a frozen image that goes away at the first move, and waking up delays the next frame. Turning it off removes these flaws (a bit more battery at idle); it applies after a restart."
@@ -1699,7 +1699,7 @@ pub fn run(src: &Sources) -> Report {
             },
             t(
                 &format!(
-                    "C'est Steam (« Traitement des shaders Vulkan »), après une mise à jour d'un jeu ou du pilote : il occupe le processeur, les jeux peuvent saccader jusqu'à la fin. Ensuite, ils tournent mieux.{threads_fr}{}",
+                    "C'est Steam (« Traitement des shaders Vulkan »), après une mise à jour d'un jeu ou du pilote : il occupe le processeur, les jeux peuvent saccader jusqu'à la fin. Ensuite, ils tournent mieux.{threads_fr}{}",
                     if precache.readable { "" } else { " (Avancement illisible par Last1 Panel.)" }
                 ),
                 &format!(
@@ -1795,7 +1795,7 @@ fn session_details(s: &GameSession) -> Vec<String> {
     }
     if s.frames_25_50 > 0 {
         details.push(t(
-            &format!("{} relevés entre 25 et 50 ms ; 0,1 % : {} i/s", s.frames_25_50, s.fps_point_one_low),
+            &format!("{} relevés entre 25 et 50 ms ; 0,1 % : {} i/s", s.frames_25_50, s.fps_point_one_low),
             &format!("{} samples between 25 and 50 ms; 0.1 %: {} FPS", s.frames_25_50, s.fps_point_one_low),
         ));
     }
@@ -1857,7 +1857,7 @@ fn session_details(s: &GameSession) -> Vec<String> {
             })
             .collect();
         details.push(t(
-            &format!("carte freinée : {}", names.join(", ")),
+            &format!("carte freinée : {}", names.join(", ")),
             &format!("card held back: {}", names.join(", ")),
         ));
     }
@@ -1899,7 +1899,7 @@ fn session_details(s: &GameSession) -> Vec<String> {
     }
     if !c.background_compressed.is_empty() {
         details.push(t(
-            &format!("rangé en mémoire compressée : {}", c.background_compressed.join(", ")),
+            &format!("rangé en mémoire compressée : {}", c.background_compressed.join(", ")),
             &format!("moved to compressed memory: {}", c.background_compressed.join(", ")),
         ));
     }
@@ -2486,11 +2486,11 @@ mod tests {
             "dessinée par GeForce RTX 3070 Laptop GPU ; carte 79.4 W (au plus 80.1 W) ; carte jusqu'à 86 °C ; \
              processeur jusqu'à 97 °C, 3100 MHz en moyenne ; processeur 35.2 W ; mode du PC balanced ; \
              processeur en balance_performance ; limite de la carte 80 W sur 125 W possibles ; \
-             carte freinée : limite de puissance ; processeur limité à 35 W, 90 W en pointe ; \
+             carte freinée : limite de puissance ; processeur limité à 35 W, 90 W en pointe ; \
              processeur bridé par la chaleur 12 fois ; Razer mode 4/4, processeur 3, carte 2 ; \
              processeur pris par PioneerGame.exe 520 %, fossilize_repla 300 % ; Steam compilait des shaders ; échange jusqu'à 9.5 Go en mémoire compressée, 0 Go sur le disque ; \
              mémoire prise par PioneerGame.exe 9.8 Go ; \
-             rangé en mémoire compressée : discord 1.2 Go ; \
+             rangé en mémoire compressée : discord 1.2 Go ; \
              à 12.5 souris Logitech USB Receiver (récepteur USB 046d:c547) débranché(e) ; \
              Dynamic Boost (nvidia-powerd) arrêté ; \
              image affichée par une autre puce (portable hybride)"
@@ -2768,7 +2768,7 @@ mod tests {
         let desktop = gpu("595.58.03");
         assert_eq!(
             pcie(&desktop, None),
-            (Some(Level::Info), "x8 (carte x16, emplacement ? ; pas encore mesurée en jeu)".to_string())
+            (Some(Level::Info), "x8 (carte x16, emplacement ? ; pas encore mesurée en jeu)".to_string())
         );
         // En jeu, x16 : réduite au repos seulement, rien à dire.
         assert_eq!(

@@ -10,22 +10,22 @@
 
 <div class="backdrop">
   <div class="dialog panel" role="dialog" aria-modal="true" aria-labelledby="sharing-title">
-    <h2 id="sharing-title"><Gauge size={20} />{t("Aider à améliorer Last1 Panel ?", "Help improve Last1 Panel?")}</h2>
+    <h2 id="sharing-title"><Gauge size={20} />{t("Aider à améliorer Last1 Panel ?", "Help improve Last1 Panel?")}</h2>
     <div class="body">
       <p>
         {t(
-          "Avec votre accord, Last1 Panel envoie à last1.fun, après chacune de vos parties, le rapport de la page Performances :",
+          "Avec votre accord, Last1 Panel envoie à last1.fun, après chacune de vos parties, le rapport de la page Performances :",
           "With your consent, Last1 Panel sends last1.fun, after each of your games, the report of the Performance page:",
         )}
       </p>
       <ul>
-        <li>{t("les composants du PC : processeur, carte graphique et pilote, mémoire, noyau, distribution ;", "the PC's components: CPU, graphics card and driver, memory, kernel, distribution;")}</li>
-        <li>{t("ce que le diagnostic a lu et trouvé ;", "what the diagnostic read and found;")}</li>
+        <li>{t("les composants du PC : processeur, carte graphique et pilote, mémoire, noyau, distribution ;", "the PC's components: CPU, graphics card and driver, memory, kernel, distribution;")}</li>
+        <li>{t("ce que le diagnostic a lu et trouvé ;", "what the diagnostic read and found;")}</li>
         <li>{t("les images par seconde des parties mesurées, avec le nom des jeux.", "the frame rate of measured games, with the games' names.")}</li>
       </ul>
       <p>
         {t(
-          "Seulement pour optimiser le produit, rien d'autre : jamais revendu ni partagé. Ni nom, ni compte, ni fichiers : le nom du compte et celui du PC sont masqués, le PC n'est désigné que par un identifiant anonyme. Vous pouvez changer d'avis à tout moment dans Performances.",
+          "Seulement pour optimiser le produit, rien d'autre : jamais revendu ni partagé. Ni nom, ni compte, ni fichiers : le nom du compte et celui du PC sont masqués, le PC n'est désigné que par un identifiant anonyme. Vous pouvez changer d'avis à tout moment dans Performances.",
           "Only to optimize the product, nothing else: never sold or shared. No name, no account, no files: the account and PC names are masked, the PC is only identified by an anonymous ID. You can change your mind at any time in Performance.",
         )}
       </p>

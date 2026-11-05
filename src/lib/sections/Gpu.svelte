@@ -151,7 +151,7 @@
 <SectionHeader
   title={t("Votre carte graphique", "Your graphics card")}
   lead={t(
-    "Limite de puissance, ventilateurs et fréquences, par le service LACT. Un réglage s'essaie : sans confirmation, la carte revient seule à ses réglages d'avant.",
+    "Limite de puissance, ventilateurs et fréquences, par le service LACT. Un réglage s'essaie : sans confirmation, la carte revient seule à ses réglages d'avant.",
     "Power limit, fans and clocks, through the LACT service. A setting is tried first: without confirmation, the card goes back to its previous settings on its own.",
   )}
 >
@@ -178,7 +178,7 @@
         </button>
       </p>
     {:else if !app.system?.tools.lact && app.system?.tools.pacman}
-      <p>{t("Last1 Panel règle la carte graphique par LACT, un service du système : il s'installe une fois, avec votre mot de passe.", "Last1 Panel tunes the graphics card through LACT, a system service: it's installed once, with your password.")}</p>
+      <p>{t("Last1 Panel règle la carte graphique par LACT, un service du système : il s'installe une fois, avec votre mot de passe.", "Last1 Panel tunes the graphics card through LACT, a system service: it's installed once, with your password.")}</p>
       <p class="action">
         <button class="btn btn--primary" onclick={enableLact} disabled={enabling}>
           {#if enabling}<Spinner />{t("Installation de LACT…", "Installing LACT…")}{:else}{t("Installer LACT", "Install LACT")}{/if}
@@ -235,7 +235,7 @@
         max={Math.round(stats.powerCapMax)}
         defaultValue={stats.powerCapDefault ?? undefined}
         format={watts}
-        hint={t("Plus bas : carte plus fraîche et plus silencieuse, un peu moins rapide.", "Lower: cooler, quieter card, slightly slower.")}
+        hint={t("Plus bas : carte plus fraîche et plus silencieuse, un peu moins rapide.", "Lower: cooler, quieter card, slightly slower.")}
         oninput={(v) => tuning && (tuning.powerCap = v === stats?.powerCapDefault ? null : v)}
       />
     {:else}
@@ -270,7 +270,7 @@
       <h2>{t("Fréquences", "Clocks")}</h2>
       <Callout kind="warning">
         {t(
-          "Monter les fréquences peut rendre la carte instable : augmentez par petits pas et essayez un jeu à chaque fois.",
+          "Monter les fréquences peut rendre la carte instable : augmentez par petits pas et essayez un jeu à chaque fois.",
           "Raising clocks can make the card unstable: go up in small steps and try a game each time.",
         )}
       </Callout>
@@ -282,12 +282,12 @@
       {/if}
     </section>
   {:else if app.system?.gpus.some((g) => g.vendor === "amd")}
-    <Callout kind="info">{t("Fréquences des cartes AMD : réglables dans LACT pour l'instant.", "AMD card clocks: adjustable in LACT for now.")}</Callout>
+    <Callout kind="info">{t("Fréquences des cartes AMD : réglables dans LACT pour l'instant.", "AMD card clocks: adjustable in LACT for now.")}</Callout>
   {/if}
 {/if}
 
 {#if confirmSeconds !== null}
-  <ConfirmDialog title={t("Garder ces réglages de la carte ?", "Keep these card settings?")} seconds={confirmSeconds} onkeep={keep} onrevert={revert} />
+  <ConfirmDialog title={t("Garder ces réglages de la carte ?", "Keep these card settings?")} seconds={confirmSeconds} onkeep={keep} onrevert={revert} />
 {/if}
 
 <style>

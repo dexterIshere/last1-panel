@@ -85,7 +85,7 @@
   function fgSummary(last: FrameGenGame): string {
     const name = selected === null ? (info?.games.find((g) => String(g.appId) === last.game)?.name ?? last.game) : null;
     const date = new Date(last.when * 1000).toLocaleString(locale(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-    const head = name ? t(`Dernière partie (${name}, ${date}) : `, `Last game (${name}, ${date}): `) : t(`Dernière partie (${date}) : `, `Last game (${date}): `);
+    const head = name ? t(`Dernière partie (${name}, ${date}) : `, `Last game (${name}, ${date}): `) : t(`Dernière partie (${date}) : `, `Last game (${date}): `);
     if (!last.loaded) return head + t("elle ne s'est pas chargée.", "it did not load.");
     if (last.generated !== null && last.generated > 0 && last.presents !== null)
       return head + t(`${count(last.generated)} images ajoutées, ${count(last.presents)} affichées en tout.`, `${count(last.generated)} frames added, ${count(last.presents)} shown in all.`);
@@ -130,7 +130,7 @@
     try {
       await api.saveGameSettings($state.snapshot(info.settings));
       saved = JSON.stringify(info.settings);
-      notice = t("Enregistré : appliqué au prochain lancement du jeu.", "Saved: applied the next time the game starts.");
+      notice = t("Enregistré : appliqué au prochain lancement du jeu.", "Saved: applied the next time the game starts.");
     } catch (e) {
       error = errorMessage(e);
     }
@@ -188,8 +188,8 @@
   title={t("Réglages 3D / de vos jeux", "Your games' / 3D settings")}
   lead={t(
     app.amd
-      ? "Les réglages graphiques du logiciel AMD (Adrenalin) : pour tous les jeux, ou jeu par jeu. Ils s'appliquent au lancement, par l'option Steam de Last1 Panel."
-      : "Les « Paramètres 3D » du panneau NVIDIA : pour tous les jeux, ou jeu par jeu. Ils s'appliquent au lancement, par l'option Steam de Last1 Panel.",
+      ? "Les réglages graphiques du logiciel AMD (Adrenalin) : pour tous les jeux, ou jeu par jeu. Ils s'appliquent au lancement, par l'option Steam de Last1 Panel."
+      : "Les « Paramètres 3D » du panneau NVIDIA : pour tous les jeux, ou jeu par jeu. Ils s'appliquent au lancement, par l'option Steam de Last1 Panel.",
     app.amd
       ? "The AMD Software (Adrenalin) graphics settings: for all games, or game by game. They apply at launch, through Last1 Panel's Steam launch option."
       : "The NVIDIA Control Panel “3D Settings”: for all games, or game by game. They apply at launch, through Last1 Panel's Steam launch option.",
@@ -318,7 +318,7 @@
             {#if nvidia}<option value="ultra">{t("Ultra (avec NVIDIA Reflex)", "Ultra (with NVIDIA Reflex)")}</option>{/if}
           </select>
           <span class="field__hint">
-            {t("Une seule image préparée d'avance : moins de latence, mais moins d'images par seconde quand le processeur limite.", "Only one frame prepared ahead: less latency, but fewer frames when the CPU is the limit.")}
+            {t("Une seule image préparée d'avance : moins de latence, mais moins d'images par seconde quand le processeur limite.", "Only one frame prepared ahead: less latency, but fewer frames when the CPU is the limit.")}
             {#if nvidia}{t("Inutile pour les jeux avec NVIDIA Reflex.", "Not needed for games with NVIDIA Reflex.")}{/if}
           </span>
         </label>
@@ -337,13 +337,13 @@
 
         {#if nvidia}
           <label class="field">
-            <span class="field__label">{t("DLSS : dernière version", "DLSS: latest version")}</span>
+            <span class="field__label">{t("DLSS : dernière version", "DLSS: latest version")}</span>
             <select value={boolValue(profile.dlssLatest)} onchange={(e) => chooseDlss(e.currentTarget)}>
               {@render boolOptions(t("Activée", "On"), t("Version du jeu", "Game's version"))}
             </select>
             <span class="field__hint">
               {t("Comme « Remplacement DLSS » de l'application NVIDIA (RTX).", "Like the NVIDIA app's “DLSS Override” (RTX).")}
-              <strong class="risk">{t("Jeux en ligne : risque de bannissement, à vos risques.", "Online games: risk of a ban, at your own risk.")}</strong>
+              <strong class="risk">{t("Jeux en ligne : risque de bannissement, à vos risques.", "Online games: risk of a ban, at your own risk.")}</strong>
             </span>
           </label>
 
@@ -382,12 +382,12 @@
             </select>
             <span class="field__hint">
               {#if !frameGen.installed}
-                {t("Absente de cette installation : réinstallez Last1 Panel.", "Missing from this installation: reinstall Last1 Panel.")}
+                {t("Absente de cette installation : réinstallez Last1 Panel.", "Missing from this installation: reinstall Last1 Panel.")}
               {:else if fgWanted && smoothOn}
-                <strong class="risk">{t("Smooth Motion est activé : il ajoute déjà des images, celle de Last1 Panel ne s'applique pas.", "Smooth Motion is on: it already adds frames, Last1 Panel's does not apply.")}</strong>
+                <strong class="risk">{t("Smooth Motion est activé : il ajoute déjà des images, celle de Last1 Panel ne s'applique pas.", "Smooth Motion is on: it already adds frames, Last1 Panel's does not apply.")}</strong>
               {:else if fgWanted}
                 {t("Images ajoutées entre celles du jeu pour plus de fluidité, par Last1 Panel.", "Frames added between the game's for smoother motion, by Last1 Panel.")}
-                <strong class="risk">{t("Jeux en ligne : ajout au jeu parfois interdit, à vos risques.", "Online games: additions to the game are sometimes forbidden, at your own risk.")}</strong>
+                <strong class="risk">{t("Jeux en ligne : ajout au jeu parfois interdit, à vos risques.", "Online games: additions to the game are sometimes forbidden, at your own risk.")}</strong>
               {:else}
                 {t("Le jeu part sans elle.", "The game starts without it.")}
               {/if}
@@ -409,14 +409,14 @@
           {#if hdrWanted && !hdrScreen}
             <span class="field__hint">
               <strong class="risk">{hdrCapable
-                ? t("L'écran n'est pas en HDR : le jeu ne peut pas l'être.", "The screen isn't in HDR: the game can't be.")
+                ? t("L'écran n'est pas en HDR : le jeu ne peut pas l'être.", "The screen isn't in HDR: the game can't be.")
                 : t("Aucun écran HDR branché.", "No HDR screen plugged in.")}</strong>
               {#if hdrCapable}<button class="link" onclick={() => (app.section = "display")}>{t("Mettre l'écran en HDR", "Turn on screen HDR")}</button>{/if}
             </span>
           {:else}
             <span class="field__hint">
               {t(
-                "« Automatique » : en HDR quand l'écran l'est (Matériel › Écran). Proton 10 ou plus récent (Proton CachyOS, GE-Proton).",
+                "« Automatique » : en HDR quand l'écran l'est (Matériel › Écran). Proton 10 ou plus récent (Proton CachyOS, GE-Proton).",
                 "“Automatic”: in HDR when the screen is (Hardware › Screen). Proton 10 or newer (Proton CachyOS, GE-Proton).",
               )}
             </span>
@@ -436,12 +436,12 @@
           </select>
           <span class="field__hint">
             {#if !info.colorLayer}
-              {t("Couche Vulkan vkBasalt de Last1 Panel absente : réinstallez Last1 Panel.", "Last1 Panel's vkBasalt Vulkan layer is missing: reinstall Last1 Panel.")}
+              {t("Couche Vulkan vkBasalt de Last1 Panel absente : réinstallez Last1 Panel.", "Last1 Panel's vkBasalt Vulkan layer is missing: reinstall Last1 Panel.")}
             {:else if info.colorProfiles.length === 0}
               {t("Enregistrez d'abord un profil dans Couleurs.", "Save a profile in Colors first.")}
             {:else}
-              {t("Dans la seule fenêtre du jeu (Proton et jeux Vulkan). Touche Arrêt défil : profil coupé ou remis.", "In the game window only (Proton and Vulkan games). Scroll Lock key: profile off or back on.")}
-              <strong class="risk">{t("Jeux en ligne : filtres d'image parfois interdits, à vos risques.", "Online games: image filters are sometimes forbidden, at your own risk.")}</strong>
+              {t("Dans la seule fenêtre du jeu (Proton et jeux Vulkan). Touche Arrêt défil : profil coupé ou remis.", "In the game window only (Proton and Vulkan games). Scroll Lock key: profile off or back on.")}
+              <strong class="risk">{t("Jeux en ligne : filtres d'image parfois interdits, à vos risques.", "Online games: image filters are sometimes forbidden, at your own risk.")}</strong>
             {/if}
           </span>
         </label>
@@ -465,7 +465,7 @@
         </div>
         <span class="field__hint">
           {game?.launchOptions
-            ? t(`Option actuelle de ce jeu : ${game.launchOptions}`, `This game's current option: ${game.launchOptions}`)
+            ? t(`Option actuelle de ce jeu : ${game.launchOptions}`, `This game's current option: ${game.launchOptions}`)
             : t("Mise par « Activer », ou à coller dans Propriétés > Options de lancement.", "Set by “Turn on”, or paste it in Properties > Launch options.")}
         </span>
       </div>
@@ -489,7 +489,7 @@
 
 {#if dlssWarning}
   <WarningDialog
-    title={t("DLSS : risque de bannissement en ligne", "DLSS: risk of an online ban")}
+    title={t("DLSS : risque de bannissement en ligne", "DLSS: risk of an online ban")}
     confirmLabel={t("J'accepte le risque, activer", "I accept the risk, turn on")}
     oncancel={() => {
       if (dlssWarning) dlssWarning.select.value = dlssWarning.previous;
@@ -502,8 +502,8 @@
   >
     <p>
       {selected === null
-        ? t("Pour tous les jeux lancés avec Last1 Panel, jeux en ligne compris :", "For every game launched with Last1 Panel, online games included:")
-        : t(`Pour ${game?.name ?? "ce jeu"} :`, `For ${game?.name ?? "this game"}:`)}
+        ? t("Pour tous les jeux lancés avec Last1 Panel, jeux en ligne compris :", "For every game launched with Last1 Panel, online games included:")
+        : t(`Pour ${game?.name ?? "ce jeu"} :`, `For ${game?.name ?? "this game"}:`)}
       {t(
         "le jeu utilisera une autre version du DLSS que celle qu'il fournit.",
         "the game will use another DLSS version than the one it ships with.",
@@ -511,14 +511,14 @@
     </p>
     <p>
       {t(
-        "Certains jeux en ligne n'acceptent que leur propre DLSS : leur anti-triche (Easy Anti-Cheat, BattlEye…) ou leurs conditions d'utilisation peuvent y voir une modification du jeu et suspendre ou bannir le compte. N'activez pas cette option pour un jeu en ligne sans savoir qu'il l'autorise.",
+        "Certains jeux en ligne n'acceptent que leur propre DLSS : leur anti-triche (Easy Anti-Cheat, BattlEye…) ou leurs conditions d'utilisation peuvent y voir une modification du jeu et suspendre ou bannir le compte. N'activez pas cette option pour un jeu en ligne sans savoir qu'il l'autorise.",
         "Some online games only accept their own DLSS: their anti-cheat (Easy Anti-Cheat, BattlEye…) or terms of use may treat it as a modification of the game and suspend or ban the account. Do not turn this on for an online game unless you know it allows it.",
       )}
     </p>
     <p>
       <strong>
         {t(
-          "Vous l'activez sous votre seule responsabilité : Last1 Panel et ses auteurs déclinent toute responsabilité en cas de sanction, de perte de compte ou de problème dans le jeu.",
+          "Vous l'activez sous votre seule responsabilité : Last1 Panel et ses auteurs déclinent toute responsabilité en cas de sanction, de perte de compte ou de problème dans le jeu.",
           "You turn it on at your own risk: Last1 Panel and its authors accept no liability for any sanction, account loss or in-game problem.",
         )}
       </strong>

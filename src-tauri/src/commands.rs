@@ -605,7 +605,7 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
         let home = last1_panel_core::paths::home_dir();
         let unsure = |reasons: Vec<String>| {
             CoreError::message(t(
-                &format!("Rien n'a changé : {}", reasons.iter().take(5).cloned().collect::<Vec<_>>().join(" ; ")),
+                &format!("Rien n'a changé : {}", reasons.iter().take(5).cloned().collect::<Vec<_>>().join(" ; ")),
                 &format!("Nothing changed: {}", reasons.iter().take(5).cloned().collect::<Vec<_>>().join("; ")),
             ))
         };
@@ -653,11 +653,11 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
             if repair::refused(output.status) {
                 return Err(CoreError::message(if output.stderr.contains("authentication agent") {
                     t(
-                        "Ce bureau n'a pas de fenêtre de mot de passe (agent polkit, hyprpolkitagent sous Hyprland) : rien n'a changé.",
+                        "Ce bureau n'a pas de fenêtre de mot de passe (agent polkit, hyprpolkitagent sous Hyprland) : rien n'a changé.",
                         "This desktop has no password window (polkit agent, hyprpolkitagent on Hyprland): nothing changed.",
                     )
                 } else {
-                    t("Mot de passe non donné : rien n'a changé.", "No password given: nothing changed.")
+                    t("Mot de passe non donné : rien n'a changé.", "No password given: nothing changed.")
                 }));
             }
             if !output.success() {
@@ -694,19 +694,19 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
         }
         if fixes.contains(&Fix::HyprlandLua) {
             notices.push(t(
-                "Configuration reprise en Lua : raccourcis, clavier, barre et applications de démarrage reviennent. L'ancienne est gardée à côté (hyprland.conf, *.last1-panel.bak).",
+                "Configuration reprise en Lua : raccourcis, clavier, barre et applications de démarrage reviennent. L'ancienne est gardée à côté (hyprland.conf, *.last1-panel.bak).",
                 "Configuration carried over to Lua: shortcuts, keyboard, bar and startup apps are back. The old one is kept alongside (hyprland.conf, *.last1-panel.bak).",
             ));
         }
         if fixes.contains(&Fix::SystemUpdate) {
             notices.push(t(
-                "Système à jour : un redémarrage met en service le nouveau pilote et le nouveau noyau.",
+                "Système à jour : un redémarrage met en service le nouveau pilote et le nouveau noyau.",
                 "System up to date: a restart puts the new driver and kernel into service.",
             ));
         }
         if fixes.contains(&Fix::Zram) {
             notices.push(t(
-                "Mémoire compressée activée : les programmes en arrière-plan restent en mémoire, même après un redémarrage.",
+                "Mémoire compressée activée : les programmes en arrière-plan restent en mémoire, même après un redémarrage.",
                 "Compressed memory on: background programs stay in memory, even after a restart.",
             ));
         }
@@ -724,19 +724,19 @@ pub async fn performance_fix(panel: State<'_, Arc<Panel>>, fixes: Vec<Fix>) -> R
         }
         if fixes.contains(&Fix::CpuPowerLimit) {
             notices.push(t(
-                "Puissance du processeur libérée pour les jeux : elle vaut dès la prochaine partie, chargeur branché.",
+                "Puissance du processeur libérée pour les jeux : elle vaut dès la prochaine partie, chargeur branché.",
                 "CPU power freed for games: it applies from the next game, with the charger plugged in.",
             ));
         }
         if fixes.contains(&Fix::PanelSelfRefresh) {
             notices.push(t(
-                "Panel Self Refresh coupé : il vaut après un redémarrage du PC.",
+                "Panel Self Refresh coupé : il vaut après un redémarrage du PC.",
                 "Panel Self Refresh off: it applies after restarting the PC.",
             ));
         }
         if fixes.contains(&Fix::ShaderCache) {
             notices.push(t(
-                "Cache des shaders agrandi : il vaudra après une déconnexion-reconnexion (ou un redémarrage).",
+                "Cache des shaders agrandi : il vaudra après une déconnexion-reconnexion (ou un redémarrage).",
                 "Shader cache enlarged: it applies after logging out and back in (or a restart).",
             ));
         }
@@ -840,14 +840,14 @@ fn with_steam_closed<T>(
     if was_running {
         if steam::game_running(proc_dir) {
             return Err(CoreError::message(t(
-                "Un jeu est lancé : quittez-le, puis réessayez (fermer Steam le fermerait aussi).",
+                "Un jeu est lancé : quittez-le, puis réessayez (fermer Steam le fermerait aussi).",
                 "A game is running: quit it, then try again (closing Steam would close it too).",
             )));
         }
         let _ = steam_command(&["-shutdown"]).spawn().map(|mut child| std::thread::spawn(move || child.wait()));
         if !steam::wait_closed(proc_dir, Duration::from_secs(60)) {
             return Err(CoreError::message(t(
-                "Steam ne s'est pas fermé : quittez-le (menu Steam > Quitter), puis réessayez.",
+                "Steam ne s'est pas fermé : quittez-le (menu Steam > Quitter), puis réessayez.",
                 "Steam did not close: quit it (Steam menu > Exit), then try again.",
             )));
         }

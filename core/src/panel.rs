@@ -176,7 +176,7 @@ impl Panel {
         let client = crate::input::ratbag::RatbagClient { exec: self.exec.as_ref() };
         let mouse = client.state().mice.into_iter().find(|mouse| mouse.id == id).ok_or_else(|| {
             CoreError::message(t(
-                "Souris débranchée : rebranchez-la, puis réessayez.",
+                "Souris débranchée : rebranchez-la, puis réessayez.",
                 "Mouse unplugged: plug it back in, then try again.",
             ))
         })?;
@@ -246,7 +246,7 @@ impl Panel {
         let color_unavailable = match &screen {
             None => Some(t("écran introuvable", "screen not found")),
             Some(screen) if screen.hdr == Some(true) => Some(t(
-                "Écran en HDR : luminosité, contraste et gamma ne s'appliquent qu'en SDR (désactivez le HDR dans Matériel › Écran).",
+                "Écran en HDR : luminosité, contraste et gamma ne s'appliquent qu'en SDR (désactivez le HDR dans Matériel › Écran).",
                 "Screen in HDR mode: brightness, contrast and gamma only apply in SDR (turn HDR off in Hardware › Screen).",
             )),
             Some(screen) if screen.icc_profile.is_none() => {
@@ -276,17 +276,17 @@ impl Panel {
             Some(gpu) if gpu.vendor == Vendor::Nvidia => {
                 vibrance::program(self.exec.as_ref(), gpu.driver_version.as_deref()).is_none().then(|| {
                     t(
-                        "Vibrance indisponible pour cette version du pilote NVIDIA : mettez à jour Last1 Panel.",
+                        "Vibrance indisponible pour cette version du pilote NVIDIA : mettez à jour Last1 Panel.",
                         "Vibrance unavailable for this NVIDIA driver version: update Last1 Panel.",
                     )
                 })
             }
             Some(_) if gpus.iter().any(|g| g.vendor == Vendor::Nvidia) => Some(t(
-                "Cet écran est branché sur la puce graphique intégrée : la vibrance NVIDIA ne s'y applique pas.",
+                "Cet écran est branché sur la puce graphique intégrée : la vibrance NVIDIA ne s'y applique pas.",
                 "This screen is driven by the integrated graphics: NVIDIA vibrance does not apply to it.",
             )),
             _ => Some(t(
-                "Vibrance du bureau : cartes NVIDIA seulement (Wayland ne la permet pas aux autres). Dans les jeux, elle passe par un profil de couleurs (Couleurs dans le jeu), sur toutes les cartes.",
+                "Vibrance du bureau : cartes NVIDIA seulement (Wayland ne la permet pas aux autres). Dans les jeux, elle passe par un profil de couleurs (Couleurs dans le jeu), sur toutes les cartes.",
                 "Desktop vibrance: NVIDIA cards only (Wayland doesn't allow it for others). In games, it goes through a color profile (In-game colors), on every card.",
             )),
         }
@@ -473,7 +473,7 @@ impl Panel {
                     level: crate::system::diagnostic::Level::Problem,
                     title: t("Hyprland n'utilise plus votre configuration", "Hyprland no longer uses your configuration"),
                     detail: t(
-                        "Depuis sa version 0.57, Hyprland ne lit plus hyprland.conf : il démarre sur une configuration d'exemple (clavier, raccourcis, barre et applications de démarrage perdus). Votre configuration est intacte dans ~/.config/hypr/hyprland.conf ; elle doit être reprise au nouveau format (hyprland.lua) par la personne ou l'outil qui l'a installée.",
+                        "Depuis sa version 0.57, Hyprland ne lit plus hyprland.conf : il démarre sur une configuration d'exemple (clavier, raccourcis, barre et applications de démarrage perdus). Votre configuration est intacte dans ~/.config/hypr/hyprland.conf ; elle doit être reprise au nouveau format (hyprland.lua) par la personne ou l'outil qui l'a installée.",
                         "Since version 0.57, Hyprland no longer reads hyprland.conf: it starts on an example configuration (keyboard, shortcuts, bar and startup apps lost). Your configuration is intact in ~/.config/hypr/hyprland.conf; it must be carried over to the new format (hyprland.lua) by whoever or whatever installed it.",
                     ),
                     fix: Some(crate::system::diagnostic::Fix::HyprlandLua),
@@ -493,12 +493,12 @@ impl Panel {
                     crate::system::update_check::Verdict::Blocked { reasons } => {
                         update.fix = None;
                         update.detail.push_str(&t(
-                            &format!(" Last1 Panel l'a essayée sur ce PC et la retient, elle casserait le bureau : {}. Il la proposera dès que c'est réglé.", reasons.join(" ; ")),
+                            &format!(" Last1 Panel l'a essayée sur ce PC et la retient, elle casserait le bureau : {}. Il la proposera dès que c'est réglé.", reasons.join(" ; ")),
                             &format!(" Last1 Panel tried it on this PC and holds it back, it would break the desktop: {}. It will offer it as soon as this is fixed.", reasons.join("; ")),
                         ));
                     }
                     crate::system::update_check::Verdict::NeedsConversion => update.detail.push_str(&t(
-                        " Hyprland y passe en Lua : Last1 Panel convertit votre configuration avant (essayée sur ce PC, l'ancienne gardée).",
+                        " Hyprland y passe en Lua : Last1 Panel convertit votre configuration avant (essayée sur ce PC, l'ancienne gardée).",
                         " Hyprland moves to Lua with it: Last1 Panel converts your configuration first (tried on this PC, the old one kept).",
                     )),
                     crate::system::update_check::Verdict::Ok => {}

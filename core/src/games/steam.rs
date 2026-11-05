@@ -291,13 +291,13 @@ pub fn game_running(proc_dir: &Path) -> bool {
 pub fn check_writable(root: &Path, wrapped: bool) -> CoreResult<()> {
     if wrapped && is_flatpak(root) {
         return Err(CoreError::message(t(
-            "Steam est installé en Flatpak : un jeu ne pourrait pas lancer Last1 Panel depuis son bac à sable. Installez Steam par le paquet de CachyOS (steam).",
+            "Steam est installé en Flatpak : un jeu ne pourrait pas lancer Last1 Panel depuis son bac à sable. Installez Steam par le paquet de CachyOS (steam).",
             "Steam is installed as a Flatpak: a game could not start Last1 Panel from its sandbox. Install Steam from the CachyOS package (steam).",
         )));
     }
     if local_configs(root).is_empty() {
         return Err(CoreError::message(t(
-            "Aucun compte Steam sur ce PC : lancez Steam et connectez-vous une première fois.",
+            "Aucun compte Steam sur ce PC : lancez Steam et connectez-vous une première fois.",
             "No Steam account on this PC: start Steam and sign in once.",
         )));
     }
@@ -396,7 +396,7 @@ pub fn set_wrapped(root: &Path, proc_dir: &Path, app_ids: &[u32], wrapped: bool)
     check_writable(root, wrapped)?;
     if is_running(proc_dir) {
         return Err(CoreError::message(t(
-            "Fermez Steam d'abord (menu Steam > Quitter) : il remplacerait ce réglage en se fermant.",
+            "Fermez Steam d'abord (menu Steam > Quitter) : il remplacerait ce réglage en se fermant.",
             "Quit Steam first (Steam menu > Exit): it would overwrite this setting when closing.",
         )));
     }

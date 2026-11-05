@@ -75,7 +75,7 @@
 <SectionHeader
   title={t("Vos clips de jeu", "Your game clips")}
   lead={t(
-    "Comme Medal : pendant un jeu, F8 enregistre la dernière minute, F9 lance ou arrête une vidéo de la partie. La carte graphique encode elle-même : presque rien en images par seconde.",
+    "Comme Medal : pendant un jeu, F8 enregistre la dernière minute, F9 lance ou arrête une vidéo de la partie. La carte graphique encode elle-même : presque rien en images par seconde.",
     "Like Medal: during a game, F8 saves the last minute, F9 starts or stops a video of the game. The graphics card encodes it itself: next to nothing in frames per second.",
   )}
 >
@@ -97,7 +97,7 @@
         <h2>{t("Vice fait vos clips", "Vice makes your clips")}</h2>
         <p class="muted">
           {t(
-            "Vous avez installé Vice : il garde ses touches et ses réglages, Last1 Panel n'enregistre rien pour ne pas le gêner.",
+            "Vous avez installé Vice : il garde ses touches et ses réglages, Last1 Panel n'enregistre rien pour ne pas le gêner.",
             "You installed Vice: it keeps its keys and settings, Last1 Panel records nothing so as not to get in its way.",
           )}
         </p>
@@ -137,10 +137,10 @@
         onchange={(on) => act(() => api.setClips(on))}
         hint={enabled
           ? t(
-              "F8 : la dernière minute. F9 : lancer ou arrêter une vidéo. Une notification confirme chaque vidéo.",
+              "F8 : la dernière minute. F9 : lancer ou arrêter une vidéo. Une notification confirme chaque vidéo.",
               "F8: the last minute. F9: start or stop a video. A notification confirms each video.",
             )
-          : t("Coupés : rien n'est gardé pendant les jeux.", "Off: nothing is kept during games.")}
+          : t("Coupés : rien n'est gardé pendant les jeux.", "Off: nothing is kept during games.")}
       />
       <div class="keys">
         <span class="key mono">F8</span><span>{t("les 60 dernières secondes", "the last 60 seconds")}</span>

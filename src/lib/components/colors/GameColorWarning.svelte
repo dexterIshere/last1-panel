@@ -9,7 +9,7 @@
 </script>
 
 <WarningDialog
-  title={t("Couleurs en jeu : règles des jeux en ligne", "Colors in games: online games' rules")}
+  title={t("Couleurs en jeu : règles des jeux en ligne", "Colors in games: online games' rules")}
   confirmLabel={t("J'accepte le risque, activer", "I accept the risk, turn on")}
   {onconfirm}
   {oncancel}
@@ -19,7 +19,7 @@
       ? t(`${game} montrera le profil dans sa fenêtre,`, `${game} will show the profile in its window,`)
       : t("Tous les jeux lancés avec Last1 Panel, jeux en ligne compris, montreront le profil dans leur fenêtre,", "Every game launched with Last1 Panel, online games included, will show the profile in its window,")}
     {t(
-      "par une couche Vulkan (vkBasalt), comme MangoHud : aucun fichier du jeu n'est modifié.",
+      "par une couche Vulkan (vkBasalt), comme MangoHud : aucun fichier du jeu n'est modifié.",
       "through a Vulkan layer (vkBasalt), like MangoHud: no game file is modified.",
     )}
   </p>
@@ -32,7 +32,7 @@
   <p>
     <strong>
       {t(
-        "Vous l'activez sous votre seule responsabilité : Last1 Panel et ses auteurs déclinent toute responsabilité en cas de sanction, de perte de compte ou de problème dans le jeu.",
+        "Vous l'activez sous votre seule responsabilité : Last1 Panel et ses auteurs déclinent toute responsabilité en cas de sanction, de perte de compte ou de problème dans le jeu.",
         "You turn it on at your own risk: Last1 Panel and its authors accept no liability for any sanction, account loss or in-game problem.",
       )}
     </strong>

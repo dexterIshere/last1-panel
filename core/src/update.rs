@@ -82,7 +82,7 @@ struct Response {
 fn refused(detail: &str) -> CoreError {
     CoreError::message(format!(
         "{} {detail}",
-        crate::i18n::t("Liste de last1.fun refusée :", "last1.fun list refused:")
+        crate::i18n::t("Liste de last1.fun refusée :", "last1.fun list refused:")
     ))
 }
 
@@ -129,14 +129,14 @@ pub fn update_by_go_to_linux(exec: &dyn Exec) -> CoreResult<()> {
     let output = exec.run("pkexec", &[GTL_UPDATE.into(), "--last1-panel".into()])?;
     if output.status == 126 || output.status == 127 {
         return Err(CoreError::message(crate::i18n::t(
-            "Mise à jour refusée : rien n'a changé.",
+            "Mise à jour refusée : rien n'a changé.",
             "Update refused: nothing changed.",
         )));
     }
     let answer = output.stdout.lines().last().unwrap_or_default().trim();
     if !output.success() || answer == "unpublished" || answer == "absent" {
         return Err(CoreError::message(crate::i18n::t(
-            "go-to-linux n'a pas pu mettre Last1 Panel à jour (Internet ?). Le détail est dans /var/log/gtl-update.log.",
+            "go-to-linux n'a pas pu mettre Last1 Panel à jour (Internet ?). Le détail est dans /var/log/gtl-update.log.",
             "go-to-linux could not update Last1 Panel (Internet?). Details are in /var/log/gtl-update.log.",
         )));
     }
@@ -191,7 +191,7 @@ pub fn parse_release(payload: &[u8], now: i64) -> CoreResult<Release> {
         return Err(refused("pas celle de Last1 Panel"));
     }
     if manifest.exp <= now {
-        return Err(refused(&crate::i18n::t("expirée (heure du PC ?)", "expired (PC clock?)")));
+        return Err(refused(&crate::i18n::t("expirée (heure du PC ?)", "expired (PC clock?)")));
     }
     let appimage = manifest
         .downloads
@@ -392,7 +392,7 @@ pub fn install_download(temporary: &Path, target: &Path, expected: &Download) ->
     let size = fs::metadata(temporary)?.len();
     if size != expected.size || sha256(temporary)? != expected.sha256 {
         return Err(CoreError::message(crate::i18n::t(
-            "AppImage téléchargée différente de celle publiée : pas installée.",
+            "AppImage téléchargée différente de celle publiée : pas installée.",
             "Downloaded AppImage differs from the published one: not installed.",
         )));
     }

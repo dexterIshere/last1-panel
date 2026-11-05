@@ -60,7 +60,7 @@
       if (stuck.length > 0) {
         notices = [];
         error = t(
-          `Pas pris effet : ${stuck.map(fixLabel).join(", ")}. Le rapport de ce PC (« Copier le rapport ») dit pourquoi.`,
+          `Pas pris effet : ${stuck.map(fixLabel).join(", ")}. Le rapport de ce PC (« Copier le rapport ») dit pourquoi.`,
           `Did not take effect: ${stuck.map(fixLabel).join(", ")}. This PC's report (“Copy the report”) says why.`,
         );
       }
@@ -250,7 +250,7 @@
       </dl>
       <p class="field__hint">
         {t(
-          "Pour de l'aide : « Copier le rapport », avec le nom du jeu et les images par seconde sous Windows et sous Linux.",
+          "Pour de l'aide : « Copier le rapport », avec le nom du jeu et les images par seconde sous Windows et sous Linux.",
           "For help: “Copy the report”, with the game's name and the frame rate on Windows and on Linux.",
         )}
       </p>
@@ -258,7 +258,7 @@
         <Switch
           label={t("Partager ces rapports", "Share these reports")}
           hint={t(
-            "Avec last1.fun, après chacune de vos parties, pour optimiser Last1 Panel : composants, diagnostic, images par seconde. Ni nom ni compte.",
+            "Avec last1.fun, après chacune de vos parties, pour optimiser Last1 Panel : composants, diagnostic, images par seconde. Ni nom ni compte.",
             "With last1.fun, after each of your games, to optimize Last1 Panel: components, diagnostic, frame rate. No name, no account.",
           )}
           checked={sharing.enabled}
@@ -273,7 +273,7 @@
 
 {#if confirmRestart}
   <WarningDialog
-    title={t("Redémarrer le PC ?", "Restart the PC?")}
+    title={t("Redémarrer le PC ?", "Restart the PC?")}
     confirmLabel={t("Redémarrer", "Restart")}
     onconfirm={() => {
       confirmRestart = false;
@@ -281,13 +281,13 @@
     }}
     oncancel={() => (confirmRestart = false)}
   >
-    <p>{t("Les programmes ouverts seront fermés : enregistrez votre travail avant.", "Open programs will be closed: save your work first.")}</p>
+    <p>{t("Les programmes ouverts seront fermés : enregistrez votre travail avant.", "Open programs will be closed: save your work first.")}</p>
   </WarningDialog>
 {/if}
 
 {#if confirmUpdate}
   <WarningDialog
-    title={t("Mettre à jour tout le système ?", "Update the whole system?")}
+    title={t("Mettre à jour tout le système ?", "Update the whole system?")}
     confirmLabel={t("Mettre à jour", "Update")}
     onconfirm={() => {
       confirmUpdate = null;

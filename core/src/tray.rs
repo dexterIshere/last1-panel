@@ -404,7 +404,7 @@ fn serve(sender: Sender<Request>, requests: Receiver<Request>) {
             Ok(Request::Hide) => {
                 if Settings::update(&Settings::path(), |s| s.tray = false).is_ok() {
                     desktop::notify(&t(
-                        "Icône masquée : elle revient par Last1 Panel, page Couleurs.",
+                        "Icône masquée : elle revient par Last1 Panel, page Couleurs.",
                         "Icon hidden: bring it back from Last1 Panel, Colors page.",
                     ));
                 }

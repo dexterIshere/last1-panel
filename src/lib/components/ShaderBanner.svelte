@@ -147,7 +147,7 @@
     </div>
     <p class="banner__text">
       {#if ratio === null && !precache.readable}
-        {t("Steam ne donne pas son avancement à Last1 Panel : la jauge attend la fin.", "Steam doesn't share its progress with Last1 Panel: the gauge waits for the end.")}
+        {t("Steam ne donne pas son avancement à Last1 Panel : la jauge attend la fin.", "Steam doesn't share its progress with Last1 Panel: the gauge waits for the end.")}
       {:else if ratio === null}
         {t("Steam prépare la compilation.", "Steam is getting the compilation ready.")}
       {:else if remaining !== null}
@@ -156,7 +156,7 @@
         {t("Calcul du temps restant…", "Working out the time left…")}
       {/if}
       {t(
-        "C'est Steam (« Traitement des shaders Vulkan »), après une mise à jour d'un jeu ou du pilote : pendant ce temps, les jeux peuvent saccader. Mieux vaut attendre la fin pour jouer ; ensuite, ils tournent mieux.",
+        "C'est Steam (« Traitement des shaders Vulkan »), après une mise à jour d'un jeu ou du pilote : pendant ce temps, les jeux peuvent saccader. Mieux vaut attendre la fin pour jouer ; ensuite, ils tournent mieux.",
         "It's Steam (“Vulkan shader processing”), after a game or driver update: meanwhile, games may stutter. Better wait for the end to play; afterwards, they run better.",
       )}
     </p>
@@ -165,11 +165,11 @@
         <p>
           {precache.threads
             ? t(
-                `Steam ne compile qu'avec ${precache.threads} cœur${precache.threads >= 2 ? "s" : ""} sur ${precache.cores} : relancé, il les prend tous et finit bien plus vite. La compilation reprend aussitôt, sans repartir de zéro.`,
+                `Steam ne compile qu'avec ${precache.threads} cœur${precache.threads >= 2 ? "s" : ""} sur ${precache.cores} : relancé, il les prend tous et finit bien plus vite. La compilation reprend aussitôt, sans repartir de zéro.`,
                 `Steam compiles with only ${precache.threads} core${precache.threads >= 2 ? "s" : ""} out of ${precache.cores}: restarted, it takes them all and finishes much faster. The compilation resumes right away, without starting over.`,
               )
             : t(
-                `Steam compile avec peu de cœurs : relancé, il prend les ${precache.cores} du processeur et finit bien plus vite. La compilation reprend aussitôt, sans repartir de zéro.`,
+                `Steam compile avec peu de cœurs : relancé, il prend les ${precache.cores} du processeur et finit bien plus vite. La compilation reprend aussitôt, sans repartir de zéro.`,
                 `Steam compiles with few cores: restarted, it takes all ${precache.cores} of the processor and finishes much faster. The compilation resumes right away, without starting over.`,
               )}
         </p>
@@ -182,7 +182,7 @@
     {#if stalled}
       <p class="banner__alive banner__alive--stalled">
         {t(
-          "Plus rien ne bouge depuis 2 minutes : Steam a peut-être mis la compilation en pause (un jeu lancé ?). Elle reprend d'elle-même ; si elle reste figée, fermez Steam et rouvrez-le.",
+          "Plus rien ne bouge depuis 2 minutes : Steam a peut-être mis la compilation en pause (un jeu lancé ?). Elle reprend d'elle-même ; si elle reste figée, fermez Steam et rouvrez-le.",
           "Nothing has moved for 2 minutes: Steam may have paused the compilation (a game running?). It resumes on its own; if it stays frozen, close Steam and open it again.",
         )}
       </p>
@@ -193,7 +193,7 @@
         {/if}
         {#if cores !== null}
           · {t(
-            `${cores.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} cœur${cores >= 2 ? "s" : ""} du processeur au travail : ça avance.`,
+            `${cores.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} cœur${cores >= 2 ? "s" : ""} du processeur au travail : ça avance.`,
             `${cores.toLocaleString("en-US", { maximumFractionDigits: 1 })} CPU core${cores >= 2 ? "s" : ""} at work: it's moving.`,
           )}
         {/if}
@@ -207,8 +207,8 @@
     </strong>
     <p class="banner__text">
       {stopped.game
-        ? t(`Steam a arrêté de compiler les shaders de ${stopped.game} : il reprendra plus tard, la jauge reviendra ici.`, `Steam stopped compiling the shaders of ${stopped.game}: it will resume later, the gauge will come back here.`)
-        : t("Steam a arrêté de compiler : il reprendra plus tard, la jauge reviendra ici.", "Steam stopped compiling: it will resume later, the gauge will come back here.")}
+        ? t(`Steam a arrêté de compiler les shaders de ${stopped.game} : il reprendra plus tard, la jauge reviendra ici.`, `Steam stopped compiling the shaders of ${stopped.game}: it will resume later, the gauge will come back here.`)
+        : t("Steam a arrêté de compiler : il reprendra plus tard, la jauge reviendra ici.", "Steam stopped compiling: it will resume later, the gauge will come back here.")}
     </p>
   </section>
 {:else if stopped}
@@ -216,7 +216,7 @@
     <strong class="banner__title">
       {stopped.game ? t(`Shaders de ${stopped.game} prêts`, `${stopped.game} shaders ready`) : t("Shaders prêts", "Shaders ready")}
     </strong>
-    <p class="banner__text">{t("Steam a fini : les jeux ne saccadent plus à cause de lui.", "Steam is done: games no longer stutter because of it.")}</p>
+    <p class="banner__text">{t("Steam a fini : les jeux ne saccadent plus à cause de lui.", "Steam is done: games no longer stutter because of it.")}</p>
   </section>
 {/if}
 
