@@ -527,6 +527,11 @@ impl Panel {
         {
             report.facts.push((t("Génération d'images (essai)", "Frame generation (test)"), summary));
         }
+        // Testeurs : leurs propres réglages (GOverlay : lsfg-vk, MangoHud,
+        // vkBasalt), pour régler les nôtres d'après les leurs.
+        if framegen::tester(Path::new("/var/lib/gtl"), &crate::paths::config_dir()) {
+            report.facts.extend(framegen::player_tools(&crate::paths::user_config_dir()));
+        }
         report
     }
 

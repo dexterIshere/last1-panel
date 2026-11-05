@@ -25,6 +25,19 @@ pub fn installed(data_home: &Path) -> bool {
         || data_home.join("vulkan/explicit_layer.d").join(paths::FRAMEGEN_LAYER).is_file()
 }
 
+/// lsfg-vk (Lossless Scaling sous Linux) installé : sa couche implicite
+/// génère déjà des images, la nôtre par-dessus ferait deux générations qui
+/// se gênent (afmf-linux le signale : blocage de la présentation).
+pub fn lsfg_installed(data_home: &Path) -> bool {
+    let has_lsfg = |dir: &Path| {
+        fs::read_dir(dir).ok().is_some_and(|entries| {
+            entries.flatten().any(|e| e.file_name().to_string_lossy().to_lowercase().contains("lsfg"))
+        })
+    };
+    ["/usr/share/vulkan/implicit_layer.d", "/etc/vulkan/implicit_layer.d"].iter().any(|d| has_lsfg(Path::new(d)))
+        || has_lsfg(&data_home.join("vulkan/implicit_layer.d"))
+}
+
 /// Journaux des parties d'essai (30 gardés).
 pub fn log_dir(data_home: &Path) -> PathBuf {
     data_home.join("last1-panel/framegen")
@@ -122,6 +135,40 @@ pub fn summary(dir: &Path) -> Option<String> {
     Some(out)
 }
 
+/// Réglages des outils que le joueur s'est posés lui-même (souvent par
+/// GOverlay) : lsfg-vk (Lossless Scaling), MangoHud, vkBasalt. Pour les
+/// testeurs : comparer nos réglages aux leurs. Valeurs seules, sans
+/// commentaires ni chemins personnels ; 400 caractères par outil.
+pub fn player_tools(config_home: &Path) -> Vec<(String, String)> {
+    let files = [
+        ("lsfg-vk", "lsfg-vk/conf.toml"),
+        ("MangoHud", "MangoHud/MangoHud.conf"),
+        ("vkBasalt", "vkBasalt/vkBasalt.conf"),
+        ("GOverlay", "goverlay/goverlay.conf"),
+    ];
+    let home = paths::home_dir().display().to_string();
+    files
+        .iter()
+        .filter_map(|(name, rel)| {
+            let text = fs::read_to_string(config_home.join(rel)).ok()?;
+            let lines: Vec<String> = text
+                .lines()
+                .map(|l| l.split('#').next().unwrap_or_default().trim())
+                .filter(|l| !l.is_empty())
+                .map(|l| l.replace(&home, "~").split_whitespace().collect::<Vec<_>>().join(" "))
+                .collect();
+            if lines.is_empty() {
+                return None;
+            }
+            let mut value = lines.join(" ; ");
+            if value.chars().count() > 400 {
+                value = value.chars().take(399).collect::<String>() + "…";
+            }
+            Some((format!("Réglages du joueur : {name}"), value))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,5 +210,23 @@ mod tests {
             fs::write(new_log(dir.path(), "g", 300 + i).unwrap(), "").unwrap();
         }
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 30);
+    }
+
+    #[test]
+    fn players_own_tool_settings_are_summed_up() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("lsfg-vk")).unwrap();
+        fs::write(
+            dir.path().join("lsfg-vk/conf.toml"),
+            "version = 2\n# commentaire\n[[profile]]\nactive_in = \"PioneerGame.exe\"\nmultiplier = 2\nflow_scale = 0.8\n",
+        )
+        .unwrap();
+        let tools = player_tools(dir.path());
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].0, "Réglages du joueur : lsfg-vk");
+        assert_eq!(
+            tools[0].1,
+            "version = 2 ; [[profile]] ; active_in = \"PioneerGame.exe\" ; multiplier = 2 ; flow_scale = 0.8"
+        );
     }
 }

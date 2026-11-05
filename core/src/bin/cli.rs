@@ -234,6 +234,7 @@ fn run(command: &[String]) -> ExitCode {
         let data = last1_panel_core::paths::data_home();
         if framegen::tester(std::path::Path::new("/var/lib/gtl"), &last1_panel_core::paths::config_dir())
             && framegen::installed(&data)
+            && !framegen::lsfg_installed(&data)
         {
             let game = std::env::var("SteamAppId").ok().filter(|id| !id.is_empty()).unwrap_or_else(|| {
                 std::path::Path::new(program).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
