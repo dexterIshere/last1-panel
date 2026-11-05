@@ -18,7 +18,7 @@ pub struct GameProfile {
     /// Images générées par le pilote (NVIDIA RTX 40 et plus récentes).
     pub smooth_motion: Option<bool>,
     /// Génération d'images de Last1 Panel (testeurs, couche installée).
-    /// Absent : activée ; jamais avec un autre générateur.
+    /// Absent : désactivée ; jamais avec un autre générateur.
     pub frame_generation: Option<bool>,
     /// HDR dans le jeu (écran en HDR).
     pub hdr: Option<bool>,
@@ -97,7 +97,7 @@ mod tests {
         let text = serde_json::to_string(&game).unwrap();
         assert!(text.contains("\"frameGeneration\":false"), "{text}");
         assert_eq!(serde_json::from_str::<GameProfile>(&text).unwrap(), game);
-        // Profil d'avant ce réglage : absent, donc activée par défaut.
+        // Profil d'avant ce réglage : absent, donc désactivée par défaut.
         let old: GameProfile = serde_json::from_str(r#"{"smoothMotion":true}"#).unwrap();
         assert_eq!(old.frame_generation, None);
         // Le jeu gagne sur « Tous les jeux ».

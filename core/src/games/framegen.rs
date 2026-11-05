@@ -1,6 +1,7 @@
 //! Génération d'images (couche Vulkan de framegen/, d'après afmf-linux) :
-//! pour l'instant chez les testeurs seulement, sur tous leurs jeux, avec un
-//! journal par partie résumé dans le diagnostic (donc dans leurs rapports).
+//! pour l'instant chez les testeurs seulement, désactivée par défaut : le
+//! testeur l'active dans Jeux, pour un jeu ou pour tous. Un journal par
+//! partie, résumé dans le diagnostic (donc dans leurs rapports).
 //!
 //! La couche est explicite : `VK_LOADER_LAYERS_ENABLE` la place sous les
 //! couches implicites (MangoHud, vkBasalt, overlay Steam), et un nom inconnu
@@ -78,9 +79,10 @@ pub fn smooth_motion(env: &[(String, String)], existing: impl Fn(&str) -> Option
         || existing(SMOOTH_MOTION).is_some_and(|v| on(&v))
 }
 
-/// La couche pour ce jeu : activée chez les testeurs quand elle est
-/// installée, sauf réglage contraire ou autre générateur (lsfg-vk, Smooth
-/// Motion).
+/// La couche pour ce jeu : seulement chez un testeur qui l'a activée (pour ce
+/// jeu ou pour tous), couche installée, sans autre générateur (lsfg-vk,
+/// Smooth Motion). Sans réglage : désactivée (freezes chez un testeur AMD
+/// quand elle était allumée d'office).
 pub fn decide(
     profile: &GameProfile,
     tester: bool,
@@ -92,7 +94,7 @@ pub fn decide(
         Err(Off::NotTester)
     } else if !installed {
         Err(Off::NotInstalled)
-    } else if profile.frame_generation == Some(false) {
+    } else if profile.frame_generation != Some(true) {
         Err(Off::Disabled)
     } else if lsfg {
         Err(Off::Lsfg)
@@ -390,11 +392,17 @@ mod tests {
 
     #[test]
     fn layer_follows_the_game_setting() {
-        let on = GameProfile::default();
+        let on = GameProfile { frame_generation: Some(true), ..Default::default() };
         let off = GameProfile { frame_generation: Some(false), ..Default::default() };
-        // Par défaut chez les testeurs : activée ; le réglage du jeu gagne.
+        // Par défaut, même chez les testeurs : désactivée ; activée seulement
+        // par le réglage.
+        assert_eq!(decide(&GameProfile::default(), true, true, false, false), Err(Off::Disabled));
         assert_eq!(decide(&on, true, true, false, false), Ok(()));
         assert_eq!(decide(&off, true, true, false, false), Err(Off::Disabled));
+        // Activée pour tous les jeux, désactivée pour celui-ci : le jeu gagne.
+        let global = GameProfile { frame_generation: Some(true), ..Default::default() };
+        assert_eq!(decide(&GameProfile::default().merged_over(&global), true, true, false, false), Ok(()));
+        assert_eq!(decide(&off.merged_over(&global), true, true, false, false), Err(Off::Disabled));
         // Hors essai, ou couche absente (paquet, AppImage) : jamais.
         assert_eq!(decide(&on, false, true, false, false), Err(Off::NotTester));
         assert_eq!(decide(&on, true, false, false, false), Err(Off::NotInstalled));

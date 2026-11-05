@@ -68,9 +68,9 @@
   /** HDR du jeu tel qu'il partira : « Activé » ici ou pour tous les jeux. */
   const hdrWanted = $derived((selected === null ? profile.hdr : (profile.hdr ?? info?.settings.global.hdr ?? null)) === true);
 
-  /** Génération d'images de Last1 Panel (testeurs) : activée sauf réglage contraire. */
+  /** Génération d'images de Last1 Panel (testeurs) : désactivée sauf si le testeur l'active. */
   const frameGen = $derived(info?.frameGen ?? null);
-  const fgWanted = $derived((selected === null ? profile.frameGeneration : (profile.frameGeneration ?? info?.settings.global.frameGeneration ?? null)) !== false);
+  const fgWanted = $derived((selected === null ? profile.frameGeneration : (profile.frameGeneration ?? info?.settings.global.frameGeneration ?? null)) === true);
   /** Smooth Motion génère déjà les images : jamais deux générateurs. */
   const smoothOn = $derived(nvidia && (selected === null ? profile.smoothMotion : (profile.smoothMotion ?? info?.settings.global.smoothMotion ?? null)) === true);
   /** Dernière partie avec elle : ce jeu, ou la plus récente de tous. */
@@ -368,17 +368,11 @@
           <label class="field">
             <span class="field__label">{t("Génération d'images", "Frame generation")} <span class="badge badge--info">{t("Essai", "Test")}</span></span>
             <select
-              value={selected === null ? (profile.frameGeneration === false ? "off" : "inherit") : boolValue(profile.frameGeneration)}
+              value={selected === null ? (profile.frameGeneration === true ? "on" : "inherit") : boolValue(profile.frameGeneration)}
               disabled={!frameGen.installed}
               onchange={(e) => edit("frameGeneration", fromBool(e.currentTarget.value))}
             >
-              {#if selected === null}
-                <option value="inherit">{t("Activée", "On")}</option>
-              {:else}
-                <option value="inherit">{inherit}</option>
-                <option value="on">{t("Activée", "On")}</option>
-              {/if}
-              <option value="off">{t("Désactivée", "Off")}</option>
+              {@render boolOptions(t("Activée", "On"), t("Désactivée", "Off"))}
             </select>
             <span class="field__hint">
               {#if !frameGen.installed}
@@ -391,7 +385,7 @@
                 {t("Images ajoutées entre celles du jeu pour plus de fluidité, par Last1 Panel.", "Frames added between the game's for smoother motion, by Last1 Panel.")}
                 <strong class="risk">{t("Jeux en ligne : ajout au jeu parfois interdit, à vos risques.", "Online games: additions to the game are sometimes forbidden, at your own risk.")}</strong>
               {:else}
-                {t("Le jeu part sans elle.", "The game starts without it.")}
+                {t("Désactivée par défaut, le temps de l'essai. Activez-la pour l'essayer, jeu par jeu ou pour tous.", "Off by default during the test. Turn it on to try it, game by game or for all games.")}
               {/if}
               {#if frameGen.installed}
                 <span class="fg-last">
