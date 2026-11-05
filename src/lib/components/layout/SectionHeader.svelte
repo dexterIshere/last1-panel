@@ -15,7 +15,7 @@
 </script>
 
 <header class="head">
-  <div>
+  <div class="head__text">
     <h1 class="display-title">
       {#if pill}{split[0]}<span class="nowrap">{split[1]} <PixelPill /></span>{:else}{title}{/if}
     </h1>
@@ -25,11 +25,19 @@
 </header>
 
 <style>
+  /* Fenêtre étroite ou textes anglais plus longs : les actions passent sous
+     la phrase plutôt que de sortir de la fenêtre. */
   .head {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-end;
     justify-content: space-between;
-    gap: var(--space-5);
+    gap: var(--space-4) var(--space-5);
+  }
+
+  .head__text {
+    flex: 1 1 26rem;
+    min-width: 0;
   }
 
   h1 {
@@ -42,7 +50,8 @@
 
   .head__actions {
     display: flex;
-    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-2);
   }
 </style>
