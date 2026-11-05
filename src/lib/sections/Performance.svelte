@@ -254,12 +254,16 @@
           "For help: “Copy the report”, with the game's name and the frame rate on Windows and on Linux.",
         )}
       </p>
-      {#if sharing && !sharing.goToLinux}
+      {#if sharing && !sharing.tester}
         <Switch
           label={t("Partager ces rapports", "Share these reports")}
           hint={t(
-            "Avec last1.fun, après chacune de vos parties, pour optimiser Last1 Panel : composants, diagnostic, images par seconde. Ni nom ni compte.",
-            "With last1.fun, after each of your games, to optimize Last1 Panel: components, diagnostic, frame rate. No name, no account.",
+            sharing.goToLinux
+              ? "Avec last1.fun, après chacune de vos parties, pour optimiser go-to-linux et Last1 Panel : composants, diagnostic, images par seconde. Rattachés à votre compte last1.fun."
+              : "Avec last1.fun, après chacune de vos parties, pour optimiser Last1 Panel : composants, diagnostic, images par seconde. Ni nom ni compte.",
+            sharing.goToLinux
+              ? "With last1.fun, after each of your games, to optimize go-to-linux and Last1 Panel: components, diagnostic, frame rate. Linked to your last1.fun account."
+              : "With last1.fun, after each of your games, to optimize Last1 Panel: components, diagnostic, frame rate. No name, no account.",
           )}
           checked={sharing.enabled}
           onchange={setSharing}

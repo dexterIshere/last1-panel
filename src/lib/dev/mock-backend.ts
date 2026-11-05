@@ -286,7 +286,7 @@ export function installMockBackend(): void {
       await wait(1500);
       window.location.reload();
     },
-    sharing: () => ({ asked: sharingChoice !== null, enabled: sharingChoice === true, goToLinux: !params.get("arch") }),
+    sharing: () => ({ asked: sharingChoice !== null, enabled: sharingChoice === true, goToLinux: !params.get("arch"), tester: false }),
     set_sharing: (args) => {
       sharingChoice = args.enabled as boolean;
     },

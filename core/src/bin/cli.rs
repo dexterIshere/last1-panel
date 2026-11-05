@@ -1087,7 +1087,13 @@ fn share_reports() {
     let state_path = last1_panel_core::paths::cache_dir().join("sharing.json");
     let read = |path: &str| std::fs::read_to_string(path).unwrap_or_default().trim().to_string();
     loop {
-        if Settings::load().share_reports == Some(true) && !std::path::Path::new("/var/lib/gtl").exists() {
+        // Testeurs et admins : sans demander ; les autres, avec leur accord.
+        // Sur un PC go-to-linux, c'est go-to-linux qui envoie.
+        let tester = last1_panel_core::games::framegen::tester(
+            std::path::Path::new("/var/lib/gtl"),
+            &last1_panel_core::paths::config_dir(),
+        );
+        if (tester || Settings::load().share_reports == Some(true)) && !std::path::Path::new("/var/lib/gtl").exists() {
             wait_for_no_game();
             let report = Panel::system().performance_report();
             let mut state = sharing::State::load(&state_path);

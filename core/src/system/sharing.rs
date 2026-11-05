@@ -1,7 +1,8 @@
-//! Rapports de performances partagés avec last1.fun, seulement avec l'accord
-//! du joueur (réglage `share_reports`, demandé une fois dans la fenêtre,
-//! révocable dans Performances), et seulement hors go-to-linux, qui envoie
-//! lui-même les siens. Contenu : le diagnostic de ce PC (composants, réglages
+//! Rapports de performances partagés avec last1.fun : avec l'accord du joueur
+//! (réglage `share_reports`, demandé une fois dans la fenêtre, révocable dans
+//! Performances), sans demander chez les testeurs et admins. Hors go-to-linux
+//! seulement : sur un PC go-to-linux, go-to-linux envoie les siens, d'après
+//! la même réponse (`shareReports` de settings.json). Contenu : le diagnostic de ce PC (composants, réglages
 //! lus, parties mesurées), pour optimiser Last1 Panel et rien d'autre. Ni nom
 //! ni compte : le nom du compte et celui du PC sont masqués, le PC n'est
 //! désigné que par une empreinte. Après chaque nouvelle partie (10 minutes

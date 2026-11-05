@@ -29,7 +29,7 @@
     }
     await app.init();
     ready = true;
-    askSharing = !!app.sharing && !app.sharing.asked && !app.sharing.goToLinux;
+    askSharing = !!app.sharing && !app.sharing.asked && !app.sharing.tester;
   });
 </script>
 
@@ -74,6 +74,7 @@
 
 {#if askSharing}
   <SharingDialog
+    goToLinux={app.sharing?.goToLinux ?? false}
     onanswer={(share) => {
       askSharing = false;
       app.setSharing(share).catch(() => undefined);
