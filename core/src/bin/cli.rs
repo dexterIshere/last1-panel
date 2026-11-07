@@ -815,6 +815,8 @@ fn watch_game() {
     loop {
         std::thread::sleep(Duration::from_secs(20));
         if !steam::game_running(std::path::Path::new("/proc")) {
+            // Relevé du processeur tenu à jour : le premier en jeu porte sur 20 s.
+            (procs, procs_at) = (cpu_users::snapshot(proc_dir), std::time::Instant::now());
             playing = false;
             razer_error = None;
             if lifted {
