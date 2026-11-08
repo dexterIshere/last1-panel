@@ -527,10 +527,19 @@ impl Panel {
         {
             report.facts.push((t("Génération d'images (essai)", "Frame generation (test)"), summary));
         }
-        // Testeurs : leurs propres réglages (GOverlay : lsfg-vk, MangoHud,
-        // vkBasalt), pour régler les nôtres d'après les leurs.
-        if framegen::tester(Path::new("/var/lib/gtl"), &crate::paths::config_dir()) {
-            report.facts.extend(framegen::player_tools(&crate::paths::user_config_dir()));
+        // Réglages que le joueur s'est posés lui-même (GOverlay : lsfg-vk,
+        // MangoHud, vkBasalt) : ils changent la mesure et les images (une
+        // génération d'images au-dessus de MangoHud, un MangoHud qui ne
+        // journalise plus…), et règlent les nôtres d'après les leurs.
+        report.facts.extend(framegen::player_tools(&crate::paths::user_config_dir()));
+        if framegen::lsfg_installed(&crate::paths::data_home()) {
+            report.facts.push((
+                t("Lossless Scaling (lsfg-vk)", "Lossless Scaling (lsfg-vk)"),
+                t(
+                    "installé : génère des images dans les jeux qu'il vise",
+                    "installed: generates frames in the games it targets",
+                ),
+            ));
         }
         report
     }
