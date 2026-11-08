@@ -536,7 +536,7 @@ impl Panel {
             report.facts.push((
                 t("Lossless Scaling (lsfg-vk)", "Lossless Scaling (lsfg-vk)"),
                 t(
-                    "installé : génère des images dans les jeux qu'il vise",
+                    "installé : génère des images dans les jeux qu'il vise",
                     "installed: generates frames in the games it targets",
                 ),
             ));
