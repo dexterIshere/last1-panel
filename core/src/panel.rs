@@ -532,6 +532,40 @@ impl Panel {
         // génération d'images au-dessus de MangoHud, un MangoHud qui ne
         // journalise plus…), et règlent les nôtres d'après les leurs.
         report.facts.extend(framegen::player_tools(&crate::paths::user_config_dir()));
+        // Couches Vulkan et mesure demandées au dernier lancement : pourquoi
+        // MangoHud mesure ou non (GOverlay, lsfg-vk, vkBasalt…).
+        if let Ok(text) = fs::read_to_string(crate::paths::last_launch_file()) {
+            let keep = ["MANGOHUD", "VK_", "ENABLE_VKBASALT", "DISABLE_", "LSFG", "LAST1_", "PROTON_USE_WINED3D"];
+            let vars: Vec<String> = text
+                .lines()
+                .filter(|l| keep.iter().any(|k| l.starts_with(k)) && !l.starts_with("LAST1_FG_LOG_FILE"))
+                .map(|l| l.chars().take(160).collect())
+                .collect();
+            if !vars.is_empty() {
+                let mut value = vars.join(" ; ");
+                if value.chars().count() > 480 {
+                    value = value.chars().take(479).collect::<String>() + "…";
+                }
+                report
+                    .facts
+                    .push((t("Dernier lancement : couches et mesure", "Last launch: layers and measurement"), value));
+            }
+        }
+        // Réglages perso du bureau Signal repris par Last1 Panel (hypr_overlay).
+        if let Ok(text) = fs::read_to_string(crate::paths::user_config_dir().join("hypr/last1-panel-perso.lua")) {
+            let lines: Vec<&str> =
+                text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("--")).collect();
+            if !lines.is_empty() {
+                let mut value = lines.join(" ");
+                if value.chars().count() > 480 {
+                    value = value.chars().take(479).collect::<String>() + "…";
+                }
+                report.facts.push((
+                    t("Bureau Signal : réglages perso repris", "Signal desktop: personal settings kept"),
+                    value,
+                ));
+            }
+        }
         if framegen::lsfg_installed(&crate::paths::data_home()) {
             report.facts.push((
                 t("Lossless Scaling (lsfg-vk)", "Lossless Scaling (lsfg-vk)"),

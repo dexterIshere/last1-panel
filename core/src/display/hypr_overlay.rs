@@ -123,6 +123,15 @@ fn compare(mine: &[Item], texts: &[String], dir: &Path, home: &Path) -> Option<C
         }
     }
     for item in mine.iter().filter(|item| !union.contains(&identity(item))) {
+        // Le clavier est à go-to-linux (gtl-machine.conf, relu par le bureau
+        // Signal) : jamais repris d'un ancien hyprland.conf.
+        if let Item::Line(line) = item
+            && (line.key.starts_with("input:kb_")
+                || line.key == "input:numlock_by_default"
+                || line.key == "input:resolve_binds_by_sym")
+        {
+            continue;
+        }
         let mut item = item.clone();
         // Lancement remplacé (fond d'écran…) : celui du bureau Signal arrêté
         // d'abord.
