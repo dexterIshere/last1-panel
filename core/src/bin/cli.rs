@@ -227,6 +227,23 @@ fn run(command: &[String]) -> ExitCode {
         }
     }
     let mut env = plan.environment(|name| std::env::var(name).ok());
+    // MangoHud allumé par le joueur (GOverlay) : son fichier + nos clés de
+    // mesure en dernier, plutôt que read_cfg (games/launch.rs).
+    if std::env::var("MANGOHUD").as_deref() == Ok("1")
+        && std::env::var("MANGOHUD_CONFIG").map_or(true, |v| v.trim().is_empty())
+        && !plan.mangohud.is_empty()
+    {
+        let user_file = std::env::var_os("MANGOHUD_CONFIGFILE")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| last1_panel_core::paths::user_config_dir().join("MangoHud/MangoHud.conf"));
+        let user = std::fs::read_to_string(&user_file).unwrap_or_default();
+        let merged = last1_panel_core::paths::cache_dir().join("mangohud.conf");
+        let _ = std::fs::create_dir_all(last1_panel_core::paths::cache_dir());
+        if std::fs::write(&merged, launch::merged_mangohud_file(&user, &plan.mangohud)).is_ok() {
+            env.retain(|(name, _)| name != "MANGOHUD_CONFIG" && name != "MANGOHUD_CONFIGFILE");
+            env.push(("MANGOHUD_CONFIGFILE".into(), merged.display().to_string()));
+        }
+    }
     // Génération d'images : en essai chez les testeurs, activée sauf réglage
     // du jeu ou Smooth Motion, un journal par partie (résumé dans le
     // diagnostic et la section Jeux).

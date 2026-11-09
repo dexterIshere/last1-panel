@@ -123,6 +123,22 @@ impl Plan {
     }
 }
 
+/// MangoHud déjà allumé par le joueur (MANGOHUD=1, souvent par GOverlay)
+/// sans MANGOHUD_CONFIG : son fichier de configuration, suivi de nos clés de
+/// mesure (les dernières lues gagnent), donné par MANGOHUD_CONFIGFILE. Avec
+/// « read_cfg » dans MANGOHUD_CONFIG, le fichier de GOverlay et ses fichiers
+/// par jeu passaient après nos clés : plus aucune partie mesurée chez un
+/// testeur. `user` : son fichier (texte), `ours` : nos options.
+pub fn merged_mangohud_file(user: &str, ours: &[String]) -> String {
+    let mut text = user.trim_end().to_string();
+    text.push_str("\n# Last1 Panel : mesure des parties (clés lues en dernier)\n");
+    for option in ours.iter().filter(|o| !HIDDEN.contains(&o.as_str()) && o.as_str() != "read_cfg") {
+        text.push_str(option);
+        text.push('\n');
+    }
+    text
+}
+
 /// Le plan de lancement pour ce profil (déjà fusionné avec les réglages globaux).
 pub fn plan(profile: &GameProfile, context: &Context) -> Plan {
     let mut plan = Plan::default();
@@ -579,5 +595,20 @@ mod tests {
         assert_eq!(steam_app_id(|name| (name == "SteamAppId").then(|| "1091500".to_string())), Some(1091500));
         assert_eq!(steam_app_id(|name| (name == "SteamAppId").then(|| "0".to_string())), None);
         assert_eq!(steam_app_id(|_| None), None);
+    }
+
+    #[test]
+    fn goverlay_config_then_our_measurement_keys() {
+        let ours = vec![
+            "read_cfg".to_string(),
+            "no_display".into(),
+            "autostart_log=1".into(),
+            "output_folder=/home/a/p".into(),
+        ];
+        let file = merged_mangohud_file("fps\nautostart_log=0\n", &ours);
+        assert_eq!(
+            file,
+            "fps\nautostart_log=0\n# Last1 Panel : mesure des parties (clés lues en dernier)\nautostart_log=1\noutput_folder=/home/a/p\n"
+        );
     }
 }
