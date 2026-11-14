@@ -357,6 +357,13 @@ fn game_logs() -> Option<String> {
 fn log_launch(command: &[String], env: &[(String, String)], wrappers: &[String]) {
     let file = last1_panel_core::paths::last_launch_file();
     let mut text = format!("SteamAppId={}\n", std::env::var("SteamAppId").unwrap_or_default());
+    // L'outil qui a lancé le jeu : une vieille copie devant celle du paquet
+    // dans le PATH ignorait les correctifs (testeur, 11/2026).
+    text.push_str(&format!(
+        "LAST1_PANEL_CLI={} {}\n",
+        std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default(),
+        update::RELEASE.unwrap_or(env!("CARGO_PKG_VERSION"))
+    ));
     for (name, value) in env {
         text.push_str(&format!("{name}={value}\n"));
     }
@@ -432,6 +439,7 @@ fn watch() -> ExitCode {
         ));
     }
     std::thread::spawn(keep_hyprland_config);
+    drop_shadowing_cli();
     std::thread::spawn(share_reports);
     std::thread::spawn(ask_sharing);
     std::thread::spawn(watch_updates);
@@ -600,6 +608,24 @@ fn clip_saved(args: &[String]) -> ExitCode {
 fn wait_for_no_game() {
     while last1_panel_core::games::steam::game_running(std::path::Path::new("/proc")) {
         std::thread::sleep(Duration::from_secs(60));
+    }
+}
+
+/// Paquet installé (go-to-linux) : une copie de l'outil des jeux laissée par
+/// une ancienne AppImage dans ~/.local/bin passe avant /usr/bin dans le PATH,
+/// et Steam lançait les jeux avec elle (option `command -v last1-panel-cli`) :
+/// aucun correctif n'y arrivait. Elle est retirée ; la fenêtre AppImage reste.
+fn drop_shadowing_cli() {
+    if !update::is_package() {
+        return;
+    }
+    let stale = last1_panel_core::paths::home_dir().join(".local/bin/last1-panel-cli");
+    let target = std::fs::canonicalize(&stale).ok();
+    if stale.symlink_metadata().is_ok() && !target.is_some_and(|t| t.starts_with("/usr/bin")) {
+        match std::fs::remove_file(&stale) {
+            Ok(()) => eprintln!("last1-panel-cli : ancienne copie {} retirée (le paquet sert)", stale.display()),
+            Err(error) => eprintln!("last1-panel-cli : {} : {error}", stale.display()),
+        }
     }
 }
 
