@@ -80,7 +80,10 @@ pub fn personal(user: &Path, home: &Path, stocks: &[String]) -> Option<Config> {
         }
     }
     // Lus comme des fichiers (variables, catégories), puis effacés.
-    let dir = std::env::temp_dir().join(format!("last1-panel-signal-{}", std::process::id()));
+    // Un dossier par appel (deux appels en même temps ne se gênent pas).
+    static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("last1-panel-signal-{}-{call}", std::process::id()));
     fs::create_dir_all(&dir).ok()?;
     let result = compare(&mine, &texts, &dir, home);
     let _ = fs::remove_dir_all(&dir);
