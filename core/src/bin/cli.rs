@@ -237,11 +237,18 @@ fn run(command: &[String]) -> ExitCode {
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| last1_panel_core::paths::user_config_dir().join("MangoHud/MangoHud.conf"));
         let user = std::fs::read_to_string(&user_file).unwrap_or_default();
-        let merged = last1_panel_core::paths::cache_dir().join("mangohud.conf");
-        let _ = std::fs::create_dir_all(last1_panel_core::paths::cache_dir());
-        if std::fs::write(&merged, launch::merged_mangohud_file(&user, &plan.mangohud)).is_ok() {
-            env.retain(|(name, _)| name != "MANGOHUD_CONFIG" && name != "MANGOHUD_CONFIGFILE");
-            env.push(("MANGOHUD_CONFIGFILE".into(), merged.display().to_string()));
+        // À côté des journaux des parties (que MangoHud écrit déjà, donc
+        // accessible au jeu) ; ~/.cache/last1-panel peut appartenir à root.
+        let dir = last1_panel_core::paths::data_home().join("last1-panel");
+        let merged = dir.join("mangohud.conf");
+        let _ = std::fs::create_dir_all(&dir);
+        match std::fs::write(&merged, launch::merged_mangohud_file(&user, &plan.mangohud)) {
+            Ok(()) => {
+                env.retain(|(name, _)| name != "MANGOHUD_CONFIG" && name != "MANGOHUD_CONFIGFILE");
+                env.push(("MANGOHUD_CONFIGFILE".into(), merged.display().to_string()));
+            }
+            // Noté dans le dernier lancement (diagnostic) ; read_cfg reste.
+            Err(error) => env.push(("LAST1_MANGOHUD_MERGE".into(), format!("{}: {error}", merged.display()))),
         }
     }
     // Génération d'images : en essai chez les testeurs, activée sauf réglage
