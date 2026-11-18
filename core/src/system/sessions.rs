@@ -63,6 +63,10 @@ pub struct GameSession {
     pub vram_max: f64,
     pub ram_max: f64,
     pub swap_max: f64,
+    /// Génération d'images au-dessus de la mesure (Lossless Scaling) : seules
+    /// les vraies images sont comptées.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub generated_frames: bool,
 }
 
 /// Un moment de la partie : moyenne d'une tranche du journal.
@@ -290,6 +294,18 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     if rows.is_empty() {
         return None;
     }
+    // Génération d'images au-dessus de MangoHud (Lossless Scaling, lsfg-vk) :
+    // les images inventées sont présentées en rafale, collées à la vraie
+    // (0,2 ms), et le relevé toutes les 100 ms tombe presque toujours sur
+    // elles : « 5000 i/s » à chaque ligne chez un testeur, moyenne à 1670
+    // pour 1 % bas à 61. Plus de la moitié des relevés sous 1 ms (plus de
+    // 1000 i/s, aucun vrai jeu ne tient ça une partie entière) et des vraies
+    // images à côté : seules ces dernières sont comptées.
+    let generated = rows.iter().filter(|row| row.frametime < GENERATED_MS).count();
+    let generated_frames = generated * 2 > rows.len() && rows.len() - generated >= 10;
+    if generated_frames {
+        rows.retain(|row| row.frametime >= GENERATED_MS);
+    }
     // Le chargement et les menus sont comptés à part : la partie, c'est le
     // reste ; s'il n'y a presque que ça, la partie n'en est pas une.
     let menu = menus(&rows);
@@ -382,6 +398,7 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         // images collées à la vraie, des milliers d'« i/s » instantanées qui
         // tiraient la moyenne à 6000 chez un testeur (1 % bas : 70).
         fps_average: round(average_fps(&used)),
+        generated_frames,
         fps_one_percent_low: round(1000.0 / p99),
         cpu_load: round(mean(&cpu)),
         gpu_load: round(gpu_load),
@@ -399,6 +416,10 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         timeline: timeline(&rows, elapsed_ns),
     })
 }
+
+/// Écart sous lequel une image vient d'une génération d'images (plus de
+/// 1000 i/s).
+const GENERATED_MS: f64 = 1.0;
 
 /// Images par seconde moyennes : le nombre d'images sur leur temps total.
 fn average_fps(rows: &[&Row]) -> f64 {
@@ -578,16 +599,22 @@ mod tests {
 
     #[test]
     fn generated_frames_above_mangohud_do_not_inflate_the_average() {
-        // Lossless Scaling (lsfg-vk) au-dessus de MangoHud : une vraie image à
-        // 11 ms puis une générée collée à 0,1 ms, en alternance.
-        let rows: Vec<_> = (0..600)
+        // Lossless Scaling (lsfg-vk) au-dessus de MangoHud : le relevé tombe
+        // presque toujours sur une image générée collée à la vraie (0,2 ms),
+        // rarement sur une vraie (16 ms, 60 i/s).
+        let rows: Vec<_> = (0..2000)
             .map(|i| {
-                let generated = i % 2 == 1;
-                let (fps, frametime) = if generated { (10_000.0, 0.1) } else { (90.0, 11.0) };
+                let (fps, frametime) = if i % 40 == 0 { (60.0, 16.6) } else { (5000.0, 0.2) };
                 (fps, frametime, 50.0, 70.0, (i + 1) * 100_000_000)
             })
             .collect();
         let session = summarize("PioneerGame_2026-11-05_00-00-00", &log(&rows)).unwrap();
-        assert!((179.0..=181.0).contains(&session.fps_average), "{}", session.fps_average);
+        assert!(session.generated_frames);
+        assert!((59.0..=61.0).contains(&session.fps_average), "{}", session.fps_average);
+        assert!(session.timeline.iter().all(|point| point.fps < 100.0), "{:?}", session.timeline);
+
+        // Sans génération : rien d'écarté.
+        let rows: Vec<_> = (0..600).map(|i| (90.0, 11.1, 50.0, 70.0, (i + 1) * 100_000_000)).collect();
+        assert!(!summarize("Game.exe_2026-11-05_00-00-00", &log(&rows)).unwrap().generated_frames);
     }
 }

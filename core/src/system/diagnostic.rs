@@ -1775,6 +1775,12 @@ fn session_details(s: &GameSession) -> Vec<String> {
     if let Some(gpu) = &s.gpu_name {
         details.push(t(&format!("dessinée par {gpu}"), &format!("drawn by {gpu}")));
     }
+    if s.generated_frames {
+        details.push(t(
+            "images inventées (Lossless Scaling) non comptées\u{202f}: vraies images seulement",
+            "generated frames (Lossless Scaling) not counted: real frames only",
+        ));
+    }
     if s.gpu_power > 0.0 {
         details.push(t(
             &format!("carte {} W (au plus {} W)", s.gpu_power, s.gpu_power_max),
