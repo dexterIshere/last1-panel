@@ -12,8 +12,13 @@
   const plotW = W - pad.left - pad.right;
   const plotH = H - pad.top - pad.bottom;
 
+  /** Images par seconde inconnues (génération d'images au-dessus de la
+   *  mesure : toutes à 0) : le 1 % seul. */
+  const lowsOnly = $derived(points.every((p) => p.fps === 0));
   /** Haut de l'échelle : un multiple de 30 au-dessus du plus haut. */
-  const top = $derived(Math.max(30, Math.ceil(Math.max(...points.map((p) => p.fps), 1) / 30) * 30));
+  const top = $derived(
+    Math.max(30, Math.ceil(Math.max(...points.map((p) => Math.max(p.fps, p.fpsLow)), 1) / 30) * 30),
+  );
   const end = $derived(Math.max(points[points.length - 1]?.minute ?? 1, 0.1));
   const x = (minute: number) => pad.left + (minute / end) * plotW;
   const y = (fps: number) => pad.top + plotH - (Math.min(fps, top) / top) * plotH;
@@ -43,7 +48,9 @@
 
 <figure class="chart">
   <div class="legend">
-    <span class="legend__item"><span class="legend__swatch legend__swatch--fps"></span>{t("Images/s", "FPS")}</span>
+    {#if !lowsOnly}
+      <span class="legend__item"><span class="legend__swatch legend__swatch--fps"></span>{t("Images/s", "FPS")}</span>
+    {/if}
     <span class="legend__item"><span class="legend__swatch legend__swatch--low"></span>{t("1 % les plus lentes", "1 % lows")}</span>
   </div>
   <div class="plot">
@@ -62,23 +69,25 @@
         <text class="axis" x={x(tick)} y={H - 8} text-anchor="middle">{tick} min</text>
       {/each}
       <path class="line line--low" d={path("fpsLow")} />
-      <path class="line line--fps" d={path("fps")} />
+      {#if !lowsOnly}<path class="line line--fps" d={path("fps")} />{/if}
       {#if markers}
         {#each points as p (p.minute)}
           <circle class="dot dot--low" cx={x(p.minute)} cy={y(p.fpsLow)} r="4" />
-          <circle class="dot dot--fps" cx={x(p.minute)} cy={y(p.fps)} r="4" />
+          {#if !lowsOnly}<circle class="dot dot--fps" cx={x(p.minute)} cy={y(p.fps)} r="4" />{/if}
         {/each}
       {/if}
       {#if hovered}
         <line class="cross" x1={x(hovered.minute)} x2={x(hovered.minute)} y1={pad.top} y2={pad.top + plotH} />
         <circle class="dot dot--low" cx={x(hovered.minute)} cy={y(hovered.fpsLow)} r="5" />
-        <circle class="dot dot--fps" cx={x(hovered.minute)} cy={y(hovered.fps)} r="5" />
+        {#if !lowsOnly}<circle class="dot dot--fps" cx={x(hovered.minute)} cy={y(hovered.fps)} r="5" />{/if}
       {/if}
     </svg>
     {#if hovered}
       <div class="tip" style:left="{(x(hovered.minute) / W) * 100}%" class:tip--left={x(hovered.minute) > W * 0.6}>
         <strong>{t(`À ${num(hovered.minute, 1)} min`, `At ${num(hovered.minute, 1)} min`)}</strong>
-        <span><span class="legend__swatch legend__swatch--fps"></span>{t("Images/s", "FPS")} <b class="mono">{num(hovered.fps)}</b></span>
+        {#if !lowsOnly}
+          <span><span class="legend__swatch legend__swatch--fps"></span>{t("Images/s", "FPS")} <b class="mono">{num(hovered.fps)}</b></span>
+        {/if}
         <span><span class="legend__swatch legend__swatch--low"></span>1 % <b class="mono">{num(hovered.fpsLow)}</b></span>
         <span class="tip__muted">{t("Processeur", "CPU")} {num(hovered.cpuLoad)} % · {t("Carte", "GPU")} {num(hovered.gpuLoad)} %</span>
       </div>

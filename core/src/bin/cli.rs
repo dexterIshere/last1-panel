@@ -227,12 +227,18 @@ fn run(command: &[String]) -> ExitCode {
         }
     }
     let mut env = plan.environment(|name| std::env::var(name).ok());
-    // MangoHud allumé par le joueur (GOverlay) : son fichier + nos clés de
-    // mesure en dernier, plutôt que read_cfg (games/launch.rs).
-    if std::env::var("MANGOHUD").as_deref() == Ok("1")
-        && std::env::var("MANGOHUD_CONFIG").map_or(true, |v| v.trim().is_empty())
-        && !plan.mangohud.is_empty()
-    {
+    // MangoHud allumé par le joueur (GOverlay, MANGOHUD_CONFIG=read_cfg…) :
+    // son fichier et ses options + nos clés de mesure en dernier, plutôt que
+    // read_cfg (games/launch.rs).
+    let user_env = std::env::var("MANGOHUD_CONFIG").unwrap_or_default();
+    let reads_file = if user_env.trim().is_empty() {
+        std::env::var("MANGOHUD").as_deref() == Ok("1")
+    } else {
+        user_env.split(',').any(|option| option.trim() == "read_cfg")
+    };
+    // Variables du joueur retirées au jeu (remplacées par les nôtres).
+    let mut unset: Vec<String> = Vec::new();
+    if reads_file && !plan.mangohud.is_empty() {
         let user_file = std::env::var_os("MANGOHUD_CONFIGFILE")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| last1_panel_core::paths::user_config_dir().join("MangoHud/MangoHud.conf"));
@@ -242,10 +248,13 @@ fn run(command: &[String]) -> ExitCode {
         let dir = last1_panel_core::paths::data_home().join("last1-panel");
         let merged = dir.join("mangohud.conf");
         let _ = std::fs::create_dir_all(&dir);
-        match std::fs::write(&merged, launch::merged_mangohud_file(&user, &plan.mangohud)) {
+        match std::fs::write(&merged, launch::merged_mangohud_file(&user, &user_env, &plan.mangohud)) {
             Ok(()) => {
                 env.retain(|(name, _)| name != "MANGOHUD_CONFIG" && name != "MANGOHUD_CONFIGFILE");
                 env.push(("MANGOHUD_CONFIGFILE".into(), merged.display().to_string()));
+                // Ses options sont dans le fichier : son MANGOHUD_CONFIG
+                // (no_display) ne doit plus passer au jeu.
+                unset.push("MANGOHUD_CONFIG".into());
             }
             // Noté dans le dernier lancement (diagnostic) ; read_cfg reste.
             Err(error) => env.push(("LAST1_MANGOHUD_MERGE".into(), format!("{}: {error}", merged.display()))),
@@ -288,6 +297,7 @@ fn run(command: &[String]) -> ExitCode {
     let inherited: Vec<String> = std::env::vars_os()
         .filter_map(|(name, _)| name.into_string().ok())
         .filter(|name| name.starts_with("LAST1_FG_") && !env.iter().any(|(ours, _)| ours == name))
+        .chain(unset)
         .collect();
     let command_for = |program: &str, args: &[&String]| {
         let mut cmd = Command::new(program);

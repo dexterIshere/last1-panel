@@ -241,6 +241,8 @@ export interface GameSession {
   program: string;
   started: string;
   minutes: number;
+  /** Génération d'images au-dessus de la mesure : moyenne inconnue (0). */
+  generatedFrames?: boolean;
   fpsAverage: number;
   /** Images par seconde du 1 % des images les plus lentes. */
   fpsOnePercentLow: number;

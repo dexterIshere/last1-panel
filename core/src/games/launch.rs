@@ -128,13 +128,33 @@ impl Plan {
 /// mesure (les dernières lues gagnent), donné par MANGOHUD_CONFIGFILE. Avec
 /// « read_cfg » dans MANGOHUD_CONFIG, le fichier de GOverlay et ses fichiers
 /// par jeu passaient après nos clés : plus aucune partie mesurée chez un
-/// testeur. `user` : son fichier (texte), `ours` : nos options.
-pub fn merged_mangohud_file(user: &str, ours: &[String]) -> String {
-    let mut text = user.trim_end().to_string();
-    text.push_str("\n# Last1 Panel : mesure des parties (clés lues en dernier)\n");
+/// testeur. `user` : son fichier (texte), `env` : son MANGOHUD_CONFIG
+/// (« read_cfg,no_display »), `ours` : nos options.
+///
+/// MangoHud caché par le joueur (no_display) : MangoHud 0.8 ne démarre
+/// jamais l'enregistrement (update_hud_info), parties mesurées seulement
+/// s'il l'affiche un moment (testeur, 11/2026). Caché autrement, par la
+/// transparence, comme nos mesures.
+pub fn merged_mangohud_file(user: &str, env: &str, ours: &[String]) -> String {
+    let mut text = String::new();
+    let mut hidden = false;
+    for line in user.lines().chain(env.split(',')) {
+        match line.trim() {
+            "read_cfg" | "" => {}
+            "no_display" | "no_display=1" => hidden = true,
+            _ => {
+                text.push_str(line.trim_end());
+                text.push('\n');
+            }
+        }
+    }
+    text.push_str("# Last1 Panel : mesure des parties (clés lues en dernier)\n");
     for option in ours.iter().filter(|o| !HIDDEN.contains(&o.as_str()) && o.as_str() != "read_cfg") {
         text.push_str(option);
         text.push('\n');
+    }
+    if hidden {
+        text.push_str("alpha=0\nbackground_alpha=0\n");
     }
     text
 }
@@ -605,10 +625,17 @@ mod tests {
             "autostart_log=1".into(),
             "output_folder=/home/a/p".into(),
         ];
-        let file = merged_mangohud_file("fps\nautostart_log=0\n", &ours);
+        let file = merged_mangohud_file("fps\nautostart_log=0\n", "", &ours);
         assert_eq!(
             file,
             "fps\nautostart_log=0\n# Last1 Panel : mesure des parties (clés lues en dernier)\nautostart_log=1\noutput_folder=/home/a/p\n"
+        );
+        // MangoHud caché par le joueur (MANGOHUD_CONFIG=read_cfg,no_display) :
+        // transparent plutôt que no_display, qui empêche l'enregistrement.
+        let file = merged_mangohud_file("fps\nbackground_alpha=0.6\n", "read_cfg,no_display", &ours);
+        assert_eq!(
+            file,
+            "fps\nbackground_alpha=0.6\n# Last1 Panel : mesure des parties (clés lues en dernier)\nautostart_log=1\noutput_folder=/home/a/p\nalpha=0\nbackground_alpha=0\n"
         );
     }
 }

@@ -189,7 +189,7 @@
           {@const session = report.sessions[charted] ?? report.sessions[0]}
           <select class="sessions__pick" value={charted} onchange={(e) => (charted = Number(e.currentTarget.value))}>
             {#each report.sessions as s, i (s.program + s.started)}
-              <option value={i}>{s.program} · {s.started} · {s.minutes} min · {s.fpsAverage} {t("images/s", "FPS")}</option>
+              <option value={i}>{s.program} · {s.started} · {s.minutes} min · {s.generatedFrames ? "?" : s.fpsAverage} {t("images/s", "FPS")}</option>
             {/each}
           </select>
           {#if session.timeline.length > 1}
@@ -218,7 +218,7 @@
             {#each report.sessions as session (session.program + session.started)}
               <tr>
                 <td><strong>{session.program}</strong><span class="field__hint">{session.started} · {session.minutes} min</span></td>
-                <td class="mono">{session.fpsAverage}</td>
+                <td class="mono">{session.generatedFrames ? "?" : session.fpsAverage}</td>
                 <td class="mono">{session.fpsOnePercentLow}</td>
                 <td class="mono">{session.cpuLoad} %</td>
                 <td class="mono">{session.gpuLoad} %</td>

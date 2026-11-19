@@ -63,8 +63,9 @@ pub struct GameSession {
     pub vram_max: f64,
     pub ram_max: f64,
     pub swap_max: f64,
-    /// Génération d'images au-dessus de la mesure (Lossless Scaling) : seules
-    /// les vraies images sont comptées.
+    /// Génération d'images au-dessus de la mesure (Lossless Scaling) : images
+    /// par seconde moyennes inconnues (0, aussi dans la courbe), 1 % bas des
+    /// vraies images.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub generated_frames: bool,
 }
@@ -83,7 +84,9 @@ pub struct Point {
 }
 
 /// Le journal découpé en tranches égales (10 s au moins).
-fn timeline(rows: &[Row], elapsed_ns: f64) -> Vec<Point> {
+/// `generated` : génération d'images au-dessus de la mesure, images par
+/// seconde inconnues (0), le 1 % bas seul.
+fn timeline(rows: &[Row], elapsed_ns: f64, generated: bool) -> Vec<Point> {
     if elapsed_ns <= 0.0 || rows.iter().all(|row| row.at.is_none()) {
         return Vec::new();
     }
@@ -107,7 +110,7 @@ fn timeline(rows: &[Row], elapsed_ns: f64) -> Vec<Point> {
             let p99 = frametimes[((frametimes.len() as f64 * 0.99) as usize).min(frametimes.len() - 1)];
             Point {
                 minute: round((i as f64 + 0.5) * width / 60e9),
-                fps: round(mean(&slice.iter().map(|row| row.fps).collect::<Vec<_>>())),
+                fps: if generated { 0.0 } else { round(mean(&slice.iter().map(|row| row.fps).collect::<Vec<_>>())) },
                 fps_low: round(1000.0 / p99),
                 cpu_load: round(mean(&slice.iter().filter_map(|row| row.cpu).collect::<Vec<_>>())),
                 gpu_load: round(mean(&slice.iter().filter_map(|row| row.gpu).collect::<Vec<_>>())),
@@ -300,7 +303,11 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
     // elles : « 5000 i/s » à chaque ligne chez un testeur, moyenne à 1670
     // pour 1 % bas à 61. Plus de la moitié des relevés sous 1 ms (plus de
     // 1000 i/s, aucun vrai jeu ne tient ça une partie entière) et des vraies
-    // images à côté : seules ces dernières sont comptées.
+    // images à côté : seules ces dernières sont gardées. Les écarts entre
+    // images inventées vont pourtant jusqu'à plusieurs ms (moyenne restée à
+    // 195, courbe à 550 chez le même testeur) : le relevé ne dit pas combien
+    // d'images sont vraies. Moyenne et courbe inconnues (0) ; le 1 % bas,
+    // les plus longs écarts, ne vient que des vraies.
     let generated = rows.iter().filter(|row| row.frametime < GENERATED_MS).count();
     let generated_frames = generated * 2 > rows.len() && rows.len() - generated >= 10;
     if generated_frames {
@@ -397,7 +404,7 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         // au-dessus de MangoHud (Lossless Scaling, lsfg-vk) présente des
         // images collées à la vraie, des milliers d'« i/s » instantanées qui
         // tiraient la moyenne à 6000 chez un testeur (1 % bas : 70).
-        fps_average: round(average_fps(&used)),
+        fps_average: if generated_frames { 0.0 } else { round(average_fps(&used)) },
         generated_frames,
         fps_one_percent_low: round(1000.0 / p99),
         cpu_load: round(mean(&cpu)),
@@ -413,7 +420,7 @@ pub fn summarize(name: &str, text: &str) -> Option<GameSession> {
         cpu_power: round(mean(&used.iter().filter_map(|row| row.cpu_power).collect::<Vec<f64>>())),
         context: None,
         details: Vec::new(),
-        timeline: timeline(&rows, elapsed_ns),
+        timeline: timeline(&rows, elapsed_ns, generated_frames),
     })
 }
 
@@ -598,20 +605,29 @@ mod tests {
     }
 
     #[test]
-    fn generated_frames_above_mangohud_do_not_inflate_the_average() {
+    fn generated_frames_above_mangohud_leave_the_average_unknown() {
         // Lossless Scaling (lsfg-vk) au-dessus de MangoHud : le relevé tombe
-        // presque toujours sur une image générée collée à la vraie (0,2 ms),
-        // rarement sur une vraie (16 ms, 60 i/s).
+        // presque toujours sur une image inventée collée à la vraie (0,2 ms),
+        // parfois sur une inventée à 3 ms, rarement sur une vraie (25 ms).
         let rows: Vec<_> = (0..2000)
             .map(|i| {
-                let (fps, frametime) = if i % 40 == 0 { (60.0, 16.6) } else { (5000.0, 0.2) };
+                let (fps, frametime) = match i % 40 {
+                    0 => (40.0, 25.0),
+                    1..=4 => (333.0, 3.0),
+                    _ => (5000.0, 0.2),
+                };
                 (fps, frametime, 50.0, 70.0, (i + 1) * 100_000_000)
             })
             .collect();
         let session = summarize("PioneerGame_2026-11-05_00-00-00", &log(&rows)).unwrap();
         assert!(session.generated_frames);
-        assert!((59.0..=61.0).contains(&session.fps_average), "{}", session.fps_average);
-        assert!(session.timeline.iter().all(|point| point.fps < 100.0), "{:?}", session.timeline);
+        assert_eq!(session.fps_average, 0.0);
+        assert_eq!(session.fps_one_percent_low, 40.0);
+        assert!(
+            session.timeline.iter().all(|point| point.fps == 0.0 && point.fps_low == 40.0),
+            "{:?}",
+            session.timeline
+        );
 
         // Sans génération : rien d'écarté.
         let rows: Vec<_> = (0..600).map(|i| (90.0, 11.1, 50.0, 70.0, (i + 1) * 100_000_000)).collect();

@@ -1745,12 +1745,14 @@ fn text(facts: &[(String, String)], checks: &[Check], sessions: &[GameSession]) 
                 ),
                 _ => "?".into(),
             };
+            // Génération d'images au-dessus de la mesure : moyenne inconnue.
+            let average = if s.generated_frames { "?".to_string() } else { s.fps_average.to_string() };
             text.push_str(&format!(
                 "{} — {}, {} min : {} i/s (1 % : {}), {} {} %, {} {} % à {} MHz → {limit}\n",
                 s.program,
                 s.started,
                 s.minutes,
-                s.fps_average,
+                average,
                 s.fps_one_percent_low,
                 t("processeur", "CPU"),
                 s.cpu_load,
@@ -1777,8 +1779,8 @@ fn session_details(s: &GameSession) -> Vec<String> {
     }
     if s.generated_frames {
         details.push(t(
-            "images inventées (Lossless Scaling) non comptées\u{202f}: vraies images seulement",
-            "generated frames (Lossless Scaling) not counted: real frames only",
+            "images inventées (Lossless Scaling)\u{202f}: moyenne inconnue, 1 % des vraies images",
+            "generated frames (Lossless Scaling): average unknown, 1 % of real frames",
         ));
     }
     if s.gpu_power > 0.0 {
